@@ -81,14 +81,15 @@
 
   </main>
 
-  <!-- ===== REFRESH SCENE OVERLAYS (burn-in prevention) ===== -->
-  <div id="refresh-overlay" class="refresh-overlay hidden">
-    <div class="refresh-content" id="refresh-content">
-      <svg id="refresh-plane" class="refresh-plane" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path d="M405.1 57.9c-18.7-18.7-49.1-18.7-67.9 0L288 107.2 228.2 47.4c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6L243.2 153 177 219.2 115.8 206c-5.1-1.1-10.4.5-14.1 4.2L79 233c-8.4 8.4-5.5 22.1 5.4 26l95.4 34.1 34.1 95.4c3.9 10.9 17.6 13.7 26 5.4l22.7-22.7c3.7-3.7 5.3-9 4.2-14.1L253.6 296 319.8 229.8l60.2 60.2c6.2 6.2 16.4 6.2 22.6 0l22.6-22.6c6.2-6.2 6.2-16.4 0-22.6L365.6 185 414.9 135.7c18.7-18.7 18.7-49.1 0-67.9z"/>
-      </svg>
-      <div class="refresh-text" id="refresh-text">SkyTrack Refresh</div>
-    </div>
+  <!-- ===== BOOT SPLASH (plays once on load) ===== -->
+  <div id="boot-overlay" class="video-overlay visible">
+    <video id="boot-video" muted playsinline preload="auto"
+           src="{{ url_for('static', filename='video/SkyTrack Boot Screen-V1.mp4') }}"></video>
+  </div>
+
+  <!-- ===== REFRESH SCENE OVERLAY (burn-in prevention) ===== -->
+  <div id="refresh-overlay" class="video-overlay hidden">
+    <video id="refresh-video" muted playsinline preload="auto"></video>
   </div>
 
   <!-- ===== CONFIG for JS (injected by Flask) ===== -->
@@ -101,6 +102,9 @@
       refreshInterval: {{ config.get('refresh_interval', 3600) }} * 1000,
       refreshDuration: {{ config.get('refresh_duration', 8) }} * 1000,
       aircraftInterval: {{ config.get('aircraft_interval', 15) }} * 1000,
+      videoBootSrc: "{{ url_for('static', filename='video/SkyTrack Boot Screen-V1.mp4') }}",
+      videoRefreshGreen: "{{ url_for('static', filename='video/SkyTrack Refresh - Green Plane-V1.mp4') }}",
+      videoRefreshBlue: "{{ url_for('static', filename='video/SkyTrack Refresh - Blue Plane-V1.mp4') }}",
     };
   </script>
 

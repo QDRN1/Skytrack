@@ -233,76 +233,31 @@ main#main-content {
   margin-top: 2px;
 }
 
-/* ----- Refresh Scene (burn-in prevention) ----- */
-.refresh-overlay {
+/* ----- Video Overlays (boot splash + burn-in refresh) ----- */
+.video-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   z-index: 9999;
+  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.6s ease;
+  transition: opacity 0.8s ease;
 }
 
-.refresh-overlay.hidden {
+.video-overlay.hidden {
   opacity: 0;
   pointer-events: none;
 }
 
-.refresh-overlay.visible {
+.video-overlay.visible {
   opacity: 1;
 }
 
-/* Scene 1: Green plane on dark blue */
-.refresh-overlay.scene-green {
-  background: #002D72;
-}
-
-.refresh-overlay.scene-green .refresh-plane {
-  fill: #A3C940;
-}
-
-.refresh-overlay.scene-green .refresh-text {
-  color: #A3C940;
-}
-
-/* Scene 2: Blue plane on green */
-.refresh-overlay.scene-blue {
-  background: #A3C940;
-}
-
-.refresh-overlay.scene-blue .refresh-plane {
-  fill: #002D72;
-}
-
-.refresh-overlay.scene-blue .refresh-text {
-  color: #002D72;
-}
-
-.refresh-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
-
-.refresh-plane {
-  width: 120px;
-  height: 120px;
-  animation: planeFly 4s ease-in-out infinite;
-}
-
-@keyframes planeFly {
-  0%   { transform: translateX(-30px) rotate(-5deg); }
-  50%  { transform: translateX(30px) rotate(5deg); }
-  100% { transform: translateX(-30px) rotate(-5deg); }
-}
-
-.refresh-text {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+.video-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ----- Utility ----- */

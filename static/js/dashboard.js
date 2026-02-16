@@ -268,52 +268,107 @@
   });
 
   // -----------------------------------------------------------------------
+  // Boot Splash Video
+  // -----------------------------------------------------------------------
+  (function () {
+    var bootOverlay = document.getElementById('boot-overlay');
+    var bootVideo = document.getElementById('boot-video');
+    if (!bootOverlay || !bootVideo) return;
+
+    function dismissBoot() {
+      bootOverlay.classList.remove('visible');
+      bootOverlay.classList.add('hidden');
+      // Clean up after fade-out transition
+      setTimeout(function () {
+        bootVideo.pause();
+        bootVideo.removeAttribute('src');
+        bootVideo.load();
+        map.invalidateSize();
+      }, 900);
+    }
+
+    bootVideo.addEventListener('ended', dismissBoot);
+
+    // Fallback: if video fails to load or play, dismiss after 2s
+    bootVideo.addEventListener('error', function () {
+      setTimeout(dismissBoot, 500);
+    });
+
+    // Auto-play the boot video
+    var playPromise = bootVideo.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(function () {
+        // Autoplay blocked (unlikely since muted), dismiss splash
+        setTimeout(dismissBoot, 500);
+      });
+    }
+
+    // Safety net: dismiss after 30s no matter what
+    setTimeout(dismissBoot, 30000);
+  })();
+
+  // -----------------------------------------------------------------------
   // Burn-in Prevention
   // -----------------------------------------------------------------------
 
   // 1) Micro-jitter: shift main content by a few pixels every 5 minutes
-  var jitterX = 0, jitterY = 0;
   setInterval(function () {
-    jitterX = Math.round((Math.random() - 0.5) * 6);  // -3 to +3
-    jitterY = Math.round((Math.random() - 0.5) * 6);
+    var jX = Math.round((Math.random() - 0.5) * 6);  // -3 to +3
+    var jY = Math.round((Math.random() - 0.5) * 6);
     var main = document.getElementById('main-content');
     if (main) {
-      main.style.transform = 'translate(' + jitterX + 'px, ' + jitterY + 'px)';
+      main.style.transform = 'translate(' + jX + 'px, ' + jY + 'px)';
     }
   }, CFG.jitterInterval || 300000);
 
-  // 2) Full-screen refresh scene every 60 minutes
-  var refreshScenes = ['scene-green', 'scene-blue'];
-  var refreshIndex = 0;
+  // 2) Full-screen refresh videos every 60 minutes
+  //    Plays Green Plane video, then Blue Plane video, then returns to dashboard
+  var refreshVideos = [
+    CFG.videoRefreshGreen || '/static/video/SkyTrack%20Refresh%20-%20Green%20Plane-V1.mp4',
+    CFG.videoRefreshBlue  || '/static/video/SkyTrack%20Refresh%20-%20Blue%20Plane-V1.mp4',
+  ];
 
   function showRefreshScene() {
     var overlay = document.getElementById('refresh-overlay');
-    var scene = refreshScenes[refreshIndex % refreshScenes.length];
-    refreshIndex++;
+    var video = document.getElementById('refresh-video');
+    if (!overlay || !video) return;
 
-    // Clear previous scene classes
-    overlay.className = 'refresh-overlay visible ' + scene;
+    var index = 0;
 
-    var text = scene === 'scene-green'
-      ? 'SkyTrack Refresh'
-      : 'SkyTrack Refresh';
-    document.getElementById('refresh-text').textContent = text;
+    function playNext() {
+      if (index >= refreshVideos.length) {
+        // All scenes done — hide overlay, return to dashboard
+        overlay.classList.remove('visible');
+        overlay.classList.add('hidden');
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        setTimeout(function () { map.invalidateSize(); }, 900);
+        return;
+      }
+      video.src = refreshVideos[index];
+      video.load();
+      video.play().catch(function () { playNext(); });
+      index++;
+    }
 
-    // Show for configured duration, then hide
-    var duration = CFG.refreshDuration || 8000;
+    video.onended = playNext;
+    video.onerror = playNext;
 
-    // Show scene 1, then scene 2
+    // Show overlay and start first video
+    overlay.classList.remove('hidden');
+    overlay.classList.add('visible');
+    playNext();
+
+    // Safety net: hide after 60s no matter what
     setTimeout(function () {
-      var nextScene = refreshScenes[refreshIndex % refreshScenes.length];
-      refreshIndex++;
-      overlay.className = 'refresh-overlay visible ' + nextScene;
-    }, duration / 2);
-
-    setTimeout(function () {
-      overlay.className = 'refresh-overlay hidden';
-      // Invalidate map size after overlay hides (Leaflet fix)
-      map.invalidateSize();
-    }, duration);
+      if (overlay.classList.contains('visible')) {
+        overlay.classList.remove('visible');
+        overlay.classList.add('hidden');
+        video.pause();
+        map.invalidateSize();
+      }
+    }, 60000);
   }
 
   setInterval(showRefreshScene, CFG.refreshInterval || 3600000);
