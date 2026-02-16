@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QDRNode SkyTrack</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <!-- Favicon: plane emoji -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header id="header">
+    <div class="header-left">
+      <span id="wifi-indicator" class="conn-indicator" title="WiFi">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+        </svg>
+        <span class="conn-label">WiFi</span>
+      </span>
+      <span id="cell-indicator" class="conn-indicator" title="Cellular">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M2 22h20V2z" opacity="0.15"/>
+          <path id="cell-bars" d="M2 22h3V17H2v5zm5 0h3V12H7v10zm5 0h3V7h-3v15zm5 0h3V2h-3v20z"/>
+        </svg>
+        <span class="conn-label">Cell</span>
+      </span>
+    </div>
+    <div class="header-center">
+      <span class="header-title">QDRNode SkyTrack</span>
+    </div>
+    <div class="header-right">
+      <span id="clock"></span>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main id="main-content">
+
+    <!-- Row 1: Weather -->
+    <section id="weather-row">
+      <div id="weather-current">
+        <span id="weather-icon" class="weather-icon">--</span>
+        <span id="weather-temp" class="weather-temp">--&deg;F</span>
+        <span id="weather-condition" class="weather-condition">Loading&hellip;</span>
+      </div>
+      <div id="weather-hilo">
+        <span class="weather-hi">H: --&deg;</span>
+        <span class="weather-lo">L: --&deg;</span>
+      </div>
+      <div id="weather-forecast"></div>
+      <div id="weather-status" class="weather-status"></div>
+    </section>
+
+    <!-- Row 2: Map -->
+    <section id="map-row">
+      <div id="map"></div>
+    </section>
+
+    <!-- Row 3: Stats tiles -->
+    <section id="stats-row">
+      <div class="stat-tile" id="tile-frequent">
+        <div class="stat-label" id="freq-label">Most Frequent Plane Today</div>
+        <div class="stat-value" id="freq-flight">--</div>
+        <div class="stat-detail" id="freq-detail">-- messages</div>
+      </div>
+      <div class="stat-tile" id="tile-total">
+        <div class="stat-label">Planes Seen Today</div>
+        <div class="stat-value" id="total-count">--</div>
+        <div class="stat-detail">unique aircraft since midnight</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== REFRESH SCENE OVERLAYS (burn-in prevention) ===== -->
+  <div id="refresh-overlay" class="refresh-overlay hidden">
+    <div class="refresh-content" id="refresh-content">
+      <svg id="refresh-plane" class="refresh-plane" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path d="M405.1 57.9c-18.7-18.7-49.1-18.7-67.9 0L288 107.2 228.2 47.4c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6L243.2 153 177 219.2 115.8 206c-5.1-1.1-10.4.5-14.1 4.2L79 233c-8.4 8.4-5.5 22.1 5.4 26l95.4 34.1 34.1 95.4c3.9 10.9 17.6 13.7 26 5.4l22.7-22.7c3.7-3.7 5.3-9 4.2-14.1L253.6 296 319.8 229.8l60.2 60.2c6.2 6.2 16.4 6.2 22.6 0l22.6-22.6c6.2-6.2 6.2-16.4 0-22.6L365.6 185 414.9 135.7c18.7-18.7 18.7-49.1 0-67.9z"/>
+      </svg>
+      <div class="refresh-text" id="refresh-text">SkyTrack Refresh</div>
+    </div>
+  </div>
+
+  <!-- ===== CONFIG for JS (injected by Flask) ===== -->
+  <script>
+    window.SKYTRACK_CONFIG = {
+      latitude: {{ config.get('latitude', 44.602016) }},
+      longitude: {{ config.get('longitude', -92.494604) }},
+      mapZoom: {{ config.get('map_zoom', 8) }},
+      jitterInterval: {{ config.get('jitter_interval', 300) }} * 1000,
+      refreshInterval: {{ config.get('refresh_interval', 3600) }} * 1000,
+      refreshDuration: {{ config.get('refresh_duration', 8) }} * 1000,
+      aircraftInterval: {{ config.get('aircraft_interval', 15) }} * 1000,
+    };
+  </script>
+
+  <!-- SocketIO -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- App JS -->
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+</body>
+</html>

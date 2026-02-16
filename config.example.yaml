@@ -1,0 +1,56 @@
+# =============================================================================
+# SkyTrack Configuration
+# Copy to config.yaml and edit for your setup.
+# Environment variables (SKYTRACK_*) override values in this file.
+# =============================================================================
+
+# --- General ---
+device_name: QDRNow-SkyTrack
+host: "0.0.0.0"          # Listen address (0.0.0.0 = all interfaces)
+port: 5000                # Dashboard port
+debug: false              # Flask debug mode (disable in production)
+secret_key: "change-me-to-a-random-string"
+mock_mode: true           # true = use demo data (no hardware needed)
+
+# --- Location (center of the map) ---
+latitude: 44.602016
+longitude: -92.494604
+map_zoom: 8               # Leaflet zoom (~120 mi wide at this lat)
+
+# --- DHT22 Sensor ---
+dht_pin: 21               # BCM GPIO pin number
+humidity_threshold: 80     # Alert when humidity exceeds this %
+sensor_interval: 30        # Seconds between sensor reads
+
+# --- Weather (WeatherAPI.com) ---
+weather_api_key: ""        # Get a free key at https://www.weatherapi.com
+weather_interval: 1800     # Seconds between weather fetches (1800 = 30 min)
+
+# --- Aircraft (dump1090 / readsb) ---
+dump1090_json_path: "/run/dump1090-fa/aircraft.json"   # Local file path
+dump1090_url: "http://localhost:8080/data/aircraft.json"  # HTTP fallback
+aircraft_interval: 15      # Seconds between aircraft data refreshes
+
+# --- Health ---
+health_interval: 60        # Seconds between health checks
+
+# --- Email Alerts (SMTP) ---
+smtp_host: ""              # e.g. smtp.gmail.com  (leave empty to disable email)
+smtp_port: 587
+smtp_user: ""
+smtp_pass: ""
+alert_from: ""             # e.g. skytrack@yourdomain.com
+alert_to: ""               # e.g. you@example.com
+alert_cooldown: 300        # Min seconds between duplicate alerts
+
+# --- Cloudflare Tunnel ---
+cloudflared_enabled: false
+
+# --- Burn-in Prevention ---
+jitter_interval: 300       # Seconds between micro-jitter shifts (5 min)
+refresh_interval: 3600     # Seconds between full-screen refresh scenes (60 min)
+refresh_duration: 8        # Seconds each refresh scene is shown
+
+# --- Logging ---
+log_dir: "/var/log/skytrack"
+log_level: "INFO"          # DEBUG, INFO, WARNING, ERROR

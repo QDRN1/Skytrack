@@ -1,0 +1,27 @@
+[Unit]
+Description=QDRNow-SkyTrack ADS-B Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/skytrack
+ExecStart=/opt/skytrack/venv/bin/python app.py
+Restart=always
+RestartSec=5
+
+# Logging to journald + file
+StandardOutput=journal+console
+StandardError=journal+console
+
+# Environment
+Environment="SKYTRACK_CONFIG=/opt/skytrack/config.yaml"
+
+# Hardening
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
