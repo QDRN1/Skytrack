@@ -321,54 +321,44 @@
     }
   }, CFG.jitterInterval || 300000);
 
-  // 2) Full-screen refresh videos every 60 minutes
-  //    Plays Green Plane video, then Blue Plane video, then returns to dashboard
+  // 2) Full-screen refresh video every 60 minutes
+  //    Alternates between Green and Blue each cycle, plays one, then fades back
   var refreshVideos = [
     CFG.videoRefreshGreen || '/static/video/SkyTrack%20Refresh%20-%20Green%20Plane-V1.mp4',
     CFG.videoRefreshBlue  || '/static/video/SkyTrack%20Refresh%20-%20Blue%20Plane-V1.mp4',
   ];
+  var refreshIndex = 0;
 
   function showRefreshScene() {
     var overlay = document.getElementById('refresh-overlay');
     var video = document.getElementById('refresh-video');
     if (!overlay || !video) return;
 
-    var index = 0;
-
-    function playNext() {
-      if (index >= refreshVideos.length) {
-        // All scenes done — hide overlay, return to dashboard
-        overlay.classList.remove('visible');
-        overlay.classList.add('hidden');
-        video.pause();
-        video.removeAttribute('src');
-        video.load();
-        setTimeout(function () { map.invalidateSize(); }, 900);
-        return;
-      }
-      video.src = refreshVideos[index];
+    function dismiss() {
+      overlay.classList.remove('visible');
+      overlay.classList.add('hidden');
+      video.pause();
+      video.removeAttribute('src');
       video.load();
-      video.play().catch(function () { playNext(); });
-      index++;
+      setTimeout(function () { map.invalidateSize(); }, 900);
     }
 
-    video.onended = playNext;
-    video.onerror = playNext;
+    video.onended = dismiss;
+    video.onerror = dismiss;
 
-    // Show overlay and start first video
+    // Pick this cycle's video and advance for next time
+    video.src = refreshVideos[refreshIndex % refreshVideos.length];
+    refreshIndex++;
+    video.load();
+
     overlay.classList.remove('hidden');
     overlay.classList.add('visible');
-    playNext();
+    video.play().catch(dismiss);
 
-    // Safety net: hide after 60s no matter what
+    // Safety net: hide after 30s no matter what
     setTimeout(function () {
-      if (overlay.classList.contains('visible')) {
-        overlay.classList.remove('visible');
-        overlay.classList.add('hidden');
-        video.pause();
-        map.invalidateSize();
-      }
-    }, 60000);
+      if (overlay.classList.contains('visible')) dismiss();
+    }, 30000);
   }
 
   setInterval(showRefreshScene, CFG.refreshInterval || 3600000);
