@@ -11,16 +11,29 @@ Group=SkyTrack
 PAMName=login
 TTYPath=/dev/tty1
 
-# X11 needs a virtual terminal
+# X11 environment — explicit so xrandr/xset/chromium work reliably
 Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/SkyTrack/.Xauthority"
+Environment="HOME=/home/SkyTrack"
+
 StandardInput=tty
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=skytrack-kiosk
 
 ExecStartPre=/bin/sleep 3
 ExecStart=/usr/bin/startx /opt/skytrack/kiosk/xinitrc -- :0 vt1 -keeptty -noreset
+
 Restart=on-failure
 RestartSec=10
+
+# Prevent hangs on stop/restart
+TimeoutStartSec=120
+TimeoutStopSec=15
+KillMode=mixed
+
+# Chromium may exit 1 on SIGTERM — treat as clean
+SuccessExitStatus=0 1
 
 [Install]
 WantedBy=graphical.target

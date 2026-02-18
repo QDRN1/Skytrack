@@ -23,6 +23,11 @@
 #   PIAWARE_FEEDER_ID          PiAware feeder ID
 #
 # Safe to re-run. Idempotent. Does not overwrite existing configuration.
+#
+# Assumptions:
+#   - Raspberry Pi OS Bookworm (Debian 12) 64-bit
+#   - HDMI display (rotation configurable in config.yaml)
+#   - GPS/modem optional (static lat/lon fallback in config)
 # =============================================================================
 
 set -euo pipefail
@@ -31,8 +36,10 @@ set -euo pipefail
 SKYTRACK_USER="SkyTrack"
 SKYTRACK_HOME="/home/${SKYTRACK_USER}"
 INSTALL_DIR="/opt/skytrack"
+DATA_DIR="/var/lib/skytrack"
+GEO_DIR="${DATA_DIR}/geo"
+LOG_DIR="/var/log/skytrack"
 LOG_FILE="/var/log/skytrack-install.log"
-GEO_DIR="/var/lib/skytrack/geo"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---- Defaults ----
@@ -98,12 +105,16 @@ apt-get update -qq >> "$LOG_FILE" 2>&1
 PACKAGES=(
     git curl wget
     python3-venv python3-pip python3-dev
-    xorg openbox chromium-browser
-    unclutter x11-xserver-utils xinit
+    # X11 / Kiosk
+    xserver-xorg xinit x11-xserver-utils
+    openbox chromium-browser
+    unclutter
+    # Modem / GPS
     modemmanager network-manager
     usb-modeswitch usb-modeswitch-data
     libqmi-utils libmbim-utils
     gpsd gpsd-clients
+    # Build tools / ADS-B
     build-essential
     librtlsdr-dev libusb-1.0-0-dev
     lighttpd
@@ -136,6 +147,10 @@ else
     done
     info "User $SKYTRACK_USER already exists."
 fi
+
+# Ensure home directory exists with correct ownership
+mkdir -p "$SKYTRACK_HOME"
+chown "$SKYTRACK_USER:$SKYTRACK_USER" "$SKYTRACK_HOME"
 
 # =========================================================================
 # STEP 3: Install FlightAware (PiAware + dump1090-fa)
@@ -343,15 +358,19 @@ else
     info "config.yaml already exists — not overwriting."
 fi
 
+# Ensure kiosk scripts are executable
+chmod +x "$INSTALL_DIR/kiosk/skytrack-kiosk.sh" "$INSTALL_DIR/kiosk/xinitrc" 2>/dev/null || true
+
 # Set ownership
 chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$INSTALL_DIR"
 
 # =========================================================================
-# STEP 7: Geodata setup
+# STEP 7: Data directories + geodata
 # =========================================================================
-log "STEP 7/10: Setting up offline geodata..."
+log "STEP 7/10: Setting up data directories and offline geodata..."
 
-mkdir -p "$GEO_DIR"
+# Create canonical data directories
+mkdir -p "$DATA_DIR" "$GEO_DIR" "$LOG_DIR"
 
 # Copy geodata CSVs to the data directory
 if [ -d "$INSTALL_DIR/geodata" ]; then
@@ -362,11 +381,9 @@ else
     warn "geodata/ directory not found in repo — location labels will be unavailable."
 fi
 
-chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$GEO_DIR"
-
-# Create log directory
-mkdir -p /var/log/skytrack
-chown -R "$SKYTRACK_USER:$SKYTRACK_USER" /var/log/skytrack
+# Set ownership for all data + log directories
+chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$DATA_DIR"
+chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$LOG_DIR"
 
 # =========================================================================
 # STEP 8: Systemd services
@@ -377,11 +394,8 @@ log "STEP 8/10: Installing systemd services..."
 cp "$INSTALL_DIR/systemd/skytrack.service" /etc/systemd/system/skytrack.service
 cp "$INSTALL_DIR/systemd/skytrack-kiosk.service" /etc/systemd/system/skytrack-kiosk.service
 
-# Copy kiosk scripts to user home
+# Ensure home directory is set up for kiosk (Chromium profile, .Xauthority)
 mkdir -p "$SKYTRACK_HOME"
-cp "$INSTALL_DIR/kiosk/skytrack-kiosk.sh" "$SKYTRACK_HOME/skytrack-kiosk.sh"
-cp "$INSTALL_DIR/kiosk/xinitrc" "$SKYTRACK_HOME/.xinitrc"
-chmod +x "$SKYTRACK_HOME/skytrack-kiosk.sh" "$SKYTRACK_HOME/.xinitrc"
 chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$SKYTRACK_HOME"
 
 # Enable services
@@ -455,6 +469,8 @@ echo -e "${BLUE}============================================${NC}"
 echo -e "${BLUE}  SkyTrack Post-Install Verification${NC}"
 echo -e "${BLUE}============================================${NC}"
 
+FAILED_SERVICES=()
+
 verify_service() {
     local svc="$1"
     local label="$2"
@@ -466,6 +482,7 @@ verify_service() {
         return 0
     else
         echo -e "  ${RED}[FAIL]${NC} $label"
+        FAILED_SERVICES+=("$svc")
         return 1
     fi
 }
@@ -494,8 +511,8 @@ verify_service "gpsd"             "GPS Daemon"           && ((PASS++)) || ((FAIL
 # Check backend reachability
 echo ""
 sleep 3
-if curl -sf http://localhost:5000 >/dev/null 2>&1; then
-    echo -e "  ${GREEN}[OK]${NC}   Dashboard reachable at http://localhost:5000"
+if curl -sf http://127.0.0.1:5000 >/dev/null 2>&1; then
+    echo -e "  ${GREEN}[OK]${NC}   Dashboard reachable at http://127.0.0.1:5000"
     ((PASS++))
 else
     echo -e "  ${YELLOW}[WAIT]${NC} Dashboard not yet reachable (may need a moment)"
@@ -504,7 +521,9 @@ fi
 
 # Check geodata
 if [ -f "$GEO_DIR/us_cities.csv" ] && [ -f "$GEO_DIR/us_zip_centroids.csv" ]; then
-    echo -e "  ${GREEN}[OK]${NC}   Offline geodata installed"
+    CITY_COUNT=$(wc -l < "$GEO_DIR/us_cities.csv" 2>/dev/null || echo 0)
+    ZIP_COUNT=$(wc -l < "$GEO_DIR/us_zip_centroids.csv" 2>/dev/null || echo 0)
+    echo -e "  ${GREEN}[OK]${NC}   Offline geodata installed ($((CITY_COUNT - 1)) cities, $((ZIP_COUNT - 1)) ZIPs)"
     ((PASS++))
 else
     echo -e "  ${YELLOW}[WARN]${NC} Offline geodata missing from $GEO_DIR"
@@ -514,34 +533,66 @@ echo ""
 echo -e "${BLUE}============================================${NC}"
 echo -e "  Results: ${GREEN}${PASS} passed${NC}, ${RED}${FAIL} failed${NC}"
 echo -e "${BLUE}============================================${NC}"
+
+# Show journal logs for any failed services
+if [[ ${#FAILED_SERVICES[@]} -gt 0 ]]; then
+    echo ""
+    echo -e "${YELLOW}--- Diagnostic logs for failed services ---${NC}"
+    for svc in "${FAILED_SERVICES[@]}"; do
+        echo ""
+        echo -e "${YELLOW}[$svc]${NC}"
+        journalctl -u "$svc" --no-pager -n 50 2>/dev/null || true
+    done
+    echo -e "${YELLOW}-------------------------------------------${NC}"
+fi
+
 echo ""
 
 if [[ $FAIL -eq 0 ]]; then
     log "Installation complete — all checks passed!"
 else
-    warn "Installation complete with $FAIL warning(s)."
+    warn "Installation complete with $FAIL warning(s). See diagnostic logs above."
 fi
 
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Reboot to start the kiosk: sudo reboot"
-echo "  2. Dashboard URL: http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):5000"
+echo "  1. Reboot to start the kiosk:  sudo reboot"
+echo "  2. Dashboard URL:  http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):5000"
+echo ""
+echo -e "${BLUE}--- Post-Install Configuration (run after reboot) ---${NC}"
 
 if [[ "$SKIP_PIAWARE" != true ]] && [[ -z "$PIAWARE_ID" ]]; then
-    echo "  3. Claim your PiAware: https://www.flightaware.com/adsb/piaware/claim"
+    echo ""
+    echo "  PiAware claim:"
+    echo "    Visit https://www.flightaware.com/adsb/piaware/claim"
+    echo "    Or:  sudo piaware-config feeder-id <YOUR_FEEDER_ID>"
 fi
 
 if [[ "$SKIP_FR24" != true ]] && [[ -z "$FR24KEY" ]]; then
-    echo "  4. Configure FR24: sudo fr24feed --signup"
+    echo ""
+    echo "  Flightradar24 signup:"
+    echo "    sudo fr24feed --signup"
+    echo "    Or:  sudo nano /etc/fr24feed.ini  # set fr24key=\"YOUR_KEY\""
 fi
 
 if [[ "$SKIP_CF" != true ]] && [[ -z "$CF_TOKEN" ]]; then
-    echo "  5. Set up Cloudflare Tunnel: sudo cloudflared service install <TOKEN>"
+    echo ""
+    echo "  Cloudflare Tunnel:"
+    echo "    1. Create tunnel at https://one.dash.cloudflare.com > Networks > Tunnels"
+    echo "    2. sudo cloudflared service install <TUNNEL_TOKEN>"
+    echo "    3. sudo systemctl enable --now cloudflared"
 fi
 
 echo ""
-echo "Logs: $LOG_FILE"
+echo -e "${BLUE}--- Useful commands ---${NC}"
+echo "  View backend logs:   journalctl -u skytrack -f"
+echo "  View kiosk logs:     journalctl -u skytrack-kiosk -f"
+echo "  Edit config:         sudo nano /opt/skytrack/config.yaml"
+echo "  Restart backend:     sudo systemctl restart skytrack"
+echo "  Restart kiosk:       sudo systemctl restart skytrack-kiosk"
+echo ""
+echo "Full install log: $LOG_FILE"
 echo ""
 
 log "=== Install finished at $(date -Iseconds) ==="

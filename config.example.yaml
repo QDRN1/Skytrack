@@ -44,8 +44,15 @@ alert_to: ""               # e.g. you@example.com
 alert_cooldown: 300        # Min seconds between duplicate alerts
 
 # --- Display ---
-display_rotation: "normal"    # normal, left, right, inverted
-display_output: "HDMI-1"      # X11 output name
+# Rotation: 0, 90, 180, 270  (or: normal, left, inverted, right)
+# Applied via xrandr after X starts. Does NOT edit /boot/firmware/config.txt.
+# For boot-level rotation (needed by some LCD panels), manually add to
+# /boot/firmware/config.txt:
+#   display_hdmi_rotate=1   (90°)
+#   display_hdmi_rotate=2   (180°)
+#   display_hdmi_rotate=3   (270°)
+display_rotation: 0
+display_output: "HDMI-1"      # X11 output name (xrandr --listmonitors)
 
 # --- GPS / Offline Geocoding ---
 geo_offline_enabled: true      # Enable offline City, ST ZIP from GPS

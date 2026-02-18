@@ -5,11 +5,16 @@
 # Designed for headless Raspberry Pi — no desktop environment required.
 # =============================================================================
 
-set -euo pipefail
+# Use -u for unset variable errors but NOT -e (we want the script to keep
+# running even if individual commands fail — a kiosk must not bail out).
+set -u
 
 SKYTRACK_DIR="${SKYTRACK_DIR:-/opt/skytrack}"
 SKYTRACK_URL="${SKYTRACK_URL:-http://localhost:5000}"
 CONFIG_FILE="${SKYTRACK_DIR}/config.yaml"
+LOG_TAG="[kiosk]"
+
+log() { echo "${LOG_TAG} $(date '+%H:%M:%S') $*"; }
 
 # ---------------------------------------------------------------------------
 # Read display settings from config.yaml (fallback to safe defaults)
@@ -30,16 +35,16 @@ except:
     fi
 }
 
-ROTATION=$(get_config "display_rotation" "normal")
+ROTATION=$(get_config "display_rotation" "0")
 DISPLAY_OUTPUT=$(get_config "display_output" "HDMI-1")
 
 # ---------------------------------------------------------------------------
-# Wait for network (up to 30 seconds)
+# Wait for network (up to 30 seconds) — not fatal if unavailable
 # ---------------------------------------------------------------------------
-echo "[kiosk] Waiting for network..."
+log "Waiting for network..."
 for i in $(seq 1 30); do
     if ip route get 1.1.1.1 >/dev/null 2>&1 || ip route show default >/dev/null 2>&1; then
-        echo "[kiosk] Network available."
+        log "Network available."
         break
     fi
     sleep 1
@@ -48,33 +53,43 @@ done
 # ---------------------------------------------------------------------------
 # Wait for X11 to be ready (up to 15 seconds)
 # ---------------------------------------------------------------------------
-echo "[kiosk] Waiting for X server..."
+log "Waiting for X server..."
 for i in $(seq 1 15); do
     if xdpyinfo >/dev/null 2>&1; then
-        echo "[kiosk] X server ready."
+        log "X server ready."
         break
     fi
     sleep 1
 done
 
 # ---------------------------------------------------------------------------
-# Apply display rotation
+# Apply display rotation — supports both numeric (0/90/180/270) and named
+# values (normal/left/right/inverted).
 # ---------------------------------------------------------------------------
 apply_rotation() {
     local rot="$1"
     local output="$2"
+    local xrandr_rot="normal"
 
     case "$rot" in
-        left)    xrandr --output "$output" --rotate left  2>/dev/null || true ;;
-        right)   xrandr --output "$output" --rotate right 2>/dev/null || true ;;
-        inverted) xrandr --output "$output" --rotate inverted 2>/dev/null || true ;;
-        normal|*) xrandr --output "$output" --rotate normal 2>/dev/null || true ;;
+        0|normal)       xrandr_rot="normal" ;;
+        90|left)        xrandr_rot="left" ;;
+        180|inverted)   xrandr_rot="inverted" ;;
+        270|right)      xrandr_rot="right" ;;
+        *)              log "Unknown rotation '$rot', defaulting to normal."
+                        xrandr_rot="normal" ;;
     esac
+
+    xrandr --output "$output" --rotate "$xrandr_rot" 2>/dev/null || {
+        # If the specified output fails, try without --output (uses primary)
+        log "xrandr failed for output '$output', trying default output..."
+        xrandr --rotate "$xrandr_rot" 2>/dev/null || true
+    }
+    log "Rotation set to: $xrandr_rot (from config value '$rot') on $output"
 }
 
 if command -v xrandr >/dev/null 2>&1; then
     apply_rotation "$ROTATION" "$DISPLAY_OUTPUT"
-    echo "[kiosk] Rotation set to: $ROTATION on $DISPLAY_OUTPUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -90,7 +105,7 @@ if command -v xrandr >/dev/null 2>&1; then
         SCREEN_H=$(echo "$RES" | cut -d'x' -f2)
     fi
 fi
-echo "[kiosk] Screen resolution: ${SCREEN_W}x${SCREEN_H}"
+log "Screen resolution: ${SCREEN_W}x${SCREEN_H}"
 
 # ---------------------------------------------------------------------------
 # Disable screen blanking / DPMS
@@ -109,11 +124,14 @@ fi
 # ---------------------------------------------------------------------------
 # Wait for SkyTrack backend (up to 60 seconds)
 # ---------------------------------------------------------------------------
-echo "[kiosk] Waiting for SkyTrack backend at $SKYTRACK_URL ..."
+log "Waiting for SkyTrack backend at $SKYTRACK_URL ..."
 for i in $(seq 1 60); do
     if curl -sf "$SKYTRACK_URL" >/dev/null 2>&1; then
-        echo "[kiosk] Backend is up."
+        log "Backend is up."
         break
+    fi
+    if [ "$i" -eq 60 ]; then
+        log "Backend not responding after 60s — launching Chromium anyway."
     fi
     sleep 1
 done
@@ -131,7 +149,7 @@ sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' \
 # ---------------------------------------------------------------------------
 # Launch Chromium in kiosk mode
 # ---------------------------------------------------------------------------
-echo "[kiosk] Launching Chromium kiosk: $SKYTRACK_URL"
+log "Launching Chromium kiosk: $SKYTRACK_URL"
 exec chromium-browser \
     --noerrdialogs \
     --disable-infobars \

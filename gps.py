@@ -21,8 +21,8 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger('skytrack.gps')
 
-# Cache file for last known position
-_CACHE_PATH = '/var/lib/skytrack/geo/last_gps.json'
+# Default cache path — overridden by GPSService using config['geo_data_dir']
+_DEFAULT_CACHE_DIR = '/var/lib/skytrack/geo'
 
 
 def _try_gpsd():
@@ -128,11 +128,11 @@ def _try_modemmanager():
     return None
 
 
-def _load_cache():
+def _load_cache(cache_path):
     """Load last known GPS position from cache file."""
     try:
-        if os.path.exists(_CACHE_PATH):
-            with open(_CACHE_PATH, 'r') as f:
+        if os.path.exists(cache_path):
+            with open(cache_path, 'r') as f:
                 data = json.load(f)
             if data.get('lat') and data.get('lon'):
                 data['source'] = data.get('source', 'cached') + ' (cached)'
@@ -142,11 +142,11 @@ def _load_cache():
     return None
 
 
-def _save_cache(fix):
+def _save_cache(fix, cache_path):
     """Persist GPS fix to disk."""
     try:
-        os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
-        with open(_CACHE_PATH, 'w') as f:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, 'w') as f:
             json.dump(fix, f)
     except Exception as exc:
         logger.debug('GPS cache write error: %s', exc)
@@ -158,19 +158,21 @@ class GPSService:
     def __init__(self, config):
         self._config = config
         self._last_fix = None
+        cache_dir = config.get('geo_data_dir', _DEFAULT_CACHE_DIR)
+        self._cache_path = os.path.join(cache_dir, 'last_gps.json')
 
     def get_fix(self):
         """Return the best available GPS fix dict, or None."""
         fix = _try_gpsd()
         if fix:
             self._last_fix = fix
-            _save_cache(fix)
+            _save_cache(fix, self._cache_path)
             return fix
 
         fix = _try_modemmanager()
         if fix:
             self._last_fix = fix
-            _save_cache(fix)
+            _save_cache(fix, self._cache_path)
             return fix
 
         # Fallback: static config
@@ -188,7 +190,7 @@ class GPSService:
             return fix
 
         # Absolute fallback: cached value
-        cached = _load_cache()
+        cached = _load_cache(self._cache_path)
         if cached:
             self._last_fix = cached
             return cached

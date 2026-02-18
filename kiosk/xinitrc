@@ -6,5 +6,8 @@
 # Start window manager (lightweight, no desktop)
 openbox-session &
 
+# Give WM a moment to initialize before launching Chromium
+sleep 2
+
 # Launch the kiosk script
 exec /opt/skytrack/kiosk/skytrack-kiosk.sh

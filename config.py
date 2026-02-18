@@ -53,7 +53,7 @@ DEFAULT_CONFIG = {
     'cloudflared_enabled': False,
 
     # Display
-    'display_rotation': 'normal',     # normal, left, right, inverted
+    'display_rotation': '0',          # 0, 90, 180, 270 (or: normal, left, inverted, right)
     'display_output': 'HDMI-1',
 
     # GPS / Offline Geocoding
