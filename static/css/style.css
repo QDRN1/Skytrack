@@ -94,8 +94,26 @@ main#main-content {
 
 #weather-current {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#weather-primary {
+  display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.location-label {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  padding-left: 50px; /* align under temp (past icon width) */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
 }
 
 .weather-icon {
@@ -231,6 +249,27 @@ main#main-content {
   font-size: 11px;
   color: #888;
   margin-top: 2px;
+}
+
+/* Card indicator dots (rotating stats) */
+.card-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #A3C940;
+  opacity: 0.3;
+  transition: opacity 0.3s ease;
+}
+
+.card-dot.active {
+  opacity: 1;
 }
 
 /* ----- Video Overlays (boot splash + burn-in refresh) ----- */

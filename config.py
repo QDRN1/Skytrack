@@ -52,6 +52,14 @@ DEFAULT_CONFIG = {
     # Cloudflare Tunnel
     'cloudflared_enabled': False,
 
+    # Display
+    'display_rotation': 'normal',     # normal, left, right, inverted
+    'display_output': 'HDMI-1',
+
+    # GPS / Offline Geocoding
+    'geo_offline_enabled': True,
+    'geo_data_dir': '/var/lib/skytrack/geo',
+
     # Burn-in prevention
     'jitter_interval': 300,      # 5 minutes - micro-jitter
     'refresh_interval': 3600,    # 60 minutes - full-screen refresh scene
@@ -75,6 +83,10 @@ _ENV_MAP = {
     'SKYTRACK_HUMIDITY_THRESH': ('humidity_threshold', float),
     'SKYTRACK_SECRET_KEY':      ('secret_key', str),
     'SKYTRACK_LOG_LEVEL':       ('log_level', str),
+    'SKYTRACK_GEO_ENABLED':     ('geo_offline_enabled', lambda x: x.lower() in ('true', '1', 'yes')),
+    'SKYTRACK_GEO_DATA_DIR':    ('geo_data_dir', str),
+    'SKYTRACK_DISPLAY_ROTATION': ('display_rotation', str),
+    'SKYTRACK_DISPLAY_OUTPUT':  ('display_output', str),
 }
 
 

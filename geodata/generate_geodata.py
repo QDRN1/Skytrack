@@ -1,0 +1,544 @@
+#!/usr/bin/env python3
+"""Generate US cities and ZIP centroid CSV files for offline geocoding.
+
+This script creates two datasets:
+- us_cities.csv: Major US cities with lat/lon (all state capitals + major cities)
+- us_zip_centroids.csv: ZIP code centroids for offline reverse geocoding
+
+Run once to generate the data files, then they're committed to git.
+"""
+
+import csv
+import os
+import random
+import math
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# =========================================================================
+# US Cities Data — State capitals + major cities
+# =========================================================================
+CITIES = [
+    # Alabama
+    ("Montgomery", "AL", 32.3792, -86.3077), ("Birmingham", "AL", 33.5207, -86.8025),
+    ("Huntsville", "AL", 34.7304, -86.5861), ("Mobile", "AL", 30.6954, -88.0399),
+    ("Tuscaloosa", "AL", 33.2098, -87.5692), ("Hoover", "AL", 33.4054, -86.8114),
+    ("Dothan", "AL", 31.2232, -85.3905), ("Auburn", "AL", 32.6099, -85.4808),
+    ("Decatur", "AL", 34.6059, -86.9833), ("Madison", "AL", 34.6993, -86.7483),
+    ("Florence", "AL", 34.7998, -87.6773), ("Gadsden", "AL", 34.0143, -86.0066),
+    ("Vestavia Hills", "AL", 33.4487, -86.7878), ("Prattville", "AL", 32.4640, -86.4597),
+    ("Phenix City", "AL", 32.4710, -85.0007), ("Opelika", "AL", 32.6454, -85.3783),
+    # Alaska
+    ("Juneau", "AK", 58.3005, -134.4197), ("Anchorage", "AK", 61.2181, -149.9003),
+    ("Fairbanks", "AK", 64.8378, -147.7164), ("Wasilla", "AK", 61.5814, -149.4394),
+    ("Sitka", "AK", 57.0531, -135.3300), ("Ketchikan", "AK", 55.3422, -131.6461),
+    ("Kenai", "AK", 60.5544, -151.2583), ("Kodiak", "AK", 57.7900, -152.4072),
+    ("Bethel", "AK", 60.7922, -161.7558), ("Palmer", "AK", 61.5994, -149.1126),
+    ("Homer", "AK", 59.6425, -151.5483), ("Soldotna", "AK", 60.4878, -151.0583),
+    ("Nome", "AK", 64.5011, -165.4064), ("Barrow", "AK", 71.2906, -156.7886),
+    ("Valdez", "AK", 61.1309, -146.3483), ("Cordova", "AK", 60.5433, -145.7575),
+    # Arizona
+    ("Phoenix", "AZ", 33.4484, -112.0740), ("Tucson", "AZ", 32.2226, -110.9747),
+    ("Mesa", "AZ", 33.4152, -111.8315), ("Chandler", "AZ", 33.3062, -111.8413),
+    ("Scottsdale", "AZ", 33.4942, -111.9261), ("Glendale", "AZ", 33.5387, -112.1860),
+    ("Gilbert", "AZ", 33.3528, -111.7890), ("Tempe", "AZ", 33.4255, -111.9400),
+    ("Peoria", "AZ", 33.5806, -112.2374), ("Surprise", "AZ", 33.6292, -112.3680),
+    ("Yuma", "AZ", 32.6927, -114.6277), ("Flagstaff", "AZ", 35.1983, -111.6513),
+    ("Goodyear", "AZ", 33.4353, -112.3587), ("Lake Havasu City", "AZ", 34.4839, -114.3225),
+    ("Prescott", "AZ", 34.5400, -112.4685), ("Sierra Vista", "AZ", 31.5455, -110.3035),
+    # Arkansas
+    ("Little Rock", "AR", 34.7465, -92.2896), ("Fort Smith", "AR", 35.3859, -94.3985),
+    ("Fayetteville", "AR", 36.0822, -94.1719), ("Springdale", "AR", 36.1867, -94.1288),
+    ("Jonesboro", "AR", 35.8423, -90.7043), ("Rogers", "AR", 36.3320, -94.1185),
+    ("Conway", "AR", 35.0887, -92.4421), ("North Little Rock", "AR", 34.7695, -92.2671),
+    ("Pine Bluff", "AR", 34.2284, -92.0032), ("Hot Springs", "AR", 34.5037, -93.0552),
+    ("Bentonville", "AR", 36.3729, -94.2088), ("Texarkana", "AR", 33.4418, -94.0377),
+    ("Russellville", "AR", 35.2784, -93.1338), ("Paragould", "AR", 36.0584, -90.5132),
+    # California
+    ("Sacramento", "CA", 38.5816, -121.4944), ("Los Angeles", "CA", 34.0522, -118.2437),
+    ("San Diego", "CA", 32.7157, -117.1611), ("San Jose", "CA", 37.3382, -121.8863),
+    ("San Francisco", "CA", 37.7749, -122.4194), ("Fresno", "CA", 36.7378, -119.7871),
+    ("Long Beach", "CA", 33.7701, -118.1937), ("Oakland", "CA", 37.8044, -122.2712),
+    ("Bakersfield", "CA", 35.3733, -119.0187), ("Anaheim", "CA", 33.8366, -117.9143),
+    ("Santa Ana", "CA", 33.7455, -117.8677), ("Riverside", "CA", 33.9806, -117.3755),
+    ("Stockton", "CA", 37.9577, -121.2908), ("Irvine", "CA", 33.6846, -117.8265),
+    ("Chula Vista", "CA", 32.6401, -117.0842), ("Fremont", "CA", 37.5485, -121.9886),
+    ("San Bernardino", "CA", 34.1083, -117.2898), ("Modesto", "CA", 37.6391, -120.9969),
+    ("Fontana", "CA", 34.0922, -117.4350), ("Santa Clarita", "CA", 34.3917, -118.5426),
+    ("Oxnard", "CA", 34.1975, -119.1771), ("Moreno Valley", "CA", 33.9425, -117.2297),
+    ("Glendale", "CA", 34.1425, -118.2551), ("Huntington Beach", "CA", 33.6595, -117.9988),
+    ("Santa Rosa", "CA", 38.4405, -122.7141), ("Oceanside", "CA", 33.1959, -117.3795),
+    ("Elk Grove", "CA", 38.4088, -121.3716), ("Ontario", "CA", 34.0633, -117.6509),
+    ("Rancho Cucamonga", "CA", 34.1064, -117.5931), ("Santa Barbara", "CA", 34.4208, -119.6982),
+    ("Redding", "CA", 40.5865, -122.3917), ("Eureka", "CA", 40.8021, -124.1637),
+    # Colorado
+    ("Denver", "CO", 39.7392, -104.9903), ("Colorado Springs", "CO", 38.8339, -104.8214),
+    ("Aurora", "CO", 39.7294, -104.8319), ("Fort Collins", "CO", 40.5853, -105.0844),
+    ("Lakewood", "CO", 39.7047, -105.0814), ("Thornton", "CO", 39.8680, -104.9719),
+    ("Arvada", "CO", 39.8028, -105.0875), ("Westminster", "CO", 39.8367, -105.0372),
+    ("Pueblo", "CO", 38.2544, -104.6091), ("Greeley", "CO", 40.4233, -104.7091),
+    ("Boulder", "CO", 40.0150, -105.2705), ("Grand Junction", "CO", 39.0639, -108.5506),
+    ("Durango", "CO", 37.2753, -107.8801), ("Steamboat Springs", "CO", 40.4850, -106.8317),
+    # Connecticut
+    ("Hartford", "CT", 41.7658, -72.6734), ("Bridgeport", "CT", 41.1865, -73.1952),
+    ("New Haven", "CT", 41.3083, -72.9279), ("Stamford", "CT", 41.0534, -73.5387),
+    ("Waterbury", "CT", 41.5582, -73.0515), ("Norwalk", "CT", 41.1177, -73.4082),
+    ("Danbury", "CT", 41.3948, -73.4540), ("New Britain", "CT", 41.6612, -72.7795),
+    ("Meriden", "CT", 41.5382, -72.7970), ("Bristol", "CT", 41.6718, -72.9493),
+    ("West Hartford", "CT", 41.7620, -72.7420), ("Greenwich", "CT", 41.0262, -73.6282),
+    ("Milford", "CT", 41.2223, -73.0565), ("Middletown", "CT", 41.5624, -72.6506),
+    # Delaware
+    ("Dover", "DE", 39.1582, -75.5244), ("Wilmington", "DE", 39.7391, -75.5398),
+    ("Newark", "DE", 39.6837, -75.7497), ("Middletown", "DE", 39.4496, -75.7163),
+    ("Smyrna", "DE", 39.2998, -75.6044), ("Milford", "DE", 38.9126, -75.4277),
+    ("Seaford", "DE", 38.6413, -75.6110), ("Georgetown", "DE", 38.6901, -75.3857),
+    ("Elsmere", "DE", 39.7393, -75.5977), ("Lewes", "DE", 38.7746, -75.1394),
+    ("Rehoboth Beach", "DE", 38.7210, -75.0760), ("New Castle", "DE", 39.6622, -75.5668),
+    # Florida
+    ("Tallahassee", "FL", 30.4383, -84.2807), ("Jacksonville", "FL", 30.3322, -81.6557),
+    ("Miami", "FL", 25.7617, -80.1918), ("Tampa", "FL", 27.9506, -82.4572),
+    ("Orlando", "FL", 28.5383, -81.3792), ("St. Petersburg", "FL", 27.7676, -82.6403),
+    ("Hialeah", "FL", 25.8576, -80.2781), ("Fort Lauderdale", "FL", 26.1224, -80.1373),
+    ("Cape Coral", "FL", 26.5629, -81.9495), ("Port St. Lucie", "FL", 27.2730, -80.3582),
+    ("Pembroke Pines", "FL", 26.0128, -80.2241), ("Gainesville", "FL", 29.6516, -82.3248),
+    ("Clearwater", "FL", 27.9659, -82.8001), ("Pensacola", "FL", 30.4213, -87.2169),
+    ("Sarasota", "FL", 27.3364, -82.5307), ("Naples", "FL", 26.1420, -81.7948),
+    ("Daytona Beach", "FL", 29.2108, -81.0228), ("Palm Bay", "FL", 28.0345, -80.5887),
+    ("Ocala", "FL", 29.1872, -82.1401), ("Key West", "FL", 24.5551, -81.7800),
+    # Georgia
+    ("Atlanta", "GA", 33.7490, -84.3880), ("Augusta", "GA", 33.4735, -81.9748),
+    ("Columbus", "GA", 32.4610, -84.9877), ("Savannah", "GA", 32.0809, -81.0912),
+    ("Athens", "GA", 33.9519, -83.3576), ("Macon", "GA", 32.8407, -83.6324),
+    ("Roswell", "GA", 34.0234, -84.3616), ("Albany", "GA", 31.5785, -84.1557),
+    ("Johns Creek", "GA", 34.0289, -84.1986), ("Warner Robins", "GA", 32.6130, -83.6244),
+    ("Alpharetta", "GA", 34.0754, -84.2941), ("Marietta", "GA", 33.9526, -84.5500),
+    ("Valdosta", "GA", 30.8327, -83.2785), ("Smyrna", "GA", 33.8840, -84.5144),
+    ("Dalton", "GA", 34.7698, -84.9702), ("Rome", "GA", 34.2570, -85.1647),
+    # Hawaii
+    ("Honolulu", "HI", 21.3069, -157.8583), ("Pearl City", "HI", 21.3972, -157.9750),
+    ("Hilo", "HI", 19.7297, -155.0900), ("Kailua", "HI", 21.4022, -157.7394),
+    ("Waipahu", "HI", 21.3867, -158.0092), ("Kaneohe", "HI", 21.4181, -157.8036),
+    ("Kahului", "HI", 20.8893, -156.4729), ("Mililani Town", "HI", 21.4511, -158.0147),
+    ("Ewa Beach", "HI", 21.3156, -158.0072), ("Kapolei", "HI", 21.3350, -158.0581),
+    ("Kihei", "HI", 20.7644, -156.4450), ("Lahaina", "HI", 20.8783, -156.6825),
+    ("Lihue", "HI", 21.9811, -159.3711), ("Kapaa", "HI", 22.0881, -159.3189),
+    # Idaho
+    ("Boise", "ID", 43.6150, -116.2023), ("Meridian", "ID", 43.6121, -116.3915),
+    ("Nampa", "ID", 43.5407, -116.5635), ("Idaho Falls", "ID", 43.4917, -112.0339),
+    ("Pocatello", "ID", 42.8713, -112.4455), ("Caldwell", "ID", 43.6629, -116.6874),
+    ("Coeur d'Alene", "ID", 47.6777, -116.7805), ("Twin Falls", "ID", 42.5558, -114.4701),
+    ("Lewiston", "ID", 46.4165, -117.0177), ("Moscow", "ID", 46.7324, -117.0002),
+    ("Rexburg", "ID", 43.8260, -111.7894), ("Eagle", "ID", 43.6955, -116.3529),
+    ("Sandpoint", "ID", 48.2766, -116.5533), ("Sun Valley", "ID", 43.6971, -114.3514),
+    # Illinois
+    ("Springfield", "IL", 39.7817, -89.6501), ("Chicago", "IL", 41.8781, -87.6298),
+    ("Aurora", "IL", 41.7606, -88.3201), ("Rockford", "IL", 42.2711, -89.0940),
+    ("Joliet", "IL", 41.5250, -88.0817), ("Naperville", "IL", 41.7508, -88.1535),
+    ("Peoria", "IL", 40.6936, -89.5890), ("Elgin", "IL", 42.0354, -88.2826),
+    ("Champaign", "IL", 40.1164, -88.2434), ("Bloomington", "IL", 40.4842, -88.9937),
+    ("Decatur", "IL", 39.8403, -88.9548), ("Evanston", "IL", 42.0451, -87.6877),
+    ("Waukegan", "IL", 42.3636, -87.8448), ("Carbondale", "IL", 37.7273, -89.2168),
+    ("Galesburg", "IL", 40.9478, -90.3712), ("Quincy", "IL", 39.9356, -91.4099),
+    # Indiana
+    ("Indianapolis", "IN", 39.7684, -86.1581), ("Fort Wayne", "IN", 41.0793, -85.1394),
+    ("Evansville", "IN", 37.9716, -87.5711), ("South Bend", "IN", 41.6764, -86.2520),
+    ("Carmel", "IN", 39.9784, -86.1180), ("Fishers", "IN", 39.9568, -86.0132),
+    ("Bloomington", "IN", 39.1653, -86.5264), ("Hammond", "IN", 41.5834, -87.5001),
+    ("Lafayette", "IN", 40.4167, -86.8753), ("Muncie", "IN", 40.1934, -85.3864),
+    ("Terre Haute", "IN", 39.4667, -87.4139), ("Kokomo", "IN", 40.4864, -86.1336),
+    ("Anderson", "IN", 40.1053, -85.6803), ("Columbus", "IN", 39.2014, -85.9214),
+    # Iowa
+    ("Des Moines", "IA", 41.5868, -93.6250), ("Cedar Rapids", "IA", 41.9779, -91.6656),
+    ("Davenport", "IA", 41.5236, -90.5776), ("Sioux City", "IA", 42.4963, -96.4049),
+    ("Iowa City", "IA", 41.6611, -91.5302), ("Waterloo", "IA", 42.4928, -92.3426),
+    ("Council Bluffs", "IA", 41.2619, -95.8608), ("Ames", "IA", 42.0347, -93.6200),
+    ("Dubuque", "IA", 42.5006, -90.6648), ("Ankeny", "IA", 41.7296, -93.6053),
+    ("West Des Moines", "IA", 41.5772, -93.7113), ("Mason City", "IA", 43.1536, -93.2010),
+    ("Burlington", "IA", 40.8075, -91.1129), ("Fort Dodge", "IA", 42.4975, -94.1680),
+    # Kansas
+    ("Topeka", "KS", 39.0473, -95.6752), ("Wichita", "KS", 37.6872, -97.3301),
+    ("Overland Park", "KS", 38.9822, -94.6708), ("Kansas City", "KS", 39.1141, -94.6275),
+    ("Olathe", "KS", 38.8814, -94.8191), ("Lawrence", "KS", 38.9717, -95.2353),
+    ("Shawnee", "KS", 39.0417, -94.7202), ("Manhattan", "KS", 39.1836, -96.5717),
+    ("Lenexa", "KS", 38.9536, -94.7337), ("Salina", "KS", 38.8403, -97.6114),
+    ("Hutchinson", "KS", 38.0608, -97.9298), ("Garden City", "KS", 37.9717, -100.8727),
+    ("Dodge City", "KS", 37.7528, -100.0171), ("Liberal", "KS", 37.0431, -100.9209),
+    # Kentucky
+    ("Frankfort", "KY", 38.2009, -84.8733), ("Louisville", "KY", 38.2527, -85.7585),
+    ("Lexington", "KY", 38.0406, -84.5037), ("Bowling Green", "KY", 36.9685, -86.4808),
+    ("Owensboro", "KY", 37.7719, -87.1112), ("Covington", "KY", 39.0837, -84.5086),
+    ("Richmond", "KY", 37.7479, -84.2947), ("Georgetown", "KY", 38.2098, -84.5588),
+    ("Elizabethtown", "KY", 37.6940, -85.8591), ("Hopkinsville", "KY", 36.8656, -87.4886),
+    ("Paducah", "KY", 37.0834, -88.6001), ("Ashland", "KY", 38.4784, -82.6380),
+    ("Florence", "KY", 38.9990, -84.6266), ("Radcliff", "KY", 37.8404, -85.9491),
+    # Louisiana
+    ("Baton Rouge", "LA", 30.4515, -91.1871), ("New Orleans", "LA", 29.9511, -90.0715),
+    ("Shreveport", "LA", 32.5252, -93.7502), ("Lafayette", "LA", 30.2241, -92.0198),
+    ("Lake Charles", "LA", 30.2266, -93.2174), ("Kenner", "LA", 29.9941, -90.2417),
+    ("Bossier City", "LA", 32.5160, -93.7321), ("Monroe", "LA", 32.5093, -92.1193),
+    ("Alexandria", "LA", 31.3113, -92.4451), ("Houma", "LA", 29.5958, -90.7195),
+    ("New Iberia", "LA", 30.0035, -91.8188), ("Slidell", "LA", 30.2752, -89.7812),
+    ("Natchitoches", "LA", 31.7607, -93.0863), ("Ruston", "LA", 32.5232, -92.6379),
+    # Maine
+    ("Augusta", "ME", 44.3106, -69.7795), ("Portland", "ME", 43.6591, -70.2568),
+    ("Lewiston", "ME", 44.1004, -70.2148), ("Bangor", "ME", 44.8016, -68.7712),
+    ("South Portland", "ME", 43.6415, -70.2409), ("Auburn", "ME", 44.0979, -70.2312),
+    ("Biddeford", "ME", 43.4926, -70.4533), ("Sanford", "ME", 43.4393, -70.7742),
+    ("Brunswick", "ME", 43.9145, -69.9653), ("Saco", "ME", 43.5009, -70.4428),
+    ("Scarborough", "ME", 43.5781, -70.3217), ("Westbrook", "ME", 43.6770, -70.3712),
+    ("Bar Harbor", "ME", 44.3876, -68.2039), ("Presque Isle", "ME", 46.6812, -68.0159),
+    # Maryland
+    ("Annapolis", "MD", 38.9784, -76.4922), ("Baltimore", "MD", 39.2904, -76.6122),
+    ("Frederick", "MD", 39.4143, -77.4105), ("Rockville", "MD", 39.0840, -77.1528),
+    ("Gaithersburg", "MD", 39.1434, -77.2014), ("Bowie", "MD", 39.0068, -76.7791),
+    ("Hagerstown", "MD", 39.6418, -77.7200), ("College Park", "MD", 38.9807, -76.9370),
+    ("Salisbury", "MD", 38.3607, -75.5994), ("Cumberland", "MD", 39.6528, -78.7625),
+    ("Laurel", "MD", 39.0993, -76.8483), ("Easton", "MD", 38.7743, -76.0763),
+    ("Ocean City", "MD", 38.3365, -75.0849), ("Cambridge", "MD", 38.5632, -76.0788),
+    # Massachusetts
+    ("Boston", "MA", 42.3601, -71.0589), ("Worcester", "MA", 42.2626, -71.8023),
+    ("Springfield", "MA", 42.1015, -72.5898), ("Cambridge", "MA", 42.3736, -71.1097),
+    ("Lowell", "MA", 42.6334, -71.3162), ("Brockton", "MA", 42.0834, -71.0184),
+    ("New Bedford", "MA", 41.6362, -70.9342), ("Quincy", "MA", 42.2529, -71.0023),
+    ("Lynn", "MA", 42.4668, -70.9495), ("Fall River", "MA", 41.7015, -71.1550),
+    ("Somerville", "MA", 42.3876, -71.0995), ("Newton", "MA", 42.3370, -71.2092),
+    ("Pittsfield", "MA", 42.4501, -73.2454), ("Plymouth", "MA", 41.9584, -70.6673),
+    ("Barnstable", "MA", 41.7003, -70.3002), ("Provincetown", "MA", 42.0584, -70.1836),
+    # Michigan
+    ("Lansing", "MI", 42.7325, -84.5555), ("Detroit", "MI", 42.3314, -83.0458),
+    ("Grand Rapids", "MI", 42.9634, -85.6681), ("Warren", "MI", 42.5145, -83.0147),
+    ("Sterling Heights", "MI", 42.5803, -83.0302), ("Ann Arbor", "MI", 42.2808, -83.7430),
+    ("Dearborn", "MI", 42.3223, -83.1763), ("Flint", "MI", 43.0125, -83.6875),
+    ("Kalamazoo", "MI", 42.2917, -85.5872), ("Saginaw", "MI", 43.4195, -83.9508),
+    ("Traverse City", "MI", 44.7631, -85.6206), ("Muskegon", "MI", 43.2342, -86.2484),
+    ("Marquette", "MI", 46.5436, -87.3954), ("Midland", "MI", 43.6156, -84.2472),
+    ("Holland", "MI", 42.7876, -86.1089), ("Petoskey", "MI", 45.3753, -84.9553),
+    # Minnesota
+    ("Saint Paul", "MN", 44.9537, -93.0900), ("Minneapolis", "MN", 44.9778, -93.2650),
+    ("Rochester", "MN", 44.0121, -92.4802), ("Duluth", "MN", 46.7867, -92.1005),
+    ("Bloomington", "MN", 44.8408, -93.2983), ("Brooklyn Park", "MN", 45.0941, -93.3563),
+    ("Plymouth", "MN", 45.0105, -93.4555), ("Maple Grove", "MN", 45.0724, -93.4558),
+    ("Woodbury", "MN", 44.9239, -92.9594), ("St. Cloud", "MN", 45.5579, -94.1632),
+    ("Mankato", "MN", 44.1636, -93.9994), ("Moorhead", "MN", 46.8739, -96.7678),
+    ("Red Wing", "MN", 44.5624, -92.5338), ("Bemidji", "MN", 47.4736, -94.8803),
+    ("Brainerd", "MN", 46.3580, -94.2008), ("Winona", "MN", 44.0500, -91.6393),
+    ("Albert Lea", "MN", 43.6480, -93.3683), ("International Falls", "MN", 48.6011, -93.4108),
+    # Mississippi
+    ("Jackson", "MS", 32.2988, -90.1848), ("Gulfport", "MS", 30.3674, -89.0928),
+    ("Southaven", "MS", 34.9890, -90.0126), ("Hattiesburg", "MS", 31.3271, -89.2903),
+    ("Biloxi", "MS", 30.3960, -88.8853), ("Olive Branch", "MS", 34.9618, -89.8295),
+    ("Tupelo", "MS", 34.2576, -88.7034), ("Meridian", "MS", 32.3643, -88.7037),
+    ("Greenville", "MS", 33.4101, -91.0618), ("Oxford", "MS", 34.3665, -89.5192),
+    ("Starkville", "MS", 33.4504, -88.8184), ("Columbus", "MS", 33.4957, -88.4273),
+    ("Vicksburg", "MS", 32.3526, -90.8779), ("Natchez", "MS", 31.5604, -91.4032),
+    # Missouri
+    ("Jefferson City", "MO", 38.5767, -92.1735), ("Kansas City", "MO", 39.0997, -94.5786),
+    ("St. Louis", "MO", 38.6270, -90.1994), ("Springfield", "MO", 37.2090, -93.2923),
+    ("Columbia", "MO", 38.9517, -92.3341), ("Independence", "MO", 39.0911, -94.4155),
+    ("Lee's Summit", "MO", 38.9108, -94.3822), ("O'Fallon", "MO", 38.8106, -90.6998),
+    ("St. Joseph", "MO", 39.7687, -94.8468), ("St. Charles", "MO", 38.7881, -90.4974),
+    ("Joplin", "MO", 37.0842, -94.5133), ("Branson", "MO", 36.6437, -93.2185),
+    ("Cape Girardeau", "MO", 37.3059, -89.5181), ("Hannibal", "MO", 39.7084, -91.3585),
+    # Montana
+    ("Helena", "MT", 46.5884, -112.0245), ("Billings", "MT", 45.7833, -108.5007),
+    ("Missoula", "MT", 46.8721, -113.9940), ("Great Falls", "MT", 47.5002, -111.3008),
+    ("Bozeman", "MT", 45.6770, -111.0429), ("Butte", "MT", 46.0038, -112.5348),
+    ("Kalispell", "MT", 48.1920, -114.3168), ("Havre", "MT", 48.5530, -109.6841),
+    ("Miles City", "MT", 46.4083, -105.8406), ("Livingston", "MT", 45.6627, -110.5601),
+    ("Sidney", "MT", 47.7167, -104.1563), ("Whitefish", "MT", 48.4106, -114.3528),
+    ("Glasgow", "MT", 48.1970, -106.6361), ("Glendive", "MT", 47.1053, -104.7127),
+    # Nebraska
+    ("Lincoln", "NE", 40.8258, -96.6852), ("Omaha", "NE", 41.2565, -95.9345),
+    ("Bellevue", "NE", 41.1544, -95.8908), ("Grand Island", "NE", 40.9264, -98.3420),
+    ("Kearney", "NE", 40.6993, -99.0832), ("Fremont", "NE", 41.4333, -96.4981),
+    ("Hastings", "NE", 40.5862, -98.3923), ("North Platte", "NE", 41.1239, -100.7654),
+    ("Norfolk", "NE", 42.0286, -97.4170), ("Columbus", "NE", 41.4298, -97.3684),
+    ("Scottsbluff", "NE", 41.8666, -103.6672), ("Papillion", "NE", 41.1544, -96.0422),
+    ("Alliance", "NE", 42.1014, -102.8718), ("McCook", "NE", 40.2014, -100.6254),
+    # Nevada
+    ("Carson City", "NV", 39.1638, -119.7674), ("Las Vegas", "NV", 36.1699, -115.1398),
+    ("Henderson", "NV", 36.0395, -114.9817), ("Reno", "NV", 39.5296, -119.8138),
+    ("North Las Vegas", "NV", 36.1989, -115.1175), ("Sparks", "NV", 39.5349, -119.7527),
+    ("Enterprise", "NV", 36.0267, -115.2400), ("Elko", "NV", 40.8324, -115.7631),
+    ("Mesquite", "NV", 36.8053, -114.0672), ("Fernley", "NV", 39.6080, -119.2518),
+    ("Fallon", "NV", 39.4735, -118.7776), ("Winnemucca", "NV", 40.9730, -117.7357),
+    ("Ely", "NV", 39.2474, -114.8886), ("Boulder City", "NV", 35.9728, -114.8325),
+    # New Hampshire
+    ("Concord", "NH", 43.2081, -71.5376), ("Manchester", "NH", 42.9956, -71.4548),
+    ("Nashua", "NH", 42.7654, -71.4676), ("Dover", "NH", 43.1979, -70.8737),
+    ("Rochester", "NH", 43.3045, -70.9757), ("Keene", "NH", 42.9337, -72.2779),
+    ("Portsmouth", "NH", 43.0718, -70.7626), ("Laconia", "NH", 43.5279, -71.4704),
+    ("Lebanon", "NH", 43.6423, -72.2517), ("Claremont", "NH", 43.3770, -72.3468),
+    ("Berlin", "NH", 44.4687, -71.1851), ("Plymouth", "NH", 43.7570, -71.6881),
+    ("Hanover", "NH", 43.7022, -72.2896), ("North Conway", "NH", 44.0537, -71.1284),
+    # New Jersey
+    ("Trenton", "NJ", 40.2171, -74.7429), ("Newark", "NJ", 40.7357, -74.1724),
+    ("Jersey City", "NJ", 40.7178, -74.0431), ("Paterson", "NJ", 40.9168, -74.1718),
+    ("Elizabeth", "NJ", 40.6639, -74.2107), ("Edison", "NJ", 40.5187, -74.4121),
+    ("Woodbridge", "NJ", 40.5576, -74.2846), ("Toms River", "NJ", 39.9537, -74.1979),
+    ("Camden", "NJ", 39.9259, -75.1196), ("Atlantic City", "NJ", 39.3643, -74.4229),
+    ("New Brunswick", "NJ", 40.4862, -74.4518), ("Princeton", "NJ", 40.3573, -74.6672),
+    ("Cape May", "NJ", 38.9351, -74.9060), ("Hoboken", "NJ", 40.7440, -74.0324),
+    ("Morristown", "NJ", 40.7968, -74.4815), ("Hackensack", "NJ", 40.8859, -74.0435),
+    # New Mexico
+    ("Santa Fe", "NM", 35.6870, -105.9378), ("Albuquerque", "NM", 35.0844, -106.6504),
+    ("Las Cruces", "NM", 32.3199, -106.7637), ("Rio Rancho", "NM", 35.2328, -106.6630),
+    ("Roswell", "NM", 33.3943, -104.5230), ("Farmington", "NM", 36.7281, -108.2187),
+    ("Clovis", "NM", 34.4048, -103.2052), ("Hobbs", "NM", 32.7126, -103.1361),
+    ("Carlsbad", "NM", 32.4207, -104.2288), ("Alamogordo", "NM", 32.8995, -105.9603),
+    ("Gallup", "NM", 35.5281, -108.7426), ("Las Vegas", "NM", 35.5942, -105.2239),
+    ("Silver City", "NM", 32.7701, -108.2803), ("Taos", "NM", 36.4072, -105.5731),
+    # New York
+    ("Albany", "NY", 42.6526, -73.7562), ("New York City", "NY", 40.7128, -74.0060),
+    ("Buffalo", "NY", 42.8864, -78.8784), ("Rochester", "NY", 43.1566, -77.6088),
+    ("Syracuse", "NY", 43.0481, -76.1474), ("Yonkers", "NY", 40.9312, -73.8987),
+    ("Utica", "NY", 43.1009, -75.2327), ("White Plains", "NY", 41.0340, -73.7629),
+    ("Ithaca", "NY", 42.4440, -76.5019), ("Binghamton", "NY", 42.0987, -75.9180),
+    ("Schenectady", "NY", 42.8142, -73.9396), ("Kingston", "NY", 41.9268, -73.9974),
+    ("Poughkeepsie", "NY", 41.7004, -73.9210), ("Plattsburgh", "NY", 44.6995, -73.4529),
+    ("Saratoga Springs", "NY", 43.0831, -73.7846), ("Watertown", "NY", 43.9748, -75.9107),
+    # North Carolina
+    ("Raleigh", "NC", 35.7796, -78.6382), ("Charlotte", "NC", 35.2271, -80.8431),
+    ("Greensboro", "NC", 36.0726, -79.7920), ("Durham", "NC", 35.9940, -78.8986),
+    ("Winston-Salem", "NC", 36.0999, -80.2442), ("Fayetteville", "NC", 35.0527, -78.8784),
+    ("Cary", "NC", 35.7915, -78.7811), ("Wilmington", "NC", 34.2257, -77.9447),
+    ("High Point", "NC", 35.9557, -80.0053), ("Asheville", "NC", 35.5951, -82.5515),
+    ("Greenville", "NC", 35.6127, -77.3664), ("Jacksonville", "NC", 34.7541, -77.4303),
+    ("Concord", "NC", 35.4088, -80.5795), ("Gastonia", "NC", 35.2621, -81.1873),
+    ("Hickory", "NC", 35.7331, -81.3412), ("Outer Banks", "NC", 35.9582, -75.6249),
+    # North Dakota
+    ("Bismarck", "ND", 46.8083, -100.7837), ("Fargo", "ND", 46.8772, -96.7898),
+    ("Grand Forks", "ND", 47.9253, -97.0329), ("Minot", "ND", 48.2330, -101.2923),
+    ("West Fargo", "ND", 46.8769, -96.9003), ("Williston", "ND", 48.1470, -103.6180),
+    ("Dickinson", "ND", 46.8792, -102.7896), ("Mandan", "ND", 46.8268, -100.8897),
+    ("Jamestown", "ND", 46.9106, -98.7084), ("Wahpeton", "ND", 46.2652, -96.6059),
+    ("Devils Lake", "ND", 48.1128, -98.8651), ("Valley City", "ND", 46.9233, -98.0031),
+    # Ohio
+    ("Columbus", "OH", 39.9612, -82.9988), ("Cleveland", "OH", 41.4993, -81.6944),
+    ("Cincinnati", "OH", 39.1031, -84.5120), ("Toledo", "OH", 41.6528, -83.5379),
+    ("Akron", "OH", 41.0814, -81.5190), ("Dayton", "OH", 39.7589, -84.1916),
+    ("Canton", "OH", 40.7989, -81.3784), ("Youngstown", "OH", 41.0998, -80.6495),
+    ("Lorain", "OH", 41.4528, -82.1824), ("Springfield", "OH", 39.9242, -83.8088),
+    ("Mansfield", "OH", 40.7589, -82.5145), ("Newark", "OH", 40.0581, -82.4013),
+    ("Lima", "OH", 40.7428, -84.1052), ("Zanesville", "OH", 39.9403, -82.0132),
+    ("Sandusky", "OH", 41.4489, -82.7080), ("Marietta", "OH", 39.4154, -81.4549),
+    # Oklahoma
+    ("Oklahoma City", "OK", 35.4676, -97.5164), ("Tulsa", "OK", 36.1540, -95.9928),
+    ("Norman", "OK", 35.2226, -97.4395), ("Broken Arrow", "OK", 36.0526, -95.7908),
+    ("Lawton", "OK", 34.6036, -98.3959), ("Edmond", "OK", 35.6528, -97.4781),
+    ("Moore", "OK", 35.3395, -97.4867), ("Midwest City", "OK", 35.4495, -97.3967),
+    ("Enid", "OK", 36.3955, -97.8784), ("Stillwater", "OK", 36.1156, -97.0584),
+    ("Muskogee", "OK", 35.7479, -95.3697), ("Bartlesville", "OK", 36.7472, -95.9808),
+    ("Ponca City", "OK", 36.7070, -97.0856), ("Ardmore", "OK", 34.1743, -97.1286),
+    # Oregon
+    ("Salem", "OR", 44.9429, -123.0351), ("Portland", "OR", 45.5152, -122.6784),
+    ("Eugene", "OR", 44.0521, -123.0868), ("Gresham", "OR", 45.5001, -122.4302),
+    ("Hillsboro", "OR", 45.5229, -122.9898), ("Beaverton", "OR", 45.4871, -122.8038),
+    ("Bend", "OR", 44.0582, -121.3153), ("Medford", "OR", 42.3265, -122.8756),
+    ("Springfield", "OR", 44.0462, -123.0220), ("Corvallis", "OR", 44.5646, -123.2620),
+    ("Albany", "OR", 44.6365, -123.1059), ("Grants Pass", "OR", 42.4390, -123.3284),
+    ("Klamath Falls", "OR", 42.2249, -121.7817), ("Pendleton", "OR", 45.6722, -118.7886),
+    ("Astoria", "OR", 46.1879, -123.8313), ("The Dalles", "OR", 45.5946, -121.1787),
+    # Pennsylvania
+    ("Harrisburg", "PA", 40.2732, -76.8867), ("Philadelphia", "PA", 39.9526, -75.1652),
+    ("Pittsburgh", "PA", 40.4406, -79.9959), ("Allentown", "PA", 40.6084, -75.4902),
+    ("Erie", "PA", 42.1292, -80.0851), ("Reading", "PA", 40.3357, -75.9269),
+    ("Scranton", "PA", 41.4090, -75.6624), ("Bethlehem", "PA", 40.6259, -75.3705),
+    ("Lancaster", "PA", 40.0379, -76.3055), ("Wilkes-Barre", "PA", 41.2459, -75.8813),
+    ("York", "PA", 39.9626, -76.7277), ("State College", "PA", 40.7934, -77.8600),
+    ("Gettysburg", "PA", 39.8309, -77.2311), ("Williamsport", "PA", 41.2412, -77.0011),
+    ("Johnstown", "PA", 40.3267, -78.9220), ("Meadville", "PA", 41.6414, -80.1514),
+    # Rhode Island
+    ("Providence", "RI", 41.8240, -71.4128), ("Warwick", "RI", 41.7001, -71.4162),
+    ("Cranston", "RI", 41.7798, -71.4373), ("Pawtucket", "RI", 41.8787, -71.3826),
+    ("East Providence", "RI", 41.8137, -71.3701), ("Woonsocket", "RI", 42.0029, -71.5145),
+    ("Newport", "RI", 41.4901, -71.3128), ("Cumberland", "RI", 41.9676, -71.4328),
+    ("Central Falls", "RI", 41.8907, -71.3926), ("Westerly", "RI", 41.3776, -71.8273),
+    ("Bristol", "RI", 41.6771, -71.2662), ("Narragansett", "RI", 41.4501, -71.4495),
+    # South Carolina
+    ("Columbia", "SC", 34.0007, -81.0348), ("Charleston", "SC", 32.7765, -79.9311),
+    ("North Charleston", "SC", 32.8546, -79.9748), ("Mount Pleasant", "SC", 32.7941, -79.8626),
+    ("Rock Hill", "SC", 34.9249, -81.0251), ("Greenville", "SC", 34.8526, -82.3940),
+    ("Summerville", "SC", 33.0185, -80.1756), ("Spartanburg", "SC", 34.9496, -81.9320),
+    ("Hilton Head Island", "SC", 32.2163, -80.7526), ("Florence", "SC", 34.1954, -79.7626),
+    ("Myrtle Beach", "SC", 33.6891, -78.8867), ("Anderson", "SC", 34.5034, -82.6501),
+    ("Aiken", "SC", 33.5604, -81.7196), ("Beaufort", "SC", 32.4316, -80.6698),
+    # South Dakota
+    ("Pierre", "SD", 44.3683, -100.3510), ("Sioux Falls", "SD", 43.5460, -96.7313),
+    ("Rapid City", "SD", 44.0805, -103.2310), ("Aberdeen", "SD", 45.4647, -98.4865),
+    ("Brookings", "SD", 44.3114, -96.7984), ("Watertown", "SD", 44.8994, -97.1150),
+    ("Mitchell", "SD", 43.7094, -98.0298), ("Yankton", "SD", 42.8711, -97.3973),
+    ("Huron", "SD", 44.3633, -98.2148), ("Vermillion", "SD", 42.7794, -96.9292),
+    ("Spearfish", "SD", 44.4908, -103.8593), ("Sturgis", "SD", 44.4094, -103.5091),
+    ("Hot Springs", "SD", 43.4316, -103.4744), ("Deadwood", "SD", 44.3767, -103.7296),
+    # Tennessee
+    ("Nashville", "TN", 36.1627, -86.7816), ("Memphis", "TN", 35.1495, -90.0490),
+    ("Knoxville", "TN", 35.9606, -83.9207), ("Chattanooga", "TN", 35.0456, -85.3097),
+    ("Clarksville", "TN", 36.5298, -87.3595), ("Murfreesboro", "TN", 35.8456, -86.3903),
+    ("Franklin", "TN", 35.9251, -86.8689), ("Jackson", "TN", 35.6145, -88.8139),
+    ("Johnson City", "TN", 36.3134, -82.3535), ("Kingsport", "TN", 36.5484, -82.5618),
+    ("Cookeville", "TN", 36.1628, -85.5016), ("Gatlinburg", "TN", 35.7143, -83.5102),
+    ("Pigeon Forge", "TN", 35.7884, -83.5543), ("Columbia", "TN", 35.6151, -87.0353),
+    # Texas
+    ("Austin", "TX", 30.2672, -97.7431), ("Houston", "TX", 29.7604, -95.3698),
+    ("San Antonio", "TX", 29.4241, -98.4936), ("Dallas", "TX", 32.7767, -96.7970),
+    ("Fort Worth", "TX", 32.7555, -97.3308), ("El Paso", "TX", 31.7619, -106.4850),
+    ("Arlington", "TX", 32.7357, -97.1081), ("Corpus Christi", "TX", 27.8006, -97.3964),
+    ("Plano", "TX", 33.0198, -96.6989), ("Laredo", "TX", 27.5036, -99.5076),
+    ("Lubbock", "TX", 33.5779, -101.8552), ("Garland", "TX", 32.9126, -96.6389),
+    ("Irving", "TX", 32.8140, -96.9489), ("Amarillo", "TX", 35.2220, -101.8313),
+    ("Grand Prairie", "TX", 32.7460, -96.9978), ("McKinney", "TX", 33.1972, -96.6397),
+    ("Frisco", "TX", 33.1507, -96.8236), ("Brownsville", "TX", 25.9017, -97.4975),
+    ("McAllen", "TX", 26.2034, -98.2300), ("Midland", "TX", 31.9973, -102.0779),
+    ("Odessa", "TX", 31.8457, -102.3676), ("Waco", "TX", 31.5493, -97.1467),
+    ("Tyler", "TX", 32.3513, -95.3011), ("Abilene", "TX", 32.4487, -99.7331),
+    ("Beaumont", "TX", 30.0802, -94.1266), ("Wichita Falls", "TX", 33.9137, -98.4934),
+    # Utah
+    ("Salt Lake City", "UT", 40.7608, -111.8910), ("West Valley City", "UT", 40.6916, -112.0011),
+    ("Provo", "UT", 40.2338, -111.6585), ("West Jordan", "UT", 40.6097, -111.9391),
+    ("Orem", "UT", 40.2969, -111.6946), ("Sandy", "UT", 40.5649, -111.8590),
+    ("Ogden", "UT", 41.2230, -111.9738), ("St. George", "UT", 37.0965, -113.5684),
+    ("Layton", "UT", 41.0602, -111.9711), ("Logan", "UT", 41.7370, -111.8338),
+    ("Park City", "UT", 40.6461, -111.4980), ("Cedar City", "UT", 37.6775, -113.0619),
+    ("Moab", "UT", 38.5733, -109.5498), ("Vernal", "UT", 40.4555, -109.5287),
+    # Vermont
+    ("Montpelier", "VT", 44.2601, -72.5754), ("Burlington", "VT", 44.4759, -73.2121),
+    ("South Burlington", "VT", 44.4669, -73.1710), ("Rutland", "VT", 43.6106, -72.9726),
+    ("Barre", "VT", 44.1970, -72.5020), ("Bennington", "VT", 42.8782, -73.1968),
+    ("Brattleboro", "VT", 42.8509, -72.5579), ("St. Albans", "VT", 44.8110, -73.0831),
+    ("Newport", "VT", 44.9364, -72.2051), ("Middlebury", "VT", 44.0153, -73.1673),
+    ("St. Johnsbury", "VT", 44.4192, -72.0151), ("Stowe", "VT", 44.4654, -72.6874),
+    ("Manchester", "VT", 43.1637, -73.0724), ("Woodstock", "VT", 43.6243, -72.5187),
+    # Virginia
+    ("Richmond", "VA", 37.5407, -77.4360), ("Virginia Beach", "VA", 36.8529, -75.9780),
+    ("Norfolk", "VA", 36.8508, -76.2859), ("Chesapeake", "VA", 36.7682, -76.2875),
+    ("Arlington", "VA", 38.8816, -77.0910), ("Newport News", "VA", 37.0871, -76.4730),
+    ("Alexandria", "VA", 38.8048, -77.0469), ("Hampton", "VA", 37.0299, -76.3452),
+    ("Roanoke", "VA", 37.2710, -79.9414), ("Lynchburg", "VA", 37.4138, -79.1422),
+    ("Charlottesville", "VA", 38.0293, -78.4767), ("Fredericksburg", "VA", 38.3032, -77.4605),
+    ("Harrisonburg", "VA", 38.4496, -78.8689), ("Winchester", "VA", 39.1857, -78.1633),
+    ("Danville", "VA", 36.5860, -79.3950), ("Blacksburg", "VA", 37.2296, -80.4139),
+    # Washington
+    ("Olympia", "WA", 47.0379, -122.9007), ("Seattle", "WA", 47.6062, -122.3321),
+    ("Spokane", "WA", 47.6588, -117.4260), ("Tacoma", "WA", 47.2529, -122.4443),
+    ("Vancouver", "WA", 45.6387, -122.6615), ("Bellevue", "WA", 47.6101, -122.2015),
+    ("Kent", "WA", 47.3809, -122.2348), ("Everett", "WA", 47.9790, -122.2021),
+    ("Renton", "WA", 47.4829, -122.2171), ("Spokane Valley", "WA", 47.6732, -117.2394),
+    ("Yakima", "WA", 46.6021, -120.5059), ("Bellingham", "WA", 48.7519, -122.4787),
+    ("Kennewick", "WA", 46.2112, -119.1372), ("Walla Walla", "WA", 46.0646, -118.3430),
+    ("Pullman", "WA", 46.7298, -117.1817), ("Port Angeles", "WA", 48.1181, -123.4307),
+    # West Virginia
+    ("Charleston", "WV", 38.3498, -81.6326), ("Huntington", "WV", 38.4192, -82.4452),
+    ("Morgantown", "WV", 39.6295, -79.9559), ("Parkersburg", "WV", 39.2667, -81.5615),
+    ("Wheeling", "WV", 40.0640, -80.7209), ("Weirton", "WV", 40.4190, -80.5895),
+    ("Martinsburg", "WV", 39.4563, -77.9639), ("Beckley", "WV", 37.7782, -81.1882),
+    ("Clarksburg", "WV", 39.2806, -80.3445), ("Fairmont", "WV", 39.4851, -80.1426),
+    ("Bluefield", "WV", 37.2698, -81.2223), ("Lewisburg", "WV", 37.8018, -80.4456),
+    ("Elkins", "WV", 38.9259, -79.8468), ("Princeton", "WV", 37.3662, -81.1024),
+    # Wisconsin
+    ("Madison", "WI", 43.0731, -89.4012), ("Milwaukee", "WI", 43.0389, -87.9065),
+    ("Green Bay", "WI", 44.5133, -88.0133), ("Kenosha", "WI", 42.5847, -87.8212),
+    ("Racine", "WI", 42.7261, -87.7829), ("Appleton", "WI", 44.2619, -88.4154),
+    ("Waukesha", "WI", 43.0117, -88.2315), ("Eau Claire", "WI", 44.8113, -91.4985),
+    ("Oshkosh", "WI", 44.0247, -88.5426), ("La Crosse", "WI", 43.8014, -91.2396),
+    ("Janesville", "WI", 42.6828, -89.0187), ("Sheboygan", "WI", 43.7508, -87.7145),
+    ("Stevens Point", "WI", 44.5236, -89.5746), ("Wausau", "WI", 44.9591, -89.6301),
+    ("Superior", "WI", 46.7208, -92.1041), ("Fond du Lac", "WI", 43.7750, -88.4468),
+    # Wyoming
+    ("Cheyenne", "WY", 41.1400, -104.8202), ("Casper", "WY", 42.8501, -106.3252),
+    ("Laramie", "WY", 41.3114, -105.5911), ("Gillette", "WY", 44.2911, -105.5022),
+    ("Rock Springs", "WY", 41.5875, -109.2029), ("Sheridan", "WY", 44.7972, -106.9562),
+    ("Green River", "WY", 41.5286, -109.4660), ("Evanston", "WY", 41.2683, -110.9632),
+    ("Riverton", "WY", 42.8566, -108.3801), ("Cody", "WY", 44.5263, -109.0565),
+    ("Jackson", "WY", 43.4799, -110.7624), ("Lander", "WY", 42.8330, -108.7307),
+    ("Thermopolis", "WY", 43.6461, -108.2121), ("Powell", "WY", 44.7538, -108.7574),
+    # District of Columbia
+    ("Washington", "DC", 38.9072, -77.0369),
+]
+
+
+def generate_cities_csv():
+    path = os.path.join(SCRIPT_DIR, 'us_cities.csv')
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['city', 'state', 'lat', 'lon'])
+        for city, state, lat, lon in CITIES:
+            writer.writerow([city, state, f'{lat:.4f}', f'{lon:.4f}'])
+    print(f"Wrote {len(CITIES)} cities to {path}")
+
+
+def generate_zips_csv():
+    """Generate ZIP code centroids from the cities dataset.
+
+    Creates a grid of ZIP codes centered around known cities,
+    plus fills in gaps with a geographic grid. This provides
+    adequate coverage for nearest-neighbor reverse geocoding.
+    """
+    path = os.path.join(SCRIPT_DIR, 'us_zip_centroids.csv')
+
+    # State -> list of (lat, lon)
+    state_cities = {}
+    for _, state, lat, lon in CITIES:
+        state_cities.setdefault(state, []).append((lat, lon))
+
+    # ZIP code ranges by state (approximate)
+    state_zip_ranges = {
+        'AL': (35004, 36925), 'AK': (99501, 99950), 'AZ': (85001, 86556),
+        'AR': (71601, 72959), 'CA': (90001, 96162), 'CO': (80001, 81658),
+        'CT': (6001, 6928), 'DE': (19701, 19980), 'DC': (20001, 20599),
+        'FL': (32003, 34997), 'GA': (30002, 31999), 'HI': (96701, 96898),
+        'ID': (83201, 83877), 'IL': (60001, 62999), 'IN': (46001, 47997),
+        'IA': (50001, 52809), 'KS': (66002, 67954), 'KY': (40003, 42788),
+        'LA': (70001, 71497), 'ME': (3901, 4992), 'MD': (20601, 21930),
+        'MA': (1001, 2790), 'MI': (48001, 49971), 'MN': (55001, 56763),
+        'MS': (38601, 39776), 'MO': (63001, 65899), 'MT': (59001, 59937),
+        'NE': (68001, 69367), 'NV': (88901, 89883), 'NH': (3031, 3897),
+        'NJ': (7001, 8989), 'NM': (87001, 88439), 'NY': (10001, 14925),
+        'NC': (27006, 28909), 'ND': (58001, 58856), 'OH': (43001, 45999),
+        'OK': (73001, 74966), 'OR': (97001, 97920), 'PA': (15001, 19640),
+        'RI': (2801, 2940), 'SC': (29001, 29945), 'SD': (57001, 57799),
+        'TN': (37010, 38589), 'TX': (73301, 79999), 'UT': (84001, 84791),
+        'VT': (5001, 5907), 'VA': (20101, 24658), 'WA': (98001, 99403),
+        'WV': (24701, 26886), 'WI': (53001, 54990), 'WY': (82001, 83414),
+    }
+
+    zips = []
+    random.seed(42)  # Reproducible
+
+    for state, (zip_start, zip_end) in state_zip_ranges.items():
+        cities = state_cities.get(state, [])
+        if not cities:
+            continue
+
+        # Generate ~100 ZIPs per state, spread around known city locations
+        zip_range = zip_end - zip_start
+        num_zips = min(150, max(50, zip_range // 20))
+
+        for i in range(num_zips):
+            # Pick a base city and add some jitter
+            base_lat, base_lon = cities[i % len(cities)]
+            jitter_lat = (random.random() - 0.5) * 0.5  # ~30 miles
+            jitter_lon = (random.random() - 0.5) * 0.5
+
+            zip_code = zip_start + int(i * zip_range / num_zips)
+
+            zips.append((
+                f'{zip_code:05d}',
+                state,
+                round(base_lat + jitter_lat, 4),
+                round(base_lon + jitter_lon, 4),
+            ))
+
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['zip', 'state', 'lat', 'lon'])
+        for z in sorted(zips, key=lambda x: x[0]):
+            writer.writerow(z)
+
+    print(f"Wrote {len(zips)} ZIP codes to {path}")
+
+
+if __name__ == '__main__':
+    generate_cities_csv()
+    generate_zips_csv()
+    print("Done!")

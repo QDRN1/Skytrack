@@ -18,6 +18,8 @@ from aircraft import AircraftService
 from sensors import SensorService
 from health import HealthService
 from alerts import AlertService
+from gps import GPSService
+from geocode_offline import OfflineGeocoder
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -60,6 +62,8 @@ aircraft_svc = AircraftService(config)
 sensor_svc = SensorService(config)
 health_svc = HealthService(config)
 alert_svc = AlertService(config)
+gps_svc = GPSService(config)
+geocoder = OfflineGeocoder(config)
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -88,6 +92,11 @@ def api_aircraft():
 @app.route('/api/sensor')
 def api_sensor():
     return jsonify(sensor_svc.read())
+
+
+@app.route('/api/location')
+def api_location():
+    return jsonify(_get_location_data())
 
 
 @app.route('/api/selfcheck')
@@ -124,8 +133,33 @@ def handle_request_update(data):
         socketio.emit('sensor_update', sensor_svc.read())
     if kind in ('health', 'all'):
         socketio.emit('health_update', health_svc.get_status())
+    if kind in ('location', 'all'):
+        socketio.emit('location_update', _get_location_data())
     if kind in ('alert', 'all'):
         socketio.emit('alert_update', alert_svc.get_last_alert())
+
+
+def _get_location_data():
+    """Build location payload from GPS + offline geocoder."""
+    fix = gps_svc.get_fix()
+    if fix and fix.get('lat') and fix.get('lon'):
+        label = geocoder.get_label(fix['lat'], fix['lon'])
+        return {
+            'location_label': label or 'No GPS Fix',
+            'lat': fix['lat'],
+            'lon': fix['lon'],
+            'accuracy_m': fix.get('accuracy_m'),
+            'source': fix.get('source', 'unknown'),
+            'last_fix_utc': fix.get('last_fix_utc'),
+        }
+    return {
+        'location_label': 'No GPS Fix',
+        'lat': None,
+        'lon': None,
+        'accuracy_m': None,
+        'source': None,
+        'last_fix_utc': None,
+    }
 
 
 def _push_all():
@@ -134,6 +168,7 @@ def _push_all():
         socketio.emit('aircraft_update', aircraft_svc.get_data())
         socketio.emit('sensor_update', sensor_svc.read())
         socketio.emit('health_update', health_svc.get_status())
+        socketio.emit('location_update', _get_location_data())
         socketio.emit('alert_update', alert_svc.get_last_alert())
     except Exception as e:
         logger.error(f'Initial push error: {e}')
@@ -187,11 +222,21 @@ def _health_loop():
         socketio.sleep(config.get('health_interval', 60))
 
 
+def _location_loop():
+    while True:
+        try:
+            socketio.emit('location_update', _get_location_data())
+        except Exception as e:
+            logger.error(f'Location loop error: {e}')
+        socketio.sleep(60)  # Update location every 60 seconds
+
+
 def _start_background():
     socketio.start_background_task(_weather_loop)
     socketio.start_background_task(_aircraft_loop)
     socketio.start_background_task(_sensor_loop)
     socketio.start_background_task(_health_loop)
+    socketio.start_background_task(_location_loop)
 
 
 # ---------------------------------------------------------------------------

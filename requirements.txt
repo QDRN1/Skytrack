@@ -2,6 +2,7 @@ flask>=3.0,<4.0
 flask-socketio>=5.3,<6.0
 pyyaml>=6.0,<7.0
 requests>=2.31,<3.0
+simple-websocket>=0.10
 
 # --- Raspberry Pi sensor (only needed when mock_mode: false) ---
 # Uncomment these on the Pi:

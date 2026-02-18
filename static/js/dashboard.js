@@ -246,6 +246,16 @@
       document.getElementById('freq-flight').textContent = '--';
       document.getElementById('freq-detail').textContent = 'no data';
     }
+
+    // Update indicator dots
+    var dots = document.querySelectorAll('#freq-dots .card-dot');
+    dots.forEach(function (dot) {
+      if (dot.getAttribute('data-dot') === freqMode) {
+        dot.classList.add('active');
+      } else {
+        dot.classList.remove('active');
+      }
+    });
   }
 
   // Alternate most-frequent tile every 15 seconds
@@ -253,6 +263,19 @@
     freqMode = freqMode === 'today' ? 'alltime' : 'today';
     updateFrequentTile();
   }, 15000);
+
+  // -----------------------------------------------------------------------
+  // Location label
+  // -----------------------------------------------------------------------
+  socket.on('location_update', function (data) {
+    var el = document.getElementById('location-label');
+    if (!el) return;
+    if (data && data.location_label) {
+      el.textContent = data.location_label;
+    } else {
+      el.textContent = 'No GPS Fix';
+    }
+  });
 
   // -----------------------------------------------------------------------
   // Network / Connectivity indicators

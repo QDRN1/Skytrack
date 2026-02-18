@@ -1,0 +1,10 @@
+#!/bin/sh
+# =============================================================================
+# SkyTrack .xinitrc — used by startx to launch Openbox + kiosk
+# =============================================================================
+
+# Start window manager (lightweight, no desktop)
+openbox-session &
+
+# Launch the kiosk script
+exec /opt/skytrack/kiosk/skytrack-kiosk.sh

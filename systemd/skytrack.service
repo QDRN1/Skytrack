@@ -1,12 +1,12 @@
 [Unit]
 Description=QDRNow-SkyTrack ADS-B Dashboard
-After=network-online.target
+After=network-online.target dump1090-fa.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
+User=SkyTrack
+Group=SkyTrack
 WorkingDirectory=/opt/skytrack
 ExecStart=/opt/skytrack/venv/bin/python app.py
 Restart=always

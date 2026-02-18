@@ -48,9 +48,12 @@
     <!-- Row 1: Weather -->
     <section id="weather-row">
       <div id="weather-current">
-        <span id="weather-icon" class="weather-icon">--</span>
-        <span id="weather-temp" class="weather-temp">--&deg;F</span>
-        <span id="weather-condition" class="weather-condition">Loading&hellip;</span>
+        <div id="weather-primary">
+          <span id="weather-icon" class="weather-icon">--</span>
+          <span id="weather-temp" class="weather-temp">--&deg;F</span>
+          <span id="weather-condition" class="weather-condition">Loading&hellip;</span>
+        </div>
+        <div id="location-label" class="location-label">--</div>
       </div>
       <div id="weather-hilo">
         <span class="weather-hi">H: --&deg;</span>
@@ -71,6 +74,10 @@
         <div class="stat-label" id="freq-label">Most Frequent Plane Today</div>
         <div class="stat-value" id="freq-flight">--</div>
         <div class="stat-detail" id="freq-detail">-- messages</div>
+        <div class="card-dots" id="freq-dots">
+          <span class="card-dot active" data-dot="today"></span>
+          <span class="card-dot" data-dot="alltime"></span>
+        </div>
       </div>
       <div class="stat-tile" id="tile-total">
         <div class="stat-label">Planes Seen Today</div>
