@@ -4,28 +4,26 @@ ADS-B flight tracker and status monitor for Raspberry Pi with a local web dashbo
 
 ## Fresh Install (Raspberry Pi)
 
-**Tested on:** Raspberry Pi OS Bookworm (Debian 12) 64-bit, HDMI display.
+**Tested on:** Raspberry Pi OS Bookworm (Debian 12) 64-bit. HDMI display.
 
 ```bash
-# 1. Flash Raspberry Pi OS Lite (64-bit) to SD card via Raspberry Pi Imager
-#    Enable SSH, set hostname to "skytrack", configure Wi-Fi if needed.
-
-# 2. SSH in and clone the repo:
+# Flash Pi OS Lite (64-bit), enable SSH + Wi-Fi in Imager, then:
 sudo apt update && sudo apt install -y git
 git clone https://github.com/QDRN1/Skytrack.git /tmp/skytrack-src
 cd /tmp/skytrack-src
-
-# 3. Run the installer (takes 5-15 min depending on network):
 sudo ./install.sh --non-interactive
-
-# 4. Edit config for your location and weather API key:
-sudo nano /opt/skytrack/config.yaml
-
-# 5. Reboot — kiosk starts automatically:
+sudo nano /opt/skytrack/config.yaml   # set latitude, longitude, weather_api_key
 sudo reboot
 ```
 
-After reboot, the dashboard is at **http://skytrack.local:5000** (or use the Pi's IP).
+After reboot, the kiosk launches on HDMI and the dashboard is at `http://<pi-ip>:5000`.
+
+**Verify after reboot:**
+```bash
+systemctl status skytrack --no-pager          # expect: active (running)
+systemctl status skytrack-kiosk --no-pager    # expect: active (running)
+curl -sf http://127.0.0.1:5000 && echo OK     # expect: OK
+```
 
 ### Installer Flags
 

@@ -319,15 +319,12 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     git pull >> "$LOG_FILE" 2>&1 || \
     warn "Git pull failed — using existing code."
 else
-    if [ -d "$SCRIPT_DIR/.git" ]; then
-        # We're running from the cloned repo — copy it
+    if [ -d "$SCRIPT_DIR/.git" ] || [ -d "$SCRIPT_DIR/kiosk" ]; then
+        # Running from cloned repo or extracted archive — sync it
         mkdir -p "$INSTALL_DIR"
         rsync -a --exclude='.git' --exclude='venv' --exclude='__pycache__' \
             "$SCRIPT_DIR/" "$INSTALL_DIR/" >> "$LOG_FILE" 2>&1
-        # Initialize as git repo for future updates
-        cd "$INSTALL_DIR"
-        git init >> "$LOG_FILE" 2>&1 || true
-        log "Copied application to $INSTALL_DIR"
+        log "Synced application to $INSTALL_DIR"
     else
         warn "Not running from a git repo — copying files..."
         mkdir -p "$INSTALL_DIR"
@@ -584,6 +581,20 @@ if [[ "$SKIP_CF" != true ]] && [[ -z "$CF_TOKEN" ]]; then
     echo "    3. sudo systemctl enable --now cloudflared"
 fi
 
+echo ""
+echo -e "${BLUE}--- Post-Install Self-Test (run after reboot) ---${NC}"
+echo "  Copy/paste these commands to verify everything is working:"
+echo ""
+echo "    systemctl status skytrack --no-pager"
+echo "    systemctl status skytrack-kiosk --no-pager"
+echo "    curl -sf http://127.0.0.1:5000 >/dev/null && echo 'Dashboard: OK' || echo 'Dashboard: FAIL'"
+echo "    DISPLAY=:0 xrandr --verbose 2>/dev/null | head -20 || echo 'X11 not running (expected before reboot)'"
+echo ""
+echo "  Expected after reboot:"
+echo "    skytrack:      active (running)"
+echo "    skytrack-kiosk: active (running)"
+echo "    Dashboard:     OK"
+echo "    xrandr:        Shows connected display + rotation"
 echo ""
 echo -e "${BLUE}--- Useful commands ---${NC}"
 echo "  View backend logs:   journalctl -u skytrack -f"
