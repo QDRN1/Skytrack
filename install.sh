@@ -103,10 +103,10 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >> "$LOG_FILE" 2>&1
 
 PACKAGES=(
-    git curl wget
+    git curl wget rsync
     python3-venv python3-pip python3-dev
     # X11 / Kiosk
-    xserver-xorg xinit x11-xserver-utils
+    xserver-xorg xinit x11-xserver-utils x11-utils
     openbox chromium-browser
     unclutter
     # Modem / GPS

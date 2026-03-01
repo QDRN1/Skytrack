@@ -36,4 +36,4 @@ KillMode=mixed
 SuccessExitStatus=0 1
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
