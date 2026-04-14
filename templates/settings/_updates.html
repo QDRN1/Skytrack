@@ -1,15 +1,143 @@
-<div class="form">
-  <h2>Software updates</h2>
-  <p class="muted">SkyTrack Portal updates over Git. Pulls from <code>{{ config.ota_remote }}/{{ config.ota_branch }}</code>.</p>
+{# Settings → Updates & Backup #}
+<section class="settings-section" data-section-pane="updates">
 
-  <div class="form-row">
-    <button type="button" class="btn" id="btn-update-check">Check for updates</button>
-    <button type="button" class="btn primary" id="btn-update-apply">Apply updates</button>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Software updates</h2>
+      <p class="muted">SkyTrack Portal updates over Git. Pulls from <code>{{ config.ota_remote }}/{{ config.ota_branch }}</code>.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-updates"
+          data-endpoint="/api/settings/updates"
+          data-section="updates">
+
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Current version</span>
+          <code class="ro-value">{{ app_version }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Last check</span>
+          <code class="ro-value" id="upd-last-check">{{ config.ota_last_check or 'never' }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Latest available</span>
+          <code class="ro-value" id="upd-latest">—</code>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Auto-check for updates</span>
+          <span class="switch">
+            <input type="checkbox" name="ota_auto_check"
+                   {% if config.ota_auto_check %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label>Update channel</label>
+        <div class="segmented" role="radiogroup" aria-label="Update channel">
+          {% for v, lbl in [('stable','Stable'),('beta','Beta')] %}
+          <label class="seg"><input type="radio" name="ota_channel" value="{{ v }}"
+                 {% if (config.ota_channel or 'stable') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Update Policy</button>
+      </footer>
+    </form>
+
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-update-check">Check for updates</button>
+        <button type="button" class="btn btn-lg btn-primary" id="btn-update-apply"
+                data-confirm-title="Apply updates?"
+                data-confirm-body="The app will git-pull, reinstall dependencies, and restart. Brief downtime expected.">
+          Apply updates
+        </button>
+      </div>
+      <pre class="log-pre" id="update-output">No update checked yet.</pre>
+    </div>
   </div>
 
-  <pre class="log-pre" id="update-output">No update checked yet.</pre>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Backup &amp; restore</h2>
+      <p class="muted">Snapshots of <code>config.yaml</code> + <code>auth.json</code> + watchlist. Stored locally under <code>/var/lib/skytrack/backups</code>.</p>
+    </header>
 
-  <hr>
+    <form class="card-body card-form" id="form-backup"
+          data-endpoint="/api/settings/updates/backup-policy"
+          data-section="updates">
 
-  <p class="muted">Currently running version <strong>{{ app_version }}</strong>.</p>
-</div>
+      <div class="field">
+        <label>Auto-backup frequency</label>
+        <div class="segmented seg-grid-2" role="radiogroup" aria-label="Backup frequency">
+          {% for v, lbl in [('off','Off'),('daily','Daily'),('weekly','Weekly'),('monthly','Monthly')] %}
+          <label class="seg"><input type="radio" name="backup_frequency" value="{{ v }}"
+                 {% if (config.backup_frequency or 'off') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="bk-keep">Snapshots to keep</label>
+        <input id="bk-keep" name="backup_keep" type="number"
+               min="1" max="50" value="{{ config.backup_keep or 5 }}">
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Backup Policy</button>
+      </footer>
+    </form>
+
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-backup-now">Create backup now</button>
+      </div>
+
+      <ul class="saved-wifi-list" id="backup-list">
+        <li class="muted">No backups yet.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Power</h2>
+      <p class="muted">Restart the app, the network stack, or the whole device.</p>
+    </header>
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-restart-app"
+                data-confirm-title="Restart SkyTrack app?"
+                data-confirm-body="The web UI will be unavailable for ~10 seconds.">
+          Restart app
+        </button>
+        <button type="button" class="btn btn-lg" id="btn-restart-network"
+                data-confirm-title="Restart network stack?"
+                data-confirm-body="WiFi, hotspot, and cellular interfaces will bounce. You may briefly lose this session.">
+          Restart network
+        </button>
+        <button type="button" class="btn btn-lg btn-warn" id="btn-reboot"
+                data-confirm-title="Reboot the device?"
+                data-confirm-body="The Raspberry Pi will reboot. This usually takes about a minute.">
+          Reboot
+        </button>
+        <button type="button" class="btn btn-lg btn-danger" id="btn-shutdown"
+                data-confirm-title="Shut down the device?"
+                data-confirm-body="The Pi will power off. You'll need physical access to power it back on.">
+          Shut down
+        </button>
+      </div>
+    </div>
+  </div>
+
+</section>

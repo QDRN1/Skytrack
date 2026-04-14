@@ -1,0 +1,120 @@
+{# Settings → Diagnostics #}
+<section class="settings-section" data-section-pane="diagnostics">
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>System health</h2>
+      <p class="muted">Live snapshot of the Pi and the SkyTrack services.</p>
+    </header>
+
+    <div class="card-body">
+      <div class="status-grid">
+        <div class="status-tile" id="diag-cpu-tile">
+          <span class="st-label">CPU</span>
+          <span class="st-value" id="diag-cpu-value">…</span>
+          <span class="st-sub muted" id="diag-cpu-sub">load</span>
+        </div>
+        <div class="status-tile" id="diag-mem-tile">
+          <span class="st-label">Memory</span>
+          <span class="st-value" id="diag-mem-value">…</span>
+          <span class="st-sub muted" id="diag-mem-sub">used / total</span>
+        </div>
+        <div class="status-tile" id="diag-temp-tile">
+          <span class="st-label">Temp</span>
+          <span class="st-value" id="diag-temp-value">…</span>
+          <span class="st-sub muted" id="diag-temp-sub">SoC</span>
+        </div>
+        <div class="status-tile" id="diag-uptime-tile">
+          <span class="st-label">Uptime</span>
+          <span class="st-value" id="diag-uptime-value">…</span>
+          <span class="st-sub muted" id="diag-uptime-sub">since boot</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Services</h2>
+      <p class="muted">Status of each systemd unit SkyTrack depends on.</p>
+    </header>
+
+    <div class="card-body">
+      <ul class="service-list" id="svc-list">
+        <li class="muted">Loading…</li>
+      </ul>
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-svc-refresh">Refresh</button>
+        <button type="button" class="btn btn-lg" id="btn-selfcheck">Run self-check</button>
+      </div>
+      <pre class="log-pre" id="selfcheck-output" hidden></pre>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Log level</h2>
+      <p class="muted">Verbosity for the running SkyTrack process. Resets to <code>INFO</code> on reboot.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-loglevel"
+          data-endpoint="/api/settings/diagnostics/loglevel"
+          data-section="diagnostics">
+      <div class="field">
+        <label>Active level</label>
+        <div class="segmented seg-grid-2" role="radiogroup" aria-label="Log level">
+          {% for v in ['DEBUG','INFO','WARNING','ERROR'] %}
+          <label class="seg"><input type="radio" name="log_level" value="{{ v }}"
+                 {% if (config.log_level or 'INFO') == v %}checked{% endif %}><span>{{ v }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Apply</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Live log tail</h2>
+      <p class="muted">Most recent lines from the SkyTrack journal. Use the full Logs page for filtering and search.</p>
+    </header>
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-log-refresh">Refresh tail</button>
+        <a class="btn btn-lg" href="/logs">Open Logs →</a>
+      </div>
+      <pre class="log-pre" id="diag-log-tail">Loading…</pre>
+    </div>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Identity</h2>
+      <p class="muted">For support — share these when filing a bug.</p>
+    </header>
+    <div class="card-body">
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Device ID</span>
+          <code class="ro-value">{{ identity.device_id }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">App version</span>
+          <code class="ro-value">{{ app_version }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Hostname</span>
+          <code class="ro-value" id="diag-hostname">…</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Kernel</span>
+          <code class="ro-value" id="diag-kernel">…</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>

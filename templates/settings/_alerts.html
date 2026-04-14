@@ -1,0 +1,132 @@
+{# Settings → Alerts #}
+<section class="settings-section" data-section-pane="alerts">
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Alerts</h2>
+      <p class="muted">Trigger notifications for noteworthy aircraft. Notifications fire from the device — they don't depend on the cloud.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-alerts"
+          data-endpoint="/api/settings/alerts"
+          data-section="alerts">
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Alerts enabled</span>
+          <span class="switch">
+            <input type="checkbox" name="alerts_enabled"
+                   {% if config.alerts_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Military aircraft</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_military"
+                   {% if config.alert_military %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Emergency squawks (7500/7600/7700)</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_emergency"
+                   {% if config.alert_emergency %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Heavy aircraft (B777/A380/etc.)</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_heavy"
+                   {% if config.alert_heavy %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Watchlist hits</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_watchlist"
+                   {% if config.alert_watchlist %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="al-radius">Alert radius (nm)</label>
+        <input id="al-radius" name="alert_radius_nm" type="number"
+               min="1" max="250" value="{{ config.alert_radius_nm or 25 }}">
+      </div>
+
+      <div class="field">
+        <label for="al-cooldown">Per-aircraft cooldown (minutes)</label>
+        <input id="al-cooldown" name="alert_cooldown_minutes" type="number"
+               min="1" max="1440" value="{{ config.alert_cooldown_minutes or 30 }}">
+        <p class="muted small">Same callsign won't re-alert until this much time has passed.</p>
+      </div>
+
+      <hr class="card-sep">
+
+      <div class="field">
+        <label>Delivery</label>
+        <div class="segmented" role="radiogroup" aria-label="Alert delivery">
+          {% for v, lbl in [('toast','Toast'),('sound','Sound'),('both','Both'),('off','Off')] %}
+          <label class="seg"><input type="radio" name="alert_delivery" value="{{ v }}"
+                 {% if (config.alert_delivery or 'both') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="al-volume">Sound volume <output class="slider-out" id="al-volume-out">{{ config.alert_volume or 70 }}</output>%</label>
+        <input id="al-volume" name="alert_volume" type="range" class="touch-slider"
+               min="0" max="100" step="5" value="{{ config.alert_volume or 70 }}">
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Alerts</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Watchlist</h2>
+      <p class="muted">ICAO hexes or callsigns that always trigger an alert when seen.</p>
+    </header>
+
+    <div class="card-body">
+      <ul class="saved-wifi-list" id="watchlist-list">
+        <li class="muted">No watchlist entries yet.</li>
+      </ul>
+
+      <form class="inline-form" id="form-watchlist-add">
+        <div class="field">
+          <label for="wl-id">ICAO hex or callsign</label>
+          <input id="wl-id" name="ident" type="text" required>
+        </div>
+        <div class="field">
+          <label for="wl-note">Note <span class="muted small">optional</span></label>
+          <input id="wl-note" name="note" type="text">
+        </div>
+        <button type="submit" class="btn btn-lg btn-primary">Add to watchlist</button>
+      </form>
+    </div>
+  </div>
+
+</section>
