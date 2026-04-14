@@ -112,8 +112,12 @@ fi
 
 # ---------------------------------------------------------------------------
 hdr "systemd units"
+# Direct file-existence check. install.sh copies units to /etc/systemd/system/,
+# and `systemctl list-unit-files | grep` is unreliable on Bookworm (systemd 252)
+# because the output can include ANSI escapes, column padding, or pager state
+# that breaks a simple anchored regex. The file on disk is the source of truth.
 for unit in skytrack-app.service skytrack-network.service skytrack-ingest.service skytrack-hardware.service skytrack-firstboot.service skytrack-display.service; do
-  if systemctl list-unit-files 2>/dev/null | grep -q "^$unit"; then
+  if [[ -f "/etc/systemd/system/$unit" ]] || systemctl cat "$unit" >/dev/null 2>&1; then
     ok "$unit installed"
   else
     fail "$unit not installed"
@@ -150,13 +154,21 @@ fi
 
 # ---------------------------------------------------------------------------
 hdr "hotspot prerequisites"
-for bin in hostapd dnsmasq dhcpcd iw; do
+# dhcpcd is optional — Raspberry Pi OS Bookworm dropped it in favor of
+# NetworkManager. When absent, hotspot_apply.sh falls back to `ip addr add`
+# for the static wlan0 gateway assignment.
+for bin in hostapd dnsmasq iw; do
   if command -v "$bin" >/dev/null 2>&1; then
     ok "$bin in PATH"
   else
     fail "$bin not installed"
   fi
 done
+if command -v dhcpcd >/dev/null 2>&1; then
+  ok "dhcpcd in PATH (legacy static IP assignment)"
+else
+  ok "dhcpcd not installed (Bookworm — hotspot uses ip addr / NetworkManager)"
+fi
 
 # ---------------------------------------------------------------------------
 hdr "appliance kiosk"
@@ -166,7 +178,7 @@ else
   fail "user skytrack-kiosk missing (run install.sh)"
 fi
 
-if systemctl list-unit-files 2>/dev/null | grep -q '^skytrack-display.service'; then
+if [[ -f /etc/systemd/system/skytrack-display.service ]] || systemctl cat skytrack-display.service >/dev/null 2>&1; then
   if systemctl is-enabled skytrack-display.service 2>/dev/null | grep -q '^enabled$'; then
     ok "skytrack-display.service enabled"
   else
@@ -225,10 +237,15 @@ else
 fi
 
 for n in 2 3 4 5 6; do
-  if systemctl is-enabled "getty@tty${n}.service" 2>/dev/null | grep -q '^masked$'; then
+  # `systemctl is-enabled` exits 1 for masked (and disabled) units, which
+  # under `set -o pipefail` would propagate through `grep` and make the
+  # check read false even when the unit IS masked. Capture stdout first
+  # and then compare.
+  state="$(systemctl is-enabled "getty@tty${n}.service" 2>/dev/null || true)"
+  if [[ "$state" == "masked" ]]; then
     ok "getty@tty${n} masked"
   else
-    fail "getty@tty${n} not masked"
+    fail "getty@tty${n} not masked (state='$state')"
   fi
 done
 

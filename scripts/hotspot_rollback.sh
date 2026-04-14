@@ -64,12 +64,20 @@ systemctl stop hostapd 2>/dev/null || true
 systemctl stop dnsmasq 2>/dev/null || true
 systemctl disable hostapd 2>/dev/null || true
 
-# 5. Bounce dhcpcd so wlan0 returns to its previous state
-log "restarting dhcpcd"
-systemctl restart dhcpcd 2>/dev/null || true
+# 5. Bounce dhcpcd so wlan0 returns to its previous state — only if the
+#    unit actually exists. Raspberry Pi OS Bookworm dropped dhcpcd in favor
+#    of NetworkManager, so dhcpcd.service won't exist on a fresh Bookworm
+#    image. `systemctl restart` on a missing unit exits non-zero, which is
+#    already tolerated by the `|| true` but makes the log noisy.
+if systemctl cat dhcpcd.service >/dev/null 2>&1; then
+  log "restarting dhcpcd"
+  systemctl restart dhcpcd 2>/dev/null || true
+else
+  log "dhcpcd.service absent (Bookworm) — skipping"
+fi
 
 # 6. If NetworkManager is installed, hand wlan0 back to it
-if systemctl list-unit-files | grep -q '^NetworkManager\.service'; then
+if systemctl cat NetworkManager.service >/dev/null 2>&1; then
   log "restarting NetworkManager"
   systemctl restart NetworkManager 2>/dev/null || true
   if command -v nmcli >/dev/null 2>&1; then
@@ -78,7 +86,7 @@ if systemctl list-unit-files | grep -q '^NetworkManager\.service'; then
 fi
 
 # 7. If wpa_supplicant is the default, kick it
-if systemctl list-unit-files | grep -q '^wpa_supplicant\.service'; then
+if systemctl cat wpa_supplicant.service >/dev/null 2>&1; then
   log "restarting wpa_supplicant"
   systemctl restart wpa_supplicant 2>/dev/null || true
 fi

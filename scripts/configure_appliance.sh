@@ -162,14 +162,19 @@ lock_down_cmdline() {
 
 # ---------------------------------------------------------------------------
 # 3. Mask getty@tty2..6 — no hidden console logins.
+#
+# `systemctl mask` is idempotent, so we call it unconditionally. We used to
+# guard with `systemctl is-enabled | grep -qv '^masked$'`, but under
+# `set -euo pipefail` a non-zero exit from `systemctl is-enabled` (returned
+# for disabled/static/masked units) propagates through the pipe and makes
+# the `if` read as false — so we silently skipped every unit and left
+# getty@tty2..6 unmasked. Drop the guard.
 # ---------------------------------------------------------------------------
 mask_extra_gettys() {
   for n in 2 3 4 5 6; do
     local unit="getty@tty${n}.service"
-    if systemctl is-enabled "$unit" 2>/dev/null | grep -qv '^masked$'; then
-      log "masking $unit"
-      systemctl mask "$unit" >/dev/null 2>&1 || true
-    fi
+    log "masking $unit"
+    systemctl mask "$unit" >/dev/null 2>&1 || true
   done
 }
 

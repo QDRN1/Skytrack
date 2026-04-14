@@ -106,12 +106,15 @@ if [[ "$DEV_INSTALL" != true ]]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >> "$LOG_FILE" 2>&1 || warn "apt-get update failed"
 
+  # Required packages — if any of these fail we're in trouble, but we still
+  # continue (with a warning) so the rest of the installer can run and
+  # install_verify.sh can tell the operator exactly what's missing.
   PKGS=(
     git curl wget rsync ca-certificates jq
     python3 python3-venv python3-pip python3-dev build-essential
     sqlite3
-    # Hotspot + DNS
-    hostapd dnsmasq dhcpcd5 iw wireless-tools rfkill
+    # Hotspot + DNS. dhcpcd intentionally omitted — see PKGS_OPTIONAL below.
+    hostapd dnsmasq iw wireless-tools rfkill
     # Cellular
     modemmanager network-manager usb-modeswitch usb-modeswitch-data
     libqmi-utils libmbim-utils
@@ -131,6 +134,23 @@ if [[ "$DEV_INSTALL" != true ]]; then
     policykit-1
   )
   apt-get install -y -qq "${PKGS[@]}" >> "$LOG_FILE" 2>&1 || warn "some packages failed (continuing)"
+
+  # Optional packages — install one at a time so a single missing package
+  # in Bookworm doesn't abort the whole apt run. dhcpcd5 is the classic
+  # case: Raspberry Pi OS Bookworm dropped it in favor of NetworkManager,
+  # so on a fresh Bookworm Lite image the package is "Unable to locate".
+  # hotspot_apply.sh already falls back to `ip addr add` when dhcpcd is
+  # absent, so this is strictly best-effort.
+  PKGS_OPTIONAL=(
+    dhcpcd5
+  )
+  for opt_pkg in "${PKGS_OPTIONAL[@]}"; do
+    if apt-get install -y -qq "$opt_pkg" >> "$LOG_FILE" 2>&1; then
+      info "optional package installed: $opt_pkg"
+    else
+      info "optional package unavailable (ok): $opt_pkg"
+    fi
+  done
 
   # Chromium — try both package names. Bookworm Lite: chromium-browser.
   # Newer / non-Pi Debian: chromium. Install whichever is available so the

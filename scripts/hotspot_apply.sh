@@ -108,15 +108,23 @@ address=/skytrack.local/$GATEWAY
 address=/setup.skytrack.local/$GATEWAY
 EOF
 
-  echo "writing dhcpcd skytrack block"
-  if ! grep -q "## skytrack-hotspot" /etc/dhcpcd.conf 2>/dev/null; then
-    cat >> /etc/dhcpcd.conf <<EOF
+  # dhcpcd block — only if dhcpcd is actually installed (Raspberry Pi OS
+  # Bookworm replaced dhcpcd with NetworkManager, so /etc/dhcpcd.conf may
+  # not exist). When absent, we assign the wlan0 static IP directly with
+  # `ip addr add` below instead of teaching dhcpcd about it.
+  if [[ -f /etc/dhcpcd.conf ]]; then
+    echo "writing dhcpcd skytrack block"
+    if ! grep -q "## skytrack-hotspot" /etc/dhcpcd.conf 2>/dev/null; then
+      cat >> /etc/dhcpcd.conf <<EOF
 
 ## skytrack-hotspot
 interface wlan0
 static ip_address=$GATEWAY/24
 nohook wpa_supplicant
 EOF
+    fi
+  else
+    echo "note: /etc/dhcpcd.conf absent (Bookworm / NetworkManager) — will use ip addr"
   fi
 fi
 
@@ -126,7 +134,24 @@ fi
 echo "restarting dhcpcd / hostapd / dnsmasq"
 systemctl unmask hostapd 2>/dev/null || true
 systemctl enable hostapd dnsmasq 2>/dev/null || true
-systemctl restart dhcpcd
+
+# dhcpcd: only present on older Raspberry Pi OS / Debian. On Bookworm-Pi
+# it's been replaced by NetworkManager — the unit file doesn't exist and
+# `systemctl restart dhcpcd` would exit non-zero and abort the script
+# under `set -e`. Detect and skip; assign the static gateway IP directly
+# so hostapd has something to bind to.
+if systemctl list-unit-files dhcpcd.service >/dev/null 2>&1 && \
+   systemctl cat dhcpcd.service >/dev/null 2>&1; then
+  systemctl restart dhcpcd
+else
+  echo "note: dhcpcd.service not present — assigning $GATEWAY/24 to wlan0 directly"
+  # NetworkManager may also be managing wlan0. Detach it so our static
+  # address sticks. Silent-best-effort — NM may not be installed.
+  nmcli dev set wlan0 managed no >/dev/null 2>&1 || true
+  ip addr flush dev wlan0 2>/dev/null || true
+  ip addr add "$GATEWAY/24" dev wlan0 2>/dev/null || true
+  ip link set wlan0 up 2>/dev/null || true
+fi
 sleep 1
 systemctl restart hostapd
 systemctl restart dnsmasq
