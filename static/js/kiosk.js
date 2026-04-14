@@ -1,53 +1,78 @@
 /* SkyTrack on-device kiosk display.
  *
- * This script drives /kiosk — the fullscreen Chromium target running on
- * the Pi's HDMI output. It is intentionally separate from every other
- * page in the portal: no topbar, no auth UI, no fetch interceptor. It
- * only needs to do four things:
+ * Drives /kiosk — the fullscreen Chromium target running on the Pi's HDMI
+ * output. This is the ENTIRE operator experience on the appliance; it never
+ * navigates to another page, never scrolls, never shows browser chrome.
  *
- *   1. While the device is NOT configured, show the looping setup video
- *      with the device ID pill at the top.
- *   2. If the setup video fails to load, fall back to a canvas-particles
- *      background with centered "SETUP REQUIRED / WiFi / URL / Device ID"
- *      text.
- *   3. The moment /api/auth/status flips to configured=true, stop the
- *      setup video, play the boot video once, then redirect to /dashboard.
- *   4. If the kiosk reloads after the device is already configured (e.g.
- *      after a power cycle), skip straight to the boot video.
+ * Three visual stages only:
  *
- * It deliberately polls /api/auth/status on a short interval rather than
- * holding open a Socket.IO connection — the kiosk runs locally and a
- * cheap fetch every 1.5s is plenty.
+ *   1. setup-video    — unconfigured: loop the branded setup video with a
+ *                       device-ID pill at the top. If the video file fails
+ *                       to decode, fall back to a canvas-particles
+ *                       background + "SETUP REQUIRED" text card.
+ *
+ *   2. boot-video     — one-shot transition played the moment configured
+ *                       flips true (fresh setup) OR when the kiosk loads
+ *                       already-configured (e.g. after a reboot).
+ *
+ *   3. operational    — permanent live-display mode. Compact 2x2 stat grid
+ *                       with branded header (device/clock/weather) and
+ *                       footer (device-id + radar URL). Polls the public
+ *                       dashboard APIs every ~5s. No redirects, no scroll,
+ *                       no browser chrome.
+ *
+ * Status polling checks /api/auth/status on a short interval so a fresh
+ * setup finish on the admin's phone transitions the kiosk automatically.
  */
 (function () {
   'use strict';
 
-  const STATUS_URL = '/api/auth/status';
-  const POLL_INTERVAL_MS = 1500;
-  const SETUP_VIDEO_FAIL_TIMEOUT_MS = 2500;
-  const BOOT_VIDEO_FAIL_TIMEOUT_MS = 3000;
-  const BOOT_VIDEO_HARD_TIMEOUT_MS = 30000;
+  const STATUS_URL  = '/api/auth/status';
+  const CARDS_URL   = '/api/dashboard/cards';
+  const WEATHER_URL = '/api/weather';
+  const DEVICE_URL  = '/api/device';
+
+  const STATUS_POLL_MS        = 1500;  // only runs in setup-video stage
+  const OP_CARDS_POLL_MS      = 5000;
+  const OP_WEATHER_POLL_MS    = 5 * 60 * 1000;
+  const OP_DEVICE_POLL_MS     = 60 * 1000;
+  const SETUP_VIDEO_FAIL_MS   = 2500;
+  const BOOT_VIDEO_FAIL_MS    = 3000;
+  const BOOT_VIDEO_HARD_MS    = 30000;
 
   // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
-  /** @type {'init'|'setup-video'|'setup-fallback'|'boot-video'|'redirecting'} */
+  /** @type {'init'|'setup-video'|'setup-fallback'|'boot-video'|'operational'} */
   let stage = 'init';
-  let pollTimer = null;
-  let particles = null;
+
+  let statusTimer   = null;
+  let opCardsTimer  = null;
+  let opWxTimer     = null;
+  let opDevTimer    = null;
+  let opClockTimer  = null;
+  let particles     = null;
 
   // ------------------------------------------------------------------
   // DOM helpers
   // ------------------------------------------------------------------
-  function $(id) { return document.getElementById(id); }
+  function $(id)    { return document.getElementById(id); }
+  function show(el) { if (el) el.hidden = false; }
+  function hide(el) { if (el) el.hidden = true; }
 
-  function show(el)  { if (el) el.hidden = false; }
-  function hide(el)  { if (el) el.hidden = true; }
+  function setText(id, value) {
+    const el = $(id);
+    if (el && el.textContent !== value) el.textContent = value;
+  }
 
+  // ------------------------------------------------------------------
+  // Setup-video stage (unconfigured)
+  // ------------------------------------------------------------------
   function showSetupVideo() {
     if (stage === 'setup-video') return;
     stage = 'setup-video';
     stopParticles();
+    hideOp();
 
     hide($('kiosk-boot-video'));
     hide($('kiosk-particles'));
@@ -59,32 +84,29 @@
 
     let failed = false;
     const failTimer = setTimeout(() => {
-      // If the video file isn't present (or the codec is unsupported)
-      // the readyState will still be 0 here; flip to the fallback.
-      if (v.readyState < 2 && stage === 'setup-video') {
+      if (v && v.readyState < 2 && stage === 'setup-video') {
         failed = true;
         showSetupFallback();
       }
-    }, SETUP_VIDEO_FAIL_TIMEOUT_MS);
+    }, SETUP_VIDEO_FAIL_MS);
 
-    v.addEventListener('canplay', () => {
-      if (failed) return;
-      clearTimeout(failTimer);
-    }, { once: true });
-    v.addEventListener('error', () => {
-      clearTimeout(failTimer);
-      if (stage === 'setup-video') showSetupFallback();
-    }, { once: true });
+    if (v) {
+      v.addEventListener('canplay', () => {
+        if (failed) return;
+        clearTimeout(failTimer);
+      }, { once: true });
+      v.addEventListener('error', () => {
+        clearTimeout(failTimer);
+        if (stage === 'setup-video') showSetupFallback();
+      }, { once: true });
 
-    // Some browsers still need an explicit play() call after autoplay
-    // is ignored; muted+playsinline should let it through but we belt-
-    // and-brace it.
-    try {
-      const p = v.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => { /* will be picked up by the failTimer */ });
-      }
-    } catch (_e) { /* same */ }
+      try {
+        const p = v.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => { /* handled by failTimer */ });
+        }
+      } catch (_e) { /* same */ }
+    }
   }
 
   function showSetupFallback() {
@@ -96,16 +118,20 @@
     hide(v);
     hide($('kiosk-boot-video'));
     hide($('kiosk-device-id-overlay'));
+    hideOp();
 
     show($('kiosk-particles'));
     show($('kiosk-fallback'));
     startParticles();
   }
 
+  // ------------------------------------------------------------------
+  // Boot-video stage (one-shot transition)
+  // ------------------------------------------------------------------
   function showBootVideo() {
-    if (stage === 'boot-video' || stage === 'redirecting') return;
+    if (stage === 'boot-video' || stage === 'operational') return;
     stage = 'boot-video';
-    stopPolling();
+    stopStatusPolling();
     stopParticles();
 
     const sv = $('kiosk-setup-video');
@@ -115,50 +141,221 @@
     hide($('kiosk-particles'));
     hide($('kiosk-fallback'));
     hide($('kiosk-device-id-overlay'));
+    hideOp();
 
     const b = $('kiosk-boot-video');
     show(b);
 
-    const goDashboard = () => {
-      if (stage === 'redirecting') return;
-      stage = 'redirecting';
-      window.location.href = '/dashboard';
+    const done = () => {
+      if (stage === 'operational') return;
+      showOperational();
     };
 
     let bootFailed = false;
     const bootFailTimer = setTimeout(() => {
-      if (b.readyState < 2 && stage === 'boot-video') {
+      if (b && b.readyState < 2 && stage === 'boot-video') {
         bootFailed = true;
-        goDashboard();
+        done();
       }
-    }, BOOT_VIDEO_FAIL_TIMEOUT_MS);
+    }, BOOT_VIDEO_FAIL_MS);
 
-    b.addEventListener('canplay', () => {
-      if (bootFailed) return;
-      clearTimeout(bootFailTimer);
-    }, { once: true });
-    b.addEventListener('error', () => {
-      clearTimeout(bootFailTimer);
-      goDashboard();
-    }, { once: true });
-    b.addEventListener('ended', goDashboard, { once: true });
+    if (b) {
+      b.addEventListener('canplay', () => {
+        if (bootFailed) return;
+        clearTimeout(bootFailTimer);
+      }, { once: true });
+      b.addEventListener('error', () => {
+        clearTimeout(bootFailTimer);
+        done();
+      }, { once: true });
+      b.addEventListener('ended', done, { once: true });
 
-    // Hard safety: if 'ended' never fires (some Chromium codecs fire
-    // 'pause' instead) just bail after 30s.
-    setTimeout(() => {
-      if (stage === 'boot-video') goDashboard();
-    }, BOOT_VIDEO_HARD_TIMEOUT_MS);
+      // Hard safety — some Chromium codecs fire 'pause' instead of 'ended'
+      setTimeout(() => {
+        if (stage === 'boot-video') done();
+      }, BOOT_VIDEO_HARD_MS);
 
-    try {
-      const p = b.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => { /* picked up by failTimer */ });
-      }
-    } catch (_e) { /* same */ }
+      try {
+        const p = b.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => { /* handled by timers */ });
+        }
+      } catch (_e) { /* same */ }
+    } else {
+      done();
+    }
   }
 
   // ------------------------------------------------------------------
-  // Status polling
+  // Operational stage (permanent live display)
+  // ------------------------------------------------------------------
+  function showOperational() {
+    if (stage === 'operational') return;
+    stage = 'operational';
+    stopStatusPolling();
+    stopParticles();
+
+    const sv = $('kiosk-setup-video');
+    const bv = $('kiosk-boot-video');
+    if (sv) { try { sv.pause(); } catch (_e) {} }
+    if (bv) { try { bv.pause(); } catch (_e) {} }
+
+    hide(sv);
+    hide(bv);
+    hide($('kiosk-particles'));
+    hide($('kiosk-fallback'));
+    hide($('kiosk-device-id-overlay'));
+
+    show($('kiosk-op'));
+
+    startClock();
+    refreshCards();
+    refreshWeather();
+    refreshDevice();
+
+    if (!opCardsTimer) opCardsTimer = setInterval(refreshCards,  OP_CARDS_POLL_MS);
+    if (!opWxTimer)    opWxTimer    = setInterval(refreshWeather, OP_WEATHER_POLL_MS);
+    if (!opDevTimer)   opDevTimer   = setInterval(refreshDevice,  OP_DEVICE_POLL_MS);
+  }
+
+  function hideOp() {
+    hide($('kiosk-op'));
+    stopOperationalTimers();
+  }
+
+  function stopOperationalTimers() {
+    if (opCardsTimer) { clearInterval(opCardsTimer); opCardsTimer = null; }
+    if (opWxTimer)    { clearInterval(opWxTimer);    opWxTimer    = null; }
+    if (opDevTimer)   { clearInterval(opDevTimer);   opDevTimer   = null; }
+    if (opClockTimer) { clearInterval(opClockTimer); opClockTimer = null; }
+  }
+
+  function startClock() {
+    const tick = () => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      setText('op-clock-time', hh + ':' + mm);
+      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      try {
+        setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
+      } catch (_e) {
+        setText('op-clock-date', '');
+      }
+    };
+    tick();
+    if (!opClockTimer) opClockTimer = setInterval(tick, 15 * 1000);
+  }
+
+  function fmtNumber(n) {
+    if (n === null || n === undefined || isNaN(n)) return '—';
+    try { return Number(n).toLocaleString(); } catch (_e) { return String(n); }
+  }
+
+  async function refreshCards() {
+    try {
+      const r = await fetch(CARDS_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+
+      if (data.now) {
+        setText('op-now-value', fmtNumber(data.now.count));
+        setText('op-now-sub',   data.now.window || 'last 5 min');
+      }
+      if (data.today) {
+        setText('op-today-value', fmtNumber(data.today.count));
+        setText('op-today-sub',   data.today.window || 'today (UTC)');
+      }
+      if (data.busiest) {
+        const hour = data.busiest.hour;
+        if (hour === null || hour === undefined || hour === '') {
+          setText('op-busy-value', '—');
+          setText('op-busy-sub',   'last 24 h');
+        } else {
+          const h = String(hour).padStart(2, '0') + ':00';
+          setText('op-busy-value', h);
+          const n = data.busiest.count;
+          setText('op-busy-sub', (n !== undefined && n !== null)
+            ? fmtNumber(n) + ' aircraft'
+            : 'last 24 h');
+        }
+      }
+      if (data.last) {
+        const last = data.last;
+        const label = (last.callsign && last.callsign.trim())
+          || (last.icao && last.icao.toUpperCase())
+          || null;
+        if (label) {
+          setText('op-last-value', label);
+          const bits = [];
+          if (last.altitude_ft !== null && last.altitude_ft !== undefined) {
+            const ft = Number(last.altitude_ft);
+            if (!isNaN(ft)) {
+              const fl = Math.round(ft / 100);
+              bits.push('FL' + String(fl).padStart(3, '0'));
+            }
+          }
+          if (last.speed_kts !== null && last.speed_kts !== undefined) {
+            const kts = Number(last.speed_kts);
+            if (!isNaN(kts)) bits.push(Math.round(kts) + ' kt');
+          }
+          setText('op-last-sub', bits.length ? bits.join(' · ') : 'last 5 min');
+        } else {
+          setText('op-last-value', '—');
+          setText('op-last-sub',   'awaiting contacts');
+        }
+      } else {
+        setText('op-last-value', '—');
+        setText('op-last-sub',   'awaiting contacts');
+      }
+    } catch (_e) {
+      /* Transient — leave stale values; the kiosk must never go blank. */
+    }
+  }
+
+  async function refreshWeather() {
+    try {
+      const r = await fetch(WEATHER_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const cur = (data && data.current) || null;
+      if (!cur) return;
+      if (cur.temp_f !== undefined && cur.temp_f !== null) {
+        setText('op-wx-temp', Math.round(Number(cur.temp_f)) + '°');
+      }
+      if (cur.condition) {
+        setText('op-wx-cond', String(cur.condition));
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  async function refreshDevice() {
+    try {
+      const r = await fetch(DEVICE_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && data.radar_url) {
+        // Strip protocol so the footer doesn't look like a browser URL bar
+        const clean = String(data.radar_url).replace(/^https?:\/\//i, '');
+        setText('op-radar-url', clean);
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  // ------------------------------------------------------------------
+  // Setup-state status polling (only while unconfigured)
   // ------------------------------------------------------------------
   async function checkStatus() {
     try {
@@ -172,24 +369,19 @@
       if (data && data.configured) {
         showBootVideo();
       }
-    } catch (_e) {
-      // Transient — leave the current stage in place. The kiosk should
-      // never go blank just because one poll failed.
-    }
+    } catch (_e) { /* transient */ }
   }
 
-  function startPolling() {
-    if (pollTimer) return;
-    pollTimer = setInterval(checkStatus, POLL_INTERVAL_MS);
+  function startStatusPolling() {
+    if (statusTimer) return;
+    statusTimer = setInterval(checkStatus, STATUS_POLL_MS);
   }
-
-  function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  function stopStatusPolling() {
+    if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
   }
 
   // ------------------------------------------------------------------
-  // Canvas particles (QDRN-style — slow drifting dots with subtle
-  // connecting lines, blue + amber accents).
+  // Canvas particles (only used as a setup-state fallback)
   // ------------------------------------------------------------------
   function startParticles() {
     if (particles) return;
@@ -227,7 +419,6 @@
       const w = window.innerWidth, h = window.innerHeight;
       ctx.clearRect(0, 0, w, h);
 
-      // Lines between nearby dots
       for (let i = 0; i < dots.length; i++) {
         for (let j = i + 1; j < dots.length; j++) {
           const a = dots[i], b = dots[j];
@@ -245,7 +436,6 @@
         }
       }
 
-      // Dots
       for (let i = 0; i < dots.length; i++) {
         const d = dots[i];
         d.x += d.vx; d.y += d.vy;
@@ -275,9 +465,7 @@
   }
 
   function stopParticles() {
-    if (particles && particles.stop) {
-      particles.stop();
-    }
+    if (particles && particles.stop) particles.stop();
     particles = null;
   }
 
@@ -287,17 +475,22 @@
   document.addEventListener('DOMContentLoaded', () => {
     const initiallyConfigured = document.body.dataset.configured === '1';
     if (initiallyConfigured) {
-      // Device is already configured — Chromium just reloaded /kiosk
-      // (e.g. after a power cycle). Play the boot video once, then
-      // hand off to /dashboard.
+      // Already configured — play the boot video once, then settle into the
+      // operational stage. Never redirect anywhere.
       showBootVideo();
     } else {
-      // First-boot state — looping setup video, polling for config.
+      // First-boot — loop the setup video and poll for completion.
       showSetupVideo();
-      startPolling();
-      // Also do an immediate status check so a fast wizard finish
-      // (under 1.5s) doesn't get stuck on the setup video for a tick.
+      startStatusPolling();
+      // Immediate check so a fast wizard finish doesn't linger for a tick.
       checkStatus();
     }
+  });
+
+  // If Chromium is hard-reloaded mid-session, clean up any timers first.
+  window.addEventListener('beforeunload', () => {
+    stopStatusPolling();
+    stopOperationalTimers();
+    stopParticles();
   });
 })();

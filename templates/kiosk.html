@@ -7,23 +7,33 @@
   <title>SkyTrack Portal — {{ device_id }}</title>
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
   <style>
-    /* ----- Reset for the kiosk: no scrollbars, no chrome, pure black ----- */
+    /* =====================================================================
+       SkyTrack on-device kiosk — the fullscreen Chromium display.
+       This page is the ENTIRE operator experience. It never navigates away,
+       never scrolls, never shows browser chrome. Three visual stages only:
+         1) setup-video   (unconfigured, looping branded video + device id)
+         2) boot-video    (one-shot transition when setup completes)
+         3) operational   (compact live dashboard tile, permanent)
+       ===================================================================== */
     *, *::before, *::after { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
-      width: 100vw; height: 100vh;
+      width: 100vw; height: 100vh; max-height: 100vh;
       background: #000;
       color: #ffffff;
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                    Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       -webkit-font-smoothing: antialiased;
-      cursor: none;          /* hide mouse pointer in kiosk mode */
+      cursor: none;
       user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     [hidden] { display: none !important; }
 
-    /* ----- Stage container ----- */
+    /* ----- Stage container — every layer inside is absolute-positioned --- */
     .kiosk-stage {
       position: fixed;
       inset: 0;
@@ -33,7 +43,7 @@
       overflow: hidden;
     }
 
-    /* ----- Video layers ----- */
+    /* ----- Video layers ------------------------------------------------- */
     .kiosk-video {
       position: absolute;
       inset: 0;
@@ -43,7 +53,7 @@
       background: #000;
     }
 
-    /* ----- Canvas particles (fallback background) ----- */
+    /* ----- Particles canvas (fallback background for setup state) ------- */
     .kiosk-particles {
       position: absolute;
       inset: 0;
@@ -56,7 +66,7 @@
         linear-gradient(180deg, #050a1a 0%, #02050f 100%);
     }
 
-    /* ----- Top device-ID overlay (sits on top of the setup video) ----- */
+    /* ----- Device-ID pill (top overlay, visible over setup video) ------- */
     .kiosk-overlay-top {
       position: absolute;
       top: 6vh;
@@ -80,7 +90,7 @@
       -webkit-backdrop-filter: blur(6px);
     }
 
-    /* ----- Centered fallback card (over particles) ----- */
+    /* ----- Centered fallback card (SETUP REQUIRED, over particles) ------ */
     .kiosk-fallback-card {
       position: absolute;
       inset: 0;
@@ -102,6 +112,7 @@
       text-shadow:
         0 0 24px rgba(77, 139, 255, 0.55),
         0 2px 18px rgba(0, 0, 0, 0.85);
+      animation: kiosk-pulse 4s ease-in-out infinite;
     }
     .kiosk-fallback-card .row {
       font-size: clamp(1.1em, 2.6vh, 1.7em);
@@ -120,15 +131,247 @@
       border-top: 1px solid rgba(255, 255, 255, 0.18);
       width: min(560px, 80vw);
     }
-
-    /* Subtle pulse on the SETUP REQUIRED headline so the screen doesn't
-       look frozen on a totally still gradient. */
     @keyframes kiosk-pulse {
       0%, 100% { opacity: 0.92; transform: translateY(0); }
       50%      { opacity: 1.00; transform: translateY(-2px); }
     }
-    .kiosk-fallback-card h1 {
-      animation: kiosk-pulse 4s ease-in-out infinite;
+
+    /* =====================================================================
+       OPERATIONAL STAGE — the permanent live display
+       Locked to exactly 100vh / 100vw. 3-row layout:
+         .op-header    — brand + clock + weather              (top strip)
+         .op-main      — 2x2 stat grid (live counters)        (flex fill)
+         .op-footer    — last aircraft + device id watermark  (bottom strip)
+       Typography uses vmin-based clamps so it scales cleanly from
+       800x480 to 1920x1080 without a single scrollbar.
+       ===================================================================== */
+    .kiosk-op {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(ellipse at 18% 20%, rgba(46, 108, 246, 0.28), transparent 62%),
+        radial-gradient(ellipse at 82% 78%, rgba(242, 145, 53, 0.18), transparent 60%),
+        linear-gradient(180deg, #060b1c 0%, #02040e 100%);
+      color: #e7ebff;
+      padding: clamp(12px, 2.2vh, 28px);
+      gap: clamp(10px, 2vh, 22px);
+    }
+
+    .kiosk-op::before {
+      /* Subtle scanline vignette so it doesn't look like a flat web page */
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.25) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.35) 100%);
+    }
+
+    .op-header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: clamp(10px, 2vw, 24px);
+      padding: clamp(6px, 1.2vh, 12px) clamp(10px, 1.6vw, 20px);
+      background: rgba(6, 11, 28, 0.55);
+      border: 1px solid rgba(120, 160, 255, 0.18);
+      border-radius: clamp(10px, 1.6vh, 18px);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      min-height: clamp(52px, 10vh, 92px);
+    }
+    .op-brand {
+      display: flex; align-items: baseline; gap: clamp(8px, 1.2vw, 14px);
+      min-width: 0;
+    }
+    .op-brand .mark {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 0.35em;
+      background: linear-gradient(135deg, #2e6cf6, #4d8bff);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: clamp(0.9em, 2vh, 1.3em);
+      letter-spacing: 1.2px;
+      box-shadow: 0 0 22px rgba(77, 139, 255, 0.45);
+    }
+    .op-brand .brand-text {
+      font-size: clamp(1.1em, 2.6vh, 1.9em);
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .op-clock {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(1.4em, 4.4vh, 3em);
+      font-weight: 600;
+      letter-spacing: 1.4px;
+      color: #ffffff;
+      text-shadow: 0 0 18px rgba(77, 139, 255, 0.55);
+      white-space: nowrap;
+    }
+    .op-clock .op-date {
+      display: block;
+      font-size: 0.38em;
+      letter-spacing: 2px;
+      color: rgba(151, 160, 196, 0.92);
+      text-transform: uppercase;
+      margin-top: 2px;
+      font-weight: 500;
+      text-align: right;
+    }
+
+    .op-weather {
+      display: flex; align-items: center; gap: clamp(6px, 1vw, 12px);
+      padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.2vw, 14px);
+      border-radius: clamp(8px, 1.2vh, 14px);
+      background: rgba(10, 16, 38, 0.6);
+      border: 1px solid rgba(120, 160, 255, 0.18);
+      min-width: 0;
+    }
+    .op-weather .temp {
+      font-size: clamp(1.4em, 4vh, 2.6em);
+      font-weight: 700;
+      color: #ffd49b;
+      line-height: 1;
+    }
+    .op-weather .cond {
+      font-size: clamp(0.8em, 1.8vh, 1.1em);
+      color: rgba(231, 235, 255, 0.82);
+      line-height: 1.15;
+      max-width: clamp(120px, 18vw, 260px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ----- Main grid ---------------------------------------------------- */
+    .op-main {
+      position: relative;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: clamp(10px, 2vh, 22px);
+      min-height: 0;
+    }
+
+    .op-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: clamp(10px, 2vh, 24px);
+      background: rgba(10, 16, 38, 0.62);
+      border: 1px solid rgba(120, 160, 255, 0.22);
+      border-radius: clamp(12px, 2vh, 22px);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+        0 0 28px rgba(46, 108, 246, 0.10);
+      overflow: hidden;
+      min-width: 0;
+      min-height: 0;
+    }
+    .op-card::after {
+      content: '';
+      position: absolute;
+      top: -40%; left: -40%;
+      width: 180%; height: 180%;
+      background: radial-gradient(ellipse at center, rgba(77, 139, 255, 0.08), transparent 55%);
+      pointer-events: none;
+    }
+    .op-card .label {
+      font-size: clamp(0.7em, 1.6vh, 1em);
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(151, 160, 196, 0.92);
+      margin-bottom: clamp(4px, 1vh, 10px);
+      z-index: 1;
+    }
+    .op-card .value {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(2.2em, 9.5vh, 6.8em);
+      font-weight: 700;
+      line-height: 1;
+      color: #ffffff;
+      text-shadow:
+        0 0 22px rgba(77, 139, 255, 0.55),
+        0 2px 16px rgba(0, 0, 0, 0.75);
+      z-index: 1;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .op-card .sub {
+      font-size: clamp(0.75em, 1.5vh, 1em);
+      color: rgba(151, 160, 196, 0.9);
+      margin-top: clamp(4px, 1vh, 10px);
+      z-index: 1;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 6px;
+    }
+    .op-card.accent-warm .value { color: #ffd49b; }
+    .op-card.accent-warm .value { text-shadow: 0 0 22px rgba(255, 174, 89, 0.45), 0 2px 16px rgba(0, 0, 0, 0.75); }
+
+    /* ----- Footer ------------------------------------------------------- */
+    .op-footer {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: clamp(10px, 2vw, 22px);
+      padding: clamp(6px, 1.2vh, 12px) clamp(10px, 1.6vw, 20px);
+      background: rgba(6, 11, 28, 0.55);
+      border: 1px solid rgba(120, 160, 255, 0.16);
+      border-radius: clamp(10px, 1.6vh, 18px);
+      min-height: clamp(42px, 7.5vh, 76px);
+      font-size: clamp(0.8em, 1.7vh, 1.1em);
+    }
+    .op-footer .meta-left,
+    .op-footer .meta-right {
+      display: flex; align-items: center; gap: clamp(6px, 1vw, 12px);
+      min-width: 0;
+    }
+    .op-footer .meta-label {
+      font-size: 0.72em;
+      font-weight: 600;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(151, 160, 196, 0.8);
+    }
+    .op-footer .meta-value {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .op-footer .device-id {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color: #ffd49b;
+      letter-spacing: 1.2px;
+      white-space: nowrap;
+    }
+
+    /* Narrow / short displays — drop the header weather badge to keep the
+       main counters legible on 800x480 touchscreens. */
+    @media (max-height: 500px), (max-width: 720px) {
+      .op-weather { display: none; }
+      .op-clock .op-date { display: none; }
     }
   </style>
 </head>
@@ -138,7 +381,7 @@
 
   <div class="kiosk-stage" id="kiosk-stage">
 
-    {# ---- Looping setup video (visible only when not configured) ---- #}
+    {# ---- Looping setup video (unconfigured) ---- #}
     <video id="kiosk-setup-video"
            class="kiosk-video"
            autoplay muted loop playsinline preload="auto"
@@ -147,7 +390,7 @@
               type="video/mp4">
     </video>
 
-    {# ---- One-shot boot video (visible after setup completes) ---- #}
+    {# ---- One-shot boot video (plays once after configuration) ---- #}
     <video id="kiosk-boot-video"
            class="kiosk-video"
            autoplay muted playsinline preload="auto"
@@ -156,7 +399,7 @@
               type="video/mp4">
     </video>
 
-    {# ---- Particles canvas + fallback text (used if setup video fails) ---- #}
+    {# ---- Particles + "SETUP REQUIRED" fallback (if video unavailable) ---- #}
     <canvas id="kiosk-particles" class="kiosk-particles" hidden></canvas>
     <div class="kiosk-fallback-card" id="kiosk-fallback" hidden>
       <h1>SETUP REQUIRED</h1>
@@ -165,9 +408,61 @@
       <div class="row device-row">Device ID: <strong>{{ device_id }}</strong></div>
     </div>
 
-    {# ---- Top device-ID pill (sits on top of the setup video) ---- #}
+    {# ---- Device-ID pill (top overlay, visible on the setup video) ---- #}
     <div class="kiosk-overlay-top" id="kiosk-device-id-overlay" hidden>
       <span class="kiosk-device-id-pill">{{ device_id }}</span>
+    </div>
+
+    {# ---- OPERATIONAL DISPLAY (permanent view after first boot) ---- #}
+    <div class="kiosk-op" id="kiosk-op" hidden>
+      <header class="op-header">
+        <div class="op-brand">
+          <span class="mark">QDRN</span>
+          <span class="brand-text">SkyTrack Portal</span>
+        </div>
+        <div class="op-clock">
+          <span id="op-clock-time">--:--</span>
+          <span class="op-date" id="op-clock-date">&nbsp;</span>
+        </div>
+        <div class="op-weather" id="op-weather">
+          <span class="temp" id="op-wx-temp">—</span>
+          <span class="cond" id="op-wx-cond">—</span>
+        </div>
+      </header>
+
+      <main class="op-main">
+        <section class="op-card">
+          <div class="label">Aircraft Now</div>
+          <div class="value" id="op-now-value">—</div>
+          <div class="sub" id="op-now-sub">last 5 min</div>
+        </section>
+        <section class="op-card">
+          <div class="label">Aircraft Today</div>
+          <div class="value" id="op-today-value">—</div>
+          <div class="sub" id="op-today-sub">since midnight (UTC)</div>
+        </section>
+        <section class="op-card">
+          <div class="label">Busiest Hour</div>
+          <div class="value" id="op-busy-value">—</div>
+          <div class="sub" id="op-busy-sub">last 24 h</div>
+        </section>
+        <section class="op-card accent-warm">
+          <div class="label">Last Aircraft</div>
+          <div class="value" id="op-last-value">—</div>
+          <div class="sub" id="op-last-sub">awaiting contacts</div>
+        </section>
+      </main>
+
+      <footer class="op-footer">
+        <div class="meta-left">
+          <span class="meta-label">Device</span>
+          <span class="device-id">{{ device_id }}</span>
+        </div>
+        <div class="meta-right">
+          <span class="meta-label">Radar</span>
+          <span class="meta-value" id="op-radar-url">—</span>
+        </div>
+      </footer>
     </div>
 
   </div>
