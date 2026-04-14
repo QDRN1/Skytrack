@@ -375,11 +375,12 @@ def api_wifi_remove():
 
 _INTEGRATION_FLAGS = (
     'aeroapi_enabled', 'aeroapi_calls_per_hour', 'aeroapi_calls_per_day',
-    'aeroapi_cost_per_call', 'opensky_enabled', 'opensky_poll_minutes',
-    'enrichment_ttl_hours', 'weather_provider',
+    'aeroapi_cost_per_call', 'aeroapi_monthly_budget_usd',
+    'opensky_enabled', 'opensky_poll_minutes',
+    'enrichment_ttl_hours', 'weather_enabled', 'weather_provider',
 )
 _INTEGRATION_SECRETS = (
-    'aeroapi_key', 'opensky_user', 'opensky_pass', 'weather_api_key',
+    'aeroapi_key', 'opensky_username', 'opensky_password', 'openweather_api_key',
 )
 
 
@@ -503,6 +504,8 @@ _DATA_KEYS = (
     'default_dashboard_time_filter', 'sightings_retention_days',
     'logs_retention_days', 'max_records', 'ignore_helicopters',
     'ignore_ground_targets', 'min_altitude_ft', 'signal_threshold_dbm',
+    # --- New touch-shell keys ---
+    'data_retention_days', 'data_max_rows', 'data_autovacuum',
 )
 
 
@@ -514,11 +517,12 @@ def api_data():
         return jsonify({'config': {k: cfg.get(k) for k in _DATA_KEYS}})
     payload = request.get_json(silent=True) or {}
     updates = _take(payload, _DATA_KEYS)
-    for k in ('ignore_helicopters', 'ignore_ground_targets'):
+    for k in ('ignore_helicopters', 'ignore_ground_targets', 'data_autovacuum'):
         if k in updates:
             updates[k] = bool(updates[k])
     for k in ('sightings_retention_days', 'logs_retention_days', 'max_records',
-              'min_altitude_ft', 'signal_threshold_dbm'):
+              'min_altitude_ft', 'signal_threshold_dbm',
+              'data_retention_days', 'data_max_rows'):
         if k in updates:
             try:
                 updates[k] = int(updates[k])
@@ -538,7 +542,12 @@ _ALERT_KEYS = (
     'buzzer_enabled', 'buzzer_volume', 'buzzer_threshold_temp_f',
     'buzzer_threshold_hum', 'alert_no_aircraft_minutes', 'alert_cell_disconnect',
     'alert_wifi_disconnect', 'alert_api_budget_pct', 'alert_low_storage_pct',
+    # --- New touch-shell alert keys ---
+    'alerts_enabled', 'alert_military', 'alert_emergency', 'alert_heavy',
+    'alert_watchlist', 'alert_radius_nm', 'alert_cooldown_minutes',
+    'alert_delivery', 'alert_volume',
 )
+_VALID_ALERT_DELIVERY = {'toast', 'sound', 'both', 'off'}
 
 
 @settings_bp.route('/api/settings/alerts', methods=['GET', 'POST'])
@@ -552,10 +561,14 @@ def api_alerts():
         })
     payload = request.get_json(silent=True) or {}
     updates = _take(payload, _ALERT_KEYS)
-    for k in ('buzzer_enabled', 'alert_cell_disconnect', 'alert_wifi_disconnect'):
+    bool_keys = ('buzzer_enabled', 'alert_cell_disconnect', 'alert_wifi_disconnect',
+                 'alerts_enabled', 'alert_military', 'alert_emergency',
+                 'alert_heavy', 'alert_watchlist')
+    for k in bool_keys:
         if k in updates:
             updates[k] = bool(updates[k])
-    for k in ('buzzer_volume', 'alert_api_budget_pct', 'alert_low_storage_pct'):
+    for k in ('buzzer_volume', 'alert_api_budget_pct', 'alert_low_storage_pct',
+              'alert_volume'):
         if k in updates:
             try:
                 updates[k] = max(0, min(100, int(updates[k])))
@@ -566,6 +579,18 @@ def api_alerts():
             updates['alert_no_aircraft_minutes'] = max(0, int(updates['alert_no_aircraft_minutes']))
         except (TypeError, ValueError):
             return _err('alert_no_aircraft_minutes must be an integer')
+    if 'alert_radius_nm' in updates:
+        try:
+            updates['alert_radius_nm'] = max(1, min(250, int(updates['alert_radius_nm'])))
+        except (TypeError, ValueError):
+            return _err('alert_radius_nm must be 1-250')
+    if 'alert_cooldown_minutes' in updates:
+        try:
+            updates['alert_cooldown_minutes'] = max(1, min(1440, int(updates['alert_cooldown_minutes'])))
+        except (TypeError, ValueError):
+            return _err('alert_cooldown_minutes must be 1-1440')
+    if 'alert_delivery' in updates and updates['alert_delivery'] not in _VALID_ALERT_DELIVERY:
+        return _err('alert_delivery must be toast/sound/both/off')
     for k in ('buzzer_threshold_temp_f', 'buzzer_threshold_hum'):
         if k in updates:
             try:
@@ -597,8 +622,11 @@ def api_buzzer_test():
 _UPDATE_KEYS = (
     'update_check_enabled', 'update_allow_cellular', 'auto_backup_frequency',
     'ota_remote', 'ota_branch',
+    # --- New touch-shell update keys ---
+    'ota_auto_check', 'ota_channel', 'backup_frequency', 'backup_keep',
 )
 _VALID_BACKUP_FREQ = {'off', 'daily', 'weekly', 'monthly'}
+_VALID_OTA_CHANNELS = {'stable', 'beta'}
 
 
 def _backup_dir() -> Path:
@@ -626,9 +654,19 @@ def api_updates():
     if 'auto_backup_frequency' in updates and \
             updates['auto_backup_frequency'] not in _VALID_BACKUP_FREQ:
         return _err('auto_backup_frequency must be off/daily/weekly/monthly')
-    for k in ('update_check_enabled', 'update_allow_cellular'):
+    if 'backup_frequency' in updates and \
+            updates['backup_frequency'] not in _VALID_BACKUP_FREQ:
+        return _err('backup_frequency must be off/daily/weekly/monthly')
+    if 'ota_channel' in updates and updates['ota_channel'] not in _VALID_OTA_CHANNELS:
+        return _err('ota_channel must be stable/beta')
+    for k in ('update_check_enabled', 'update_allow_cellular', 'ota_auto_check'):
         if k in updates:
             updates[k] = bool(updates[k])
+    if 'backup_keep' in updates:
+        try:
+            updates['backup_keep'] = max(1, min(50, int(updates['backup_keep'])))
+        except (TypeError, ValueError):
+            return _err('backup_keep must be an integer 1-50')
     cfg.update(updates)
     _persist(updates)
     logs_svc.log_portal('admin', 'settings_updates_update', updates)

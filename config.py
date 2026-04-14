@@ -74,10 +74,12 @@ DEFAULT_CONFIG = {
     'aeroapi_calls_per_hour': 10,
     'aeroapi_calls_per_day': 200,
     'aeroapi_cost_per_call': 0.01,
+    'aeroapi_monthly_budget_usd': 5,
     'opensky_enabled': False,
     'opensky_poll_minutes': 10,
     'enrichment_ttl_hours': 24,
-    'weather_provider': 'openmeteo',  # openmeteo | openweathermap
+    'weather_enabled': True,
+    'weather_provider': 'open-meteo',  # open-meteo | openweather | none
 
     # --- Weather --------------------------------------------------------
     'weather_interval': 1800,     # 30 min
@@ -99,9 +101,14 @@ DEFAULT_CONFIG = {
     'ota_remote': 'origin',
     'ota_branch': 'main',
     'ota_enabled': True,
+    'ota_auto_check': True,
+    'ota_channel': 'stable',        # stable | beta
+    'ota_last_check': None,
     'update_check_enabled': True,
     'update_allow_cellular': False,
     'auto_backup_frequency': 'weekly',  # off | daily | weekly | monthly
+    'backup_frequency': 'off',          # touch-shell equivalent
+    'backup_keep': 5,
 
     # --- Paths ----------------------------------------------------------
     'data_dir': '/var/lib/skytrack',
@@ -133,6 +140,21 @@ DEFAULT_CONFIG = {
     'alert_wifi_disconnect': False,
     'alert_api_budget_pct': 80,    # warn at 80% of daily budget
     'alert_low_storage_pct': 90,   # warn at 90% disk usage
+    # Touch-shell notification policy
+    'alerts_enabled': True,
+    'alert_military': True,
+    'alert_emergency': True,
+    'alert_heavy': False,
+    'alert_watchlist': True,
+    'alert_radius_nm': 25,
+    'alert_cooldown_minutes': 30,
+    'alert_delivery': 'both',      # toast | sound | both | off
+    'alert_volume': 70,
+
+    # --- Data pruning (touch-shell) -------------------------------------
+    'data_retention_days': 30,
+    'data_max_rows': 500000,
+    'data_autovacuum': True,
 
     # --- Logging --------------------------------------------------------
     'log_level': 'INFO',
