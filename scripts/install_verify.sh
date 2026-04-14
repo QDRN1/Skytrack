@@ -318,6 +318,28 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+hdr "operator verification scripts"
+if command -v jq >/dev/null 2>&1; then
+  ok "jq in PATH ($(command -v jq))"
+else
+  fail "jq not installed (quick_check/long_check cannot format JSON)"
+fi
+for s in quick_check long_check; do
+  src="$REPO_DIR/scripts/${s}.sh"
+  link="/usr/local/bin/skytrack-${s//_/-}"
+  if [[ -x "$src" ]]; then
+    ok "$src executable"
+  else
+    fail "$src missing or not executable"
+  fi
+  if [[ -L "$link" ]]; then
+    ok "$link symlinked"
+  else
+    fail "$link symlink missing"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 hdr "polkit (restart buttons)"
 if [[ -f /etc/polkit-1/rules.d/50-skytrack.rules ]]; then
   ok "polkit rule 50-skytrack.rules installed"

@@ -395,6 +395,40 @@ if [[ "$SKIP_HOTSPOT" != true && "$DEV_INSTALL" != true ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 12b. operator verification scripts — symlink to /usr/local/bin
+#
+# install.sh already pulls `jq` via PKGS above, so on a fresh install both
+# scripts and jq are guaranteed present. This step just creates the two
+# operator-friendly aliases:
+#
+#     skytrack-quick-check  → /opt/skytrack/scripts/quick_check.sh
+#     skytrack-long-check   → /opt/skytrack/scripts/long_check.sh
+#
+# Idempotent: ln -sfn replaces a stale link, never errors on re-run.
+# ---------------------------------------------------------------------------
+if [[ "$DEV_INSTALL" != true ]]; then
+  log "step 12b/14: operator verification scripts"
+  # Defensive: top-up jq in case an existing image was installed before jq
+  # was added to PKGS. apt is idempotent so this is essentially free.
+  if ! command -v jq >/dev/null 2>&1; then
+    apt-get install -y -qq jq >> "$LOG_FILE" 2>&1 \
+      || warn "could not install jq — quick_check / long_check will not format JSON"
+  fi
+  for s in quick_check long_check; do
+    src="$REPO_DIR/scripts/${s}.sh"
+    link="/usr/local/bin/skytrack-${s//_/-}"
+    if [[ -f "$src" ]]; then
+      chmod 0755 "$src" 2>/dev/null || true
+      ln -sfn "$src" "$link" \
+        && info "linked $link -> $src" \
+        || warn "could not link $link"
+    else
+      warn "missing $src — skipping symlink"
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------------
 # 13. start app + display (runtime smoke-test targets)
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then

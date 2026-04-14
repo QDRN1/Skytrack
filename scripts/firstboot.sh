@@ -93,6 +93,35 @@ PY
 chmod 0755 "$SPLASH_DIR" 2>/dev/null || true
 chmod 0644 "$DEVICE_JS" 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# Operator verification scripts
+#
+# Belt-and-braces for upgrade-in-place: install jq if it's missing (older
+# images shipped without it) and (re)create the /usr/local/bin symlinks
+# the operator types day-to-day. Both are no-ops on a fresh install where
+# install.sh has already done this.
+# ---------------------------------------------------------------------------
+if ! command -v jq >/dev/null 2>&1; then
+  echo "firstboot: installing missing jq for verification scripts"
+  if command -v apt-get >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jq >/dev/null 2>&1 \
+      || echo "firstboot: jq install failed (non-fatal)"
+  fi
+fi
+
+for s in quick_check long_check; do
+  src="$REPO_DIR/scripts/${s}.sh"
+  link="/usr/local/bin/skytrack-${s//_/-}"
+  if [[ -f "$src" ]]; then
+    chmod 0755 "$src" 2>/dev/null || true
+    if [[ ! -L "$link" || "$(readlink "$link")" != "$src" ]]; then
+      ln -sfn "$src" "$link" 2>/dev/null \
+        && echo "firstboot: linked $link -> $src" \
+        || echo "firstboot: could not link $link (non-fatal)"
+    fi
+  fi
+done
+
 echo "firstboot: writing marker"
 date -u +%FT%TZ > "$MARKER"
 echo "firstboot: complete"

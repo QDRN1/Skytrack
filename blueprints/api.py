@@ -41,6 +41,62 @@ def api_sensor():
     return jsonify({'reading': reading, 'buzzer': eval_result})
 
 
+@api_bp.route('/api/hardware/summary')
+def api_hardware_summary():
+    """Public hardware-truth summary consumed by the kiosk diagnostics
+    panel and by the operator CLI tools (`skytrack-quick-check` /
+    `skytrack-long-check`).
+
+    Returns *non-secret* fields only — no PINs, no API keys, no
+    network credentials. Specifically:
+
+      sensor.source         real | cached | mock | error
+      sensor.available      bool — DHT22 init succeeded
+      sensor.temperature_f  current reading (or null)
+      sensor.last_error     short string for the diagnostics panel
+
+      buzzer.available      bool — PWM init succeeded
+      buzzer.enabled        bool — operator hasn't muted it
+      buzzer.last_error     short string
+
+      gps.state             disabled | searching | fix_acquired | stale | error
+                            (placeholder while Phase 6 ships — currently
+                            always 'not_implemented')
+
+    Kept here in api.py instead of behind ADMIN so that:
+      1. The kiosk page can render the hardware row pre-login.
+      2. `quick_check.sh` can scrape it without an auth cookie.
+    """
+    sensor_reading = current_app.sensor_svc.read() or {}
+    bz = current_app.buzzer
+
+    # GPS isn't implemented yet (Phase 6) — return a stable shape so the
+    # CLI doesn't have to special-case its absence.
+    gps = {
+        'state':       'not_implemented',
+        'source':      None,
+        'fix_age_sec': None,
+        'satellites':  None,
+    }
+
+    return jsonify({
+        'sensor': {
+            'available':     bool(getattr(current_app.sensor_svc, 'available', False)),
+            'source':        sensor_reading.get('source') or 'mock',
+            'temperature_f': sensor_reading.get('temperature_f'),
+            'humidity':      sensor_reading.get('humidity'),
+            'last_error':    sensor_reading.get('last_error')
+                              or getattr(current_app.sensor_svc, 'last_error', '') or '',
+        },
+        'buzzer': {
+            'available':  bool(bz.available()),
+            'enabled':    bool(getattr(bz, 'enabled', False)),
+            'last_error': getattr(bz, 'last_error', '') or '',
+        },
+        'gps': gps,
+    })
+
+
 @api_bp.route('/api/weather')
 def api_weather():
     return jsonify(current_app.weather_svc.get_weather())
