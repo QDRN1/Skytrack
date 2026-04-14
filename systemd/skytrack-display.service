@@ -19,7 +19,10 @@ ExecStart=/usr/bin/chromium-browser \
   --disable-translate \
   --disable-features=TranslateUI \
   --check-for-update-interval=31536000 \
-  --app=http://127.0.0.1:8080/dashboard
+  --autoplay-policy=no-user-gesture-required \
+  --overscroll-history-navigation=0 \
+  --disable-pinch \
+  --app=http://127.0.0.1:8080/kiosk
 Restart=on-failure
 RestartSec=10
 

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>SkyTrack Portal — {{ device_id }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <style>
+    /* ----- Reset for the kiosk: no scrollbars, no chrome, pure black ----- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100vw; height: 100vh;
+      background: #000;
+      color: #ffffff;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      cursor: none;          /* hide mouse pointer in kiosk mode */
+      user-select: none;
+    }
+    [hidden] { display: none !important; }
+
+    /* ----- Stage container ----- */
+    .kiosk-stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* ----- Video layers ----- */
+    .kiosk-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+
+    /* ----- Canvas particles (fallback background) ----- */
+    .kiosk-particles {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background:
+        radial-gradient(ellipse at 20% 25%, rgba(46, 108, 246, 0.30), transparent 60%),
+        radial-gradient(ellipse at 80% 70%, rgba(242, 145, 53, 0.18), transparent 60%),
+        linear-gradient(180deg, #050a1a 0%, #02050f 100%);
+    }
+
+    /* ----- Top device-ID overlay (sits on top of the setup video) ----- */
+    .kiosk-overlay-top {
+      position: absolute;
+      top: 6vh;
+      left: 0; right: 0;
+      text-align: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .kiosk-device-id-pill {
+      display: inline-block;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 12px 28px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(1.1em, 2.4vh, 1.7em);
+      letter-spacing: 1.5px;
+      color: #ffffff;
+      text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    /* ----- Centered fallback card (over particles) ----- */
+    .kiosk-fallback-card {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      text-align: center;
+      z-index: 30;
+      padding: 32px;
+    }
+    .kiosk-fallback-card h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2.2em, 7vh, 4.4em);
+      font-weight: 700;
+      letter-spacing: 6px;
+      color: #ffffff;
+      text-shadow:
+        0 0 24px rgba(77, 139, 255, 0.55),
+        0 2px 18px rgba(0, 0, 0, 0.85);
+    }
+    .kiosk-fallback-card .row {
+      font-size: clamp(1.1em, 2.6vh, 1.7em);
+      color: rgba(255, 255, 255, 0.92);
+      text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+      letter-spacing: 0.5px;
+    }
+    .kiosk-fallback-card .row strong {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color: #ffd49b;
+      font-weight: 600;
+    }
+    .kiosk-fallback-card .device-row {
+      margin-top: 12px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      width: min(560px, 80vw);
+    }
+
+    /* Subtle pulse on the SETUP REQUIRED headline so the screen doesn't
+       look frozen on a totally still gradient. */
+    @keyframes kiosk-pulse {
+      0%, 100% { opacity: 0.92; transform: translateY(0); }
+      50%      { opacity: 1.00; transform: translateY(-2px); }
+    }
+    .kiosk-fallback-card h1 {
+      animation: kiosk-pulse 4s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="kiosk"
+      data-configured="{{ '1' if kiosk_configured else '0' }}"
+      data-device-id="{{ device_id }}">
+
+  <div class="kiosk-stage" id="kiosk-stage">
+
+    {# ---- Looping setup video (visible only when not configured) ---- #}
+    <video id="kiosk-setup-video"
+           class="kiosk-video"
+           autoplay muted loop playsinline preload="auto"
+           hidden>
+      <source src="{{ url_for('static', filename='video/SkyTrack Setup Screen.mp4') }}"
+              type="video/mp4">
+    </video>
+
+    {# ---- One-shot boot video (visible after setup completes) ---- #}
+    <video id="kiosk-boot-video"
+           class="kiosk-video"
+           autoplay muted playsinline preload="auto"
+           hidden>
+      <source src="{{ url_for('static', filename='video/SkyTrack Boot Screen-V1.mp4') }}"
+              type="video/mp4">
+    </video>
+
+    {# ---- Particles canvas + fallback text (used if setup video fails) ---- #}
+    <canvas id="kiosk-particles" class="kiosk-particles" hidden></canvas>
+    <div class="kiosk-fallback-card" id="kiosk-fallback" hidden>
+      <h1>SETUP REQUIRED</h1>
+      <div class="row">WiFi: <strong>{{ ssid }}</strong></div>
+      <div class="row">URL: <strong>http://{{ gateway }}</strong></div>
+      <div class="row device-row">Device ID: <strong>{{ device_id }}</strong></div>
+    </div>
+
+    {# ---- Top device-ID pill (sits on top of the setup video) ---- #}
+    <div class="kiosk-overlay-top" id="kiosk-device-id-overlay" hidden>
+      <span class="kiosk-device-id-pill">{{ device_id }}</span>
+    </div>
+
+  </div>
+
+  <script src="{{ url_for('static', filename='js/kiosk.js') }}" defer></script>
+</body>
+</html>

@@ -62,6 +62,39 @@ def root():
 
 
 # ---------------------------------------------------------------------------
+# Kiosk display — the on-device fullscreen Chromium target
+# ---------------------------------------------------------------------------
+#
+# Distinct from the admin's /setup wizard. The admin walks through /setup
+# on their phone over the SkyTrack-Portal hotspot. The on-device display
+# is a Chromium kiosk pointed at /kiosk and just needs to look pretty:
+#
+#   • Not configured  → fullscreen looping setup video + device ID overlay
+#                       (with a particles + text fallback if the video
+#                       file isn't there yet).
+#   • Configured      → fullscreen boot video, then redirect to /dashboard
+#                       once the video ends.
+#
+# The page polls /api/auth/status every ~1.5s so that the moment the
+# admin finishes the wizard on their phone, the kiosk transitions away
+# from the setup video on its own — no Chromium reload required.
+
+@auth_bp.route('/kiosk')
+def kiosk_display():
+    """Fullscreen kiosk landing page for the on-device Chromium display."""
+    cfg = current_app.skytrack_config
+    identity = current_app.config.get('DEVICE_RECORD', {})
+    return render_template(
+        'kiosk.html',
+        device_id=current_app.config.get('DEVICE_ID', ''),
+        device=identity,
+        ssid=cfg.get('hotspot_ssid', 'SkyTrack-Portal'),
+        gateway=cfg.get('hotspot_gateway', '10.4.26.89'),
+        kiosk_configured=auth_lib.is_configured(),
+    )
+
+
+# ---------------------------------------------------------------------------
 # First-boot wizard — first-client lock + 10-min timeout
 # ---------------------------------------------------------------------------
 
