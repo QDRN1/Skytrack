@@ -251,10 +251,23 @@ def _start_background_services(app: Flask) -> None:
     except Exception as e:
         logger.warning('ingest start failed: %s', e)
 
-    # 2. Sensor polling loop
+    # 2a. DHT22 hardware poller — single owner of the GPIO pin.
+    # The poll cadence and retry behaviour live inside SensorService;
+    # this just kicks the thread off. Idempotent + no-op when hardware
+    # is absent.
+    try:
+        app.sensor_svc.start()
+    except Exception as e:
+        logger.warning('sensor poller start failed: %s', e)
+
+    # 2b. Sensor emit loop — runs at app cadence, READS THE CACHE, never
+    # touches the GPIO. Hammering the DHT22 from N HTTP endpoints +
+    # websocket emitters is what produced the constant "Checksum did not
+    # validate" stream; SensorService now owns the pin and serves cached
+    # readings to everyone else.
     def _sensor_loop():
         import logs_svc
-        interval = max(5, int(cfg.get('sensor_interval', 15)))
+        interval = max(5, int(cfg.get('sensor_emit_interval', 5)))
         while True:
             try:
                 reading = app.sensor_svc.read()

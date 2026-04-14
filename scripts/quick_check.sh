@@ -225,18 +225,36 @@ ROUTE_LABEL="$PRIMARY"
 if [[ -n "$HARDWARE_JSON" ]]; then
   SENSOR_SRC="$(   echo "$HARDWARE_JSON" | jq -r '.sensor.source // "unknown"')"
   SENSOR_TEMP="$(  echo "$HARDWARE_JSON" | jq -r '.sensor.temperature_f // empty')"
+  SENSOR_HUM="$(   echo "$HARDWARE_JSON" | jq -r '.sensor.humidity // empty')"
+  SENSOR_AGE="$(   echo "$HARDWARE_JSON" | jq -r '.sensor.cache_age_sec // empty')"
+  SENSOR_AVAIL="$( echo "$HARDWARE_JSON" | jq -r 'if .sensor.available then "yes" else "no" end')"
   BUZZER_AVAIL="$( echo "$HARDWARE_JSON" | jq -r 'if .buzzer.available then "yes" else "no" end')"
   GPS_STATE="$(    echo "$HARDWARE_JSON" | jq -r '.gps.state // "unknown"')"
 else
-  SENSOR_SRC="?"; SENSOR_TEMP=""; BUZZER_AVAIL="?"; GPS_STATE="?"
+  SENSOR_SRC="?"; SENSOR_TEMP=""; SENSOR_HUM=""; SENSOR_AGE=""
+  SENSOR_AVAIL="?"; BUZZER_AVAIL="?"; GPS_STATE="?"
 fi
 
+# Build the sensor label honestly. Show temp+humidity when we have them
+# (real OR cached). Append "(cached, Ns ago)" so the operator can tell
+# they're looking at the cache, not a fresh read.
 SENSOR_LABEL="$SENSOR_SRC"
 if [[ -n "$SENSOR_TEMP" && "$SENSOR_TEMP" != "null" ]]; then
-  SENSOR_LABEL="${SENSOR_SRC} (${SENSOR_TEMP}°F)"
+  if [[ -n "$SENSOR_HUM" && "$SENSOR_HUM" != "null" ]]; then
+    SENSOR_LABEL="${SENSOR_SRC} (${SENSOR_TEMP}°F, ${SENSOR_HUM}%)"
+  else
+    SENSOR_LABEL="${SENSOR_SRC} (${SENSOR_TEMP}°F)"
+  fi
+fi
+if [[ "$SENSOR_SRC" == "cached" && -n "$SENSOR_AGE" && "$SENSOR_AGE" != "null" ]]; then
+  SENSOR_LABEL="${SENSOR_LABEL} — last good ${SENSOR_AGE}s ago"
 fi
 
-# Color the sensor source so 'mock' on a deployed unit jumps out.
+# Color the sensor state so a deployed-unit 'mock' or 'error' jumps out.
+#   real    green   — fresh read in the most recent poll cycle
+#   cached  yellow  — last cycle failed but we still have a recent good read
+#   mock    yellow  — hardware genuinely absent (or dev box)
+#   error   red     — no usable data and cache is stale; mark unhealthy
 case "$SENSOR_SRC" in
   real)            SENSOR_COLOR="$C_GREEN" ;;
   cached)          SENSOR_COLOR="$C_YELLOW" ;;

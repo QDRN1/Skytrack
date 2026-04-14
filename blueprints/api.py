@@ -51,8 +51,11 @@ def api_hardware_summary():
     network credentials. Specifically:
 
       sensor.source         real | cached | mock | error
+      sensor.state          alias of source for clarity
       sensor.available      bool — DHT22 init succeeded
       sensor.temperature_f  current reading (or null)
+      sensor.humidity       current reading (or null)
+      sensor.cache_age_sec  seconds since last good read (cached only)
       sensor.last_error     short string for the diagnostics panel
 
       buzzer.available      bool — PWM init succeeded
@@ -79,12 +82,15 @@ def api_hardware_summary():
         'satellites':  None,
     }
 
+    src = sensor_reading.get('source') or sensor_reading.get('state') or 'mock'
     return jsonify({
         'sensor': {
             'available':     bool(getattr(current_app.sensor_svc, 'available', False)),
-            'source':        sensor_reading.get('source') or 'mock',
+            'source':        src,
+            'state':         sensor_reading.get('state') or src,
             'temperature_f': sensor_reading.get('temperature_f'),
             'humidity':      sensor_reading.get('humidity'),
+            'cache_age_sec': sensor_reading.get('cache_age_sec'),
             'last_error':    sensor_reading.get('last_error')
                               or getattr(current_app.sensor_svc, 'last_error', '') or '',
         },

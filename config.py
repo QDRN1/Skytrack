@@ -45,7 +45,11 @@ DEFAULT_CONFIG = {
     'buzzer_threshold_temp_f': 95.0,
     'buzzer_threshold_hum': 80.0,
     'buzzer_volume': 60,        # 0-100 PWM duty cycle
-    'sensor_interval': 15,      # seconds between reads
+    'sensor_interval': 20,      # seconds between DHT22 poll cycles
+    'sensor_cache_window_sec': 90,  # how long a 'cached' reading stays valid
+    'sensor_retry_attempts': 3,     # attempts inside a single poll cycle
+    'sensor_retry_delay_sec': 1.5,  # delay between retry attempts
+    'sensor_emit_interval': 5,      # how often app.py rebroadcasts the cache
 
     # --- ADS-B ingestion -----------------------------------------------
     # dump1090-fa writes its live snapshot to dump1090_json_path on a tmpfs.
