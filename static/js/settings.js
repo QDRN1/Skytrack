@@ -472,10 +472,22 @@
     try {
       const r = await window.api.get('/api/settings/feeders/status');
       const setTile = (id, st) => {
+        const t = $('#feed-' + id + '-tile');
         const v = $('#feed-' + id + '-value');
         const s = $('#feed-' + id + '-sub');
-        if (v) v.textContent = st && st.state || 'off';
-        if (s) s.textContent = st && st.detail || '';
+        const state = (st && st.state) || 'off';
+        const label = {
+          on:      'running',
+          off:     'stopped',
+          missing: 'not installed',
+        }[state] || state;
+        if (v) v.textContent = label;
+        if (s) s.textContent = (st && st.detail) || '';
+        if (t) {
+          t.classList.toggle('is-on',      state === 'on');
+          t.classList.toggle('is-off',     state === 'off');
+          t.classList.toggle('is-missing', state === 'missing');
+        }
       };
       setTile('dump', r.dump1090);
       setTile('fr24', r.fr24);

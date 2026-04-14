@@ -56,6 +56,17 @@ def index():
     cfg = current_app.skytrack_config
     identity = current_app.config.get('DEVICE_RECORD', {})
     aeroapi_usage = enrich.usage_summary('aeroapi')
+    secrets_set = {
+        # Integrations
+        'aeroapi_key':        bool(auth_lib.get_secret('aeroapi_key')),
+        'opensky_username':   bool(auth_lib.get_secret('opensky_username')),
+        'opensky_password':   bool(auth_lib.get_secret('opensky_password')),
+        'openweather_api_key':bool(auth_lib.get_secret('openweather_api_key')),
+        # Feeders
+        'fr24_key':           bool(auth_lib.get_secret('fr24_key')),
+        'piaware_feeder_id':  bool(auth_lib.get_secret('piaware_feeder_id')),
+        'flightaware_id':     bool(auth_lib.get_secret('flightaware_id')),
+    }
     return render_template(
         'settings/index.html',
         identity=identity,
@@ -65,6 +76,7 @@ def index():
         usage_opensky=enrich.usage_summary('opensky'),
         hotspot_default_ssid=_default_hotspot_ssid(cfg, identity),
         timezone_groups=_timezone_groups(),
+        secrets_set=secrets_set,
     )
 
 
@@ -531,6 +543,39 @@ def _systemd_active(unit: str) -> bool:
         return r.stdout.strip() == 'active'
     except Exception:
         return False
+
+
+def _systemd_presence(unit: str) -> dict:
+    """Richer 3-state answer: not-installed / installed-but-stopped / active.
+
+    Uses `systemctl show` so we get a single round-trip and the LoadState
+    field, which tells us whether the unit file even exists.
+    """
+    out = {'installed': False, 'active': False, 'state': 'missing'}
+    try:
+        r = subprocess.run(
+            ['systemctl', 'show', unit,
+             '--property=LoadState', '--property=ActiveState'],
+            capture_output=True, text=True, timeout=3,
+        )
+        fields = {}
+        for line in (r.stdout or '').splitlines():
+            if '=' in line:
+                k, _, v = line.partition('=')
+                fields[k.strip()] = v.strip()
+        load = fields.get('LoadState', '')
+        active = fields.get('ActiveState', '')
+        if load == 'loaded':
+            out['installed'] = True
+            out['active'] = (active == 'active')
+            out['state']  = active or 'unknown'
+        else:
+            out['state'] = 'missing'  # unit not installed
+    except FileNotFoundError:
+        out['state'] = 'no-systemd'
+    except Exception as e:
+        out['state'] = f'error: {e}'
+    return out
 
 
 # ===========================================================================
@@ -1099,13 +1144,38 @@ def api_wifi_connect():
 @settings_bp.route('/api/settings/feeders/status', methods=['GET'])
 @ADMIN
 def api_feeders_status():
-    def tile(unit, label):
-        active = _systemd_active(unit)
-        return {'state': 'on' if active else 'off', 'detail': unit}
+    """Honest 3-state tiles for Settings → Feeders.
+
+    Separates "not installed" (wasn't selected at install time) from
+    "installed but stopped" from "running". The UI uses this to avoid
+    shaming users for something they opted out of.
+    """
+    def tile(unit):
+        p = _systemd_presence(unit)
+        if not p['installed']:
+            return {
+                'state':     'missing',
+                'installed': False,
+                'active':    False,
+                'detail':    'not installed',
+            }
+        if p['active']:
+            return {
+                'state':     'on',
+                'installed': True,
+                'active':    True,
+                'detail':    f'{unit} running',
+            }
+        return {
+            'state':     'off',
+            'installed': True,
+            'active':    False,
+            'detail':    p['state'] or 'stopped',
+        }
     return jsonify({
-        'dump1090': tile('dump1090-fa', 'dump1090'),
-        'fr24':     tile('fr24feed',    'FR24'),
-        'piaware':  tile('piaware',     'PiAware'),
+        'dump1090': tile('dump1090-fa'),
+        'fr24':     tile('fr24feed'),
+        'piaware':  tile('piaware'),
     })
 
 

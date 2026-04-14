@@ -4,106 +4,149 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Integrations</h2>
-      <p class="muted">Toggle outside services and store API keys. Keys are write-only — once saved they show as <code>•••</code>.</p>
+      <p class="muted">
+        SkyTrack can enrich aircraft data and fetch weather from outside services.
+        Each one lists its own requirements below — nothing is turned on by default,
+        and API keys stay on this device in <code>/var/lib/skytrack/auth.json</code>.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-integrations"
           data-endpoint="/api/settings/integrations"
           data-section="integrations">
 
-      <div class="field">
-        <label class="switch-row">
-          <span>FlightAware AeroAPI</span>
-          <span class="switch">
-            <input type="checkbox" name="aeroapi_enabled"
-                   {% if config.aeroapi_enabled %}checked{% endif %}>
-            <span class="switch-track"></span>
-          </span>
-        </label>
-        <p class="muted small">Enriches arriving/departing flights with route + operator data. Costs per query — watch the budget below.</p>
-      </div>
+      {# ---------------- FlightAware AeroAPI ---------------- #}
+      <div class="integration-block">
+        <div class="integration-head">
+          <div>
+            <h3>FlightAware AeroAPI</h3>
+            <p class="muted small">Paid — usage billed per query. Enriches sighted aircraft with route, operator, and origin/destination.</p>
+          </div>
+          <span class="req-pill req-paid">Requires: API key + active billing</span>
+        </div>
 
-      <div class="field">
-        <label for="i-aeroapi-key">AeroAPI key
-          {% if config.aeroapi_key %}<span class="muted small">(stored)</span>{% endif %}
-        </label>
-        <input id="i-aeroapi-key" name="aeroapi_key" type="password"
-               autocomplete="off" placeholder="{% if config.aeroapi_key %}••• leave blank to keep •••{% else %}paste key…{% endif %}">
-      </div>
+        <div class="field">
+          <label class="switch-row">
+            <span>Enable AeroAPI lookups</span>
+            <span class="switch">
+              <input type="checkbox" name="aeroapi_enabled"
+                     {% if config.aeroapi_enabled %}checked{% endif %}>
+              <span class="switch-track"></span>
+            </span>
+          </label>
+          {% if config.aeroapi_enabled and not secrets_set.aeroapi_key %}
+            <p class="field-warn">Enabled, but no key is saved — lookups will fail until you paste a key below.</p>
+          {% endif %}
+        </div>
 
-      <div class="field">
-        <label for="i-aeroapi-budget">AeroAPI monthly budget (USD)</label>
-        <input id="i-aeroapi-budget" name="aeroapi_monthly_budget_usd" type="number"
-               min="0" max="500" step="1"
-               value="{{ config.aeroapi_monthly_budget_usd or 5 }}">
-      </div>
+        <div class="field">
+          <label for="i-aeroapi-key">AeroAPI key
+            {% if secrets_set.aeroapi_key %}<span class="muted small">(stored)</span>{% endif %}
+          </label>
+          <input id="i-aeroapi-key" name="aeroapi_key" type="password"
+                 autocomplete="off"
+                 placeholder="{% if secrets_set.aeroapi_key %}••• leave blank to keep •••{% else %}paste AeroAPI key…{% endif %}">
+        </div>
 
-      <div class="readonly-grid" id="aeroapi-usage-box">
-        <div class="readonly-row">
-          <span class="ro-label">This month</span>
-          <code class="ro-value">${{ '%.2f'|format(usage_aeroapi.cost_30d or 0) }}
-            <span class="muted small">({{ usage_aeroapi.calls_30d or 0 }} calls)</span>
-          </code>
+        <div class="field">
+          <label for="i-aeroapi-budget">Monthly budget cap (USD)</label>
+          <input id="i-aeroapi-budget" name="aeroapi_monthly_budget_usd" type="number"
+                 min="0" max="500" step="1"
+                 value="{{ config.aeroapi_monthly_budget_usd or 5 }}">
+          <p class="muted small">SkyTrack will stop hitting AeroAPI once this month's spend reaches the cap.</p>
+        </div>
+
+        <div class="readonly-grid" id="aeroapi-usage-box">
+          <div class="readonly-row">
+            <span class="ro-label">This month</span>
+            <code class="ro-value">${{ '%.2f'|format(usage_aeroapi.cost_30d or 0) }}
+              <span class="muted small">({{ usage_aeroapi.calls_30d or 0 }} calls)</span>
+            </code>
+          </div>
         </div>
       </div>
 
       <hr class="card-sep">
 
-      <div class="field">
-        <label class="switch-row">
-          <span>OpenSky Network</span>
-          <span class="switch">
-            <input type="checkbox" name="opensky_enabled"
-                   {% if config.opensky_enabled %}checked{% endif %}>
-            <span class="switch-track"></span>
-          </span>
-        </label>
-        <p class="muted small">Free fallback for callsign/operator lookups when AeroAPI is off or over budget.</p>
-      </div>
+      {# ---------------- OpenSky ---------------- #}
+      <div class="integration-block">
+        <div class="integration-head">
+          <div>
+            <h3>OpenSky Network</h3>
+            <p class="muted small">Free, community-run. Used as a fallback for callsign/operator data when AeroAPI is off or over budget.</p>
+          </div>
+          <span class="req-pill req-free">Requires: nothing (optional login raises rate limit)</span>
+        </div>
 
-      <div class="field">
-        <label for="i-os-user">OpenSky username <span class="muted small">optional</span></label>
-        <input id="i-os-user" name="opensky_username" type="text" autocomplete="off"
-               value="{{ config.opensky_username or '' }}">
-      </div>
+        <div class="field">
+          <label class="switch-row">
+            <span>Enable OpenSky lookups</span>
+            <span class="switch">
+              <input type="checkbox" name="opensky_enabled"
+                     {% if config.opensky_enabled %}checked{% endif %}>
+              <span class="switch-track"></span>
+            </span>
+          </label>
+        </div>
 
-      <div class="field">
-        <label for="i-os-pw">OpenSky password
-          {% if config.opensky_password %}<span class="muted small">(stored)</span>{% endif %}
-        </label>
-        <input id="i-os-pw" name="opensky_password" type="password" autocomplete="off"
-               placeholder="{% if config.opensky_password %}••• leave blank to keep •••{% else %}optional{% endif %}">
+        <div class="field">
+          <label for="i-os-user">OpenSky username <span class="muted small">optional</span></label>
+          <input id="i-os-user" name="opensky_username" type="text" autocomplete="off"
+                 value="{{ config.opensky_username or '' }}">
+        </div>
+
+        <div class="field">
+          <label for="i-os-pw">OpenSky password <span class="muted small">optional</span>
+            {% if secrets_set.opensky_password %}<span class="muted small">(stored)</span>{% endif %}
+          </label>
+          <input id="i-os-pw" name="opensky_password" type="password" autocomplete="off"
+                 placeholder="{% if secrets_set.opensky_password %}••• leave blank to keep •••{% else %}optional{% endif %}">
+        </div>
       </div>
 
       <hr class="card-sep">
 
-      <div class="field">
-        <label class="switch-row">
-          <span>Weather provider</span>
-          <span class="switch">
-            <input type="checkbox" name="weather_enabled"
-                   {% if config.weather_enabled %}checked{% endif %}>
-            <span class="switch-track"></span>
-          </span>
-        </label>
-      </div>
-
-      <div class="field">
-        <label>Provider</label>
-        <div class="segmented" role="radiogroup" aria-label="Weather provider">
-          {% for v, lbl in [('open-meteo','Open-Meteo (free)'),('openweather','OpenWeather'),('none','Off')] %}
-          <label class="seg"><input type="radio" name="weather_provider" value="{{ v }}"
-                 {% if (config.weather_provider or 'open-meteo') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
-          {% endfor %}
+      {# ---------------- Weather ---------------- #}
+      <div class="integration-block">
+        <div class="integration-head">
+          <div>
+            <h3>Weather</h3>
+            <p class="muted small">Shows conditions on the dashboard and the kiosk header. Open-Meteo is free and runs without a key.</p>
+          </div>
+          <span class="req-pill req-free">Open-Meteo: free · OpenWeather: API key</span>
         </div>
-      </div>
 
-      <div class="field">
-        <label for="i-ow-key">OpenWeather API key
-          {% if config.openweather_api_key %}<span class="muted small">(stored)</span>{% endif %}
-        </label>
-        <input id="i-ow-key" name="openweather_api_key" type="password" autocomplete="off"
-               placeholder="{% if config.openweather_api_key %}••• leave blank to keep •••{% else %}only required for OpenWeather{% endif %}">
+        <div class="field">
+          <label class="switch-row">
+            <span>Show weather on dashboard &amp; kiosk</span>
+            <span class="switch">
+              <input type="checkbox" name="weather_enabled"
+                     {% if config.weather_enabled %}checked{% endif %}>
+              <span class="switch-track"></span>
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label>Provider</label>
+          <div class="segmented" role="radiogroup" aria-label="Weather provider">
+            {% for v, lbl in [('open-meteo','Open-Meteo (free)'),('openweather','OpenWeather (key)'),('none','Off')] %}
+            <label class="seg"><input type="radio" name="weather_provider" value="{{ v }}"
+                   {% if (config.weather_provider or 'open-meteo') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+            {% endfor %}
+          </div>
+          {% if config.weather_enabled and config.weather_provider == 'openweather' and not secrets_set.openweather_api_key %}
+            <p class="field-warn">OpenWeather selected, but no API key is saved — weather will fall back to Open-Meteo.</p>
+          {% endif %}
+        </div>
+
+        <div class="field">
+          <label for="i-ow-key">OpenWeather API key
+            {% if secrets_set.openweather_api_key %}<span class="muted small">(stored)</span>{% endif %}
+          </label>
+          <input id="i-ow-key" name="openweather_api_key" type="password" autocomplete="off"
+                 placeholder="{% if secrets_set.openweather_api_key %}••• leave blank to keep •••{% else %}only required for OpenWeather{% endif %}">
+        </div>
       </div>
 
       <footer class="card-footer">

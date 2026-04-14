@@ -4,27 +4,36 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Feeder status</h2>
-      <p class="muted">Live status of the local dump1090 receiver and any uplink feeders.</p>
+      <p class="muted">
+        Feeders are optional — they share your receiver's ADS-B data with third
+        parties in exchange for services. A tile reading <i>not installed</i>
+        just means it wasn't selected at install time, not that something is broken.
+      </p>
     </header>
 
     <div class="card-body">
       <div class="status-grid">
-        <div class="status-tile" id="feed-dump-tile">
-          <span class="st-label">dump1090</span>
+        <div class="status-tile" id="feed-dump-tile" title="Local dump1090 receiver">
+          <span class="st-label">dump1090-fa</span>
           <span class="st-value" id="feed-dump-value">…</span>
           <span class="st-sub muted" id="feed-dump-sub">checking</span>
         </div>
-        <div class="status-tile" id="feed-fr24-tile">
+        <div class="status-tile" id="feed-fr24-tile" title="FlightRadar24 feeder">
           <span class="st-label">FlightRadar24</span>
           <span class="st-value" id="feed-fr24-value">…</span>
           <span class="st-sub muted" id="feed-fr24-sub">checking</span>
         </div>
-        <div class="status-tile" id="feed-pia-tile">
+        <div class="status-tile" id="feed-pia-tile" title="FlightAware PiAware feeder">
           <span class="st-label">PiAware</span>
           <span class="st-value" id="feed-pia-value">…</span>
           <span class="st-sub muted" id="feed-pia-sub">checking</span>
         </div>
       </div>
+
+      <p class="muted small">
+        To add a feeder that isn't installed, run the installer again on this
+        device without <code>--skip-piaware</code> or <code>--skip-fr24</code>.
+      </p>
     </div>
   </div>
 
@@ -40,26 +49,27 @@
 
       <div class="field">
         <label for="f-fr24">FlightRadar24 sharing key
-          {% if config.fr24_key %}<span class="muted small">(stored)</span>{% endif %}
+          {% if secrets_set.fr24_key %}<span class="muted small">(stored)</span>{% endif %}
         </label>
         <input id="f-fr24" name="fr24_key" type="password" autocomplete="off"
-               placeholder="{% if config.fr24_key %}••• leave blank to keep •••{% else %}paste sharing key…{% endif %}">
+               placeholder="{% if secrets_set.fr24_key %}••• leave blank to keep •••{% else %}paste sharing key…{% endif %}">
+        <p class="muted small">Obtain from fr24feed first-run; only used when the fr24feed service is installed.</p>
       </div>
 
       <div class="field">
         <label for="f-pia">PiAware feeder ID
-          {% if config.piaware_feeder_id %}<span class="muted small">(stored)</span>{% endif %}
+          {% if secrets_set.piaware_feeder_id %}<span class="muted small">(stored)</span>{% endif %}
         </label>
         <input id="f-pia" name="piaware_feeder_id" type="password" autocomplete="off"
-               placeholder="{% if config.piaware_feeder_id %}••• leave blank to keep •••{% else %}paste feeder id…{% endif %}">
+               placeholder="{% if secrets_set.piaware_feeder_id %}••• leave blank to keep •••{% else %}paste feeder id…{% endif %}">
       </div>
 
       <div class="field">
         <label for="f-fa">FlightAware site/feeder ID
-          {% if config.flightaware_id %}<span class="muted small">(stored)</span>{% endif %}
+          {% if secrets_set.flightaware_id %}<span class="muted small">(stored)</span>{% endif %}
         </label>
         <input id="f-fa" name="flightaware_id" type="password" autocomplete="off"
-               placeholder="{% if config.flightaware_id %}••• leave blank to keep •••{% else %}optional{% endif %}">
+               placeholder="{% if secrets_set.flightaware_id %}••• leave blank to keep •••{% else %}optional{% endif %}">
       </div>
 
       <hr class="card-sep">
