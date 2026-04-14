@@ -887,3 +887,440 @@ def api_radar():
         cfg['radar_publish_enabled'] = bool(payload['radar_publish_enabled'])
         _persist({'radar_publish_enabled': cfg['radar_publish_enabled']})
     return _ok()
+
+
+# ===========================================================================
+# 12. BRIDGE ENDPOINTS — match the touch-shell settings.js client
+#
+# The UI client calls cleaner, more RESTful paths (e.g. /wifi/forget,
+# /data/vacuum, /diagnostics/system).  These handlers either wrap the
+# existing implementations above or provide best-effort stubs that fail
+# gracefully on dev boxes without nmcli / systemctl / psutil.
+# ===========================================================================
+
+# ---------- Network ---------------------------------------------------------
+
+@settings_bp.route('/api/settings/network/status', methods=['GET'])
+@ADMIN
+def api_network_status():
+    cfg = current_app.skytrack_config
+    try:
+        base = network_svc.get_network_status(cfg) or {}
+    except Exception as e:
+        base = {'error': str(e)}
+    def wrap(src, **over):
+        out = {'state': src.get('state') or ('on' if src.get('connected') else 'off')}
+        out.update(over)
+        return out
+    cellular = base.get('cellular') or {}
+    wifi     = base.get('wifi')     or {}
+    hotspot  = base.get('hotspot')  or {}
+    internet = base.get('internet') or {}
+    return jsonify({
+        'cellular': {
+            'state': 'on' if cellular.get('connected') else 'off',
+            'detail': cellular.get('operator') or cellular.get('signal') or '',
+        },
+        'wifi': {
+            'state': 'on' if wifi.get('connected') else 'off',
+            'ssid': wifi.get('ssid') or '',
+        },
+        'hotspot': {
+            'state': 'on' if hotspot.get('active') else 'off',
+            'ssid': hotspot.get('ssid') or cfg.get('hotspot_ssid') or '',
+            'clients': hotspot.get('clients'),
+        },
+        'internet': {
+            'state': 'online' if internet.get('online') else 'offline',
+            'detail': internet.get('detail') or '',
+        },
+    })
+
+
+@settings_bp.route('/api/settings/network/wifi/saved', methods=['GET'])
+@ADMIN
+def api_wifi_saved():
+    cfg = current_app.skytrack_config
+    saved = list(cfg.get('saved_wifi_networks') or [])
+    connected_ssid = None
+    try:
+        st = network_svc.get_network_status(cfg) or {}
+        connected_ssid = (st.get('wifi') or {}).get('ssid')
+    except Exception:
+        pass
+    for n in saved:
+        n['connected'] = (n.get('ssid') == connected_ssid)
+    return jsonify({'networks': saved})
+
+
+@settings_bp.route('/api/settings/network/hotspot/password', methods=['GET'])
+@ADMIN
+def api_hotspot_password_get():
+    rec = auth_lib.read_auth() or {}
+    return jsonify({'password': rec.get('hotspot_password') or ''})
+
+
+@settings_bp.route('/api/settings/network/hotspot/regenerate', methods=['POST'])
+@ADMIN
+def api_hotspot_regenerate():
+    pw = auth_lib.set_hotspot_password(None)
+    logs_svc.log_network('hotspot_password_regen', {'len': len(pw or '')})
+    return _ok({'password': pw})
+
+
+@settings_bp.route('/api/settings/network/hotspot/restart', methods=['POST'])
+@ADMIN
+def api_hotspot_restart():
+    logs_svc.log_portal('admin', 'hotspot_restart', {})
+    results = []
+    for unit in ('hostapd', 'dnsmasq', 'skytrack-hotspot'):
+        ok, msg = _shell(['systemctl', 'restart', unit], timeout=10)
+        results.append({'unit': unit, 'ok': ok, 'message': msg})
+    return jsonify({'ok': any(r['ok'] for r in results), 'results': results})
+
+
+@settings_bp.route('/api/settings/network/wifi/add', methods=['POST'])
+@ADMIN
+def api_wifi_add_alias():
+    return api_wifi_add()
+
+
+@settings_bp.route('/api/settings/network/wifi/forget', methods=['POST'])
+@ADMIN
+def api_wifi_forget():
+    return api_wifi_remove()
+
+
+@settings_bp.route('/api/settings/network/wifi/connect', methods=['POST'])
+@ADMIN
+def api_wifi_connect():
+    payload = request.get_json(silent=True) or {}
+    ssid = (payload.get('ssid') or '').strip()
+    if not ssid:
+        return _err('ssid required')
+    ok, msg = _shell(['nmcli', 'device', 'wifi', 'connect', ssid], timeout=25)
+    logs_svc.log_network('wifi_connect', {'ssid': ssid, 'ok': ok})
+    return jsonify({'ok': ok, 'message': msg or 'connect issued'})
+
+
+# ---------- Feeders ---------------------------------------------------------
+
+@settings_bp.route('/api/settings/feeders/status', methods=['GET'])
+@ADMIN
+def api_feeders_status():
+    def tile(unit, label):
+        active = _systemd_active(unit)
+        return {'state': 'on' if active else 'off', 'detail': unit}
+    return jsonify({
+        'dump1090': tile('dump1090-fa', 'dump1090'),
+        'fr24':     tile('fr24feed',    'FR24'),
+        'piaware':  tile('piaware',     'PiAware'),
+    })
+
+
+@settings_bp.route('/api/settings/feeders/dump1090/restart', methods=['POST'])
+@ADMIN
+def api_dump1090_restart():
+    logs_svc.log_portal('admin', 'dump1090_restart', {})
+    ok, msg = _shell(['systemctl', 'restart', 'dump1090-fa'], timeout=15)
+    return jsonify({'ok': ok, 'message': msg or 'restart issued'})
+
+
+# ---------- Data ------------------------------------------------------------
+
+@settings_bp.route('/api/settings/data/usage', methods=['GET'])
+@ADMIN
+def api_data_usage():
+    cfg = current_app.skytrack_config
+    db_path = cfg.get('db_path') or ''
+    out = {'db_path': db_path}
+    try:
+        out['db_size'] = os.path.getsize(db_path) if db_path and os.path.exists(db_path) else 0
+    except Exception:
+        out['db_size'] = 0
+    try:
+        st = shutil.disk_usage(cfg.get('data_dir') or '/var/lib/skytrack')
+        out['disk_total'] = st.total
+        out['disk_used']  = st.used
+        out['disk_free']  = st.free
+    except Exception:
+        pass
+    return jsonify(out)
+
+
+def _with_db(fn):
+    try:
+        import db as _db
+        return fn(_db)
+    except Exception as e:
+        return _err(f'db error: {e}', 500)
+
+
+@settings_bp.route('/api/settings/data/vacuum', methods=['POST'])
+@ADMIN
+def api_data_vacuum():
+    def run(_db):
+        conn = _db.connect()
+        try:
+            conn.execute('VACUUM')
+            conn.commit()
+        finally:
+            try: conn.close()
+            except Exception: pass
+        logs_svc.log_portal('admin', 'db_vacuum', {})
+        return _ok({'message': 'vacuum complete'})
+    return _with_db(run)
+
+
+@settings_bp.route('/api/settings/data/prune', methods=['POST'])
+@ADMIN
+def api_data_prune():
+    cfg = current_app.skytrack_config
+    days = int(cfg.get('data_retention_days') or cfg.get('sightings_retention_days') or 30)
+    def run(_db):
+        conn = _db.connect()
+        removed = 0
+        try:
+            for tbl, col in (('sightings','ts'), ('flight_events','ts'), ('enrichment_cache','updated_at')):
+                try:
+                    cur = conn.execute(
+                        f"DELETE FROM {tbl} WHERE {col} < datetime('now', ?)",
+                        (f'-{days} days',),
+                    )
+                    removed += cur.rowcount or 0
+                except Exception:
+                    pass
+            conn.commit()
+        finally:
+            try: conn.close()
+            except Exception: pass
+        logs_svc.log_portal('admin', 'db_prune', {'days': days, 'removed': removed})
+        return _ok({'message': f'pruned {removed} rows older than {days}d', 'removed': removed})
+    return _with_db(run)
+
+
+@settings_bp.route('/api/settings/data/wipe', methods=['POST'])
+@ADMIN
+def api_data_wipe():
+    def run(_db):
+        conn = _db.connect()
+        wiped = []
+        try:
+            for tbl in ('sightings','flight_events','enrichment_cache','alerts_log'):
+                try:
+                    conn.execute(f'DELETE FROM {tbl}')
+                    wiped.append(tbl)
+                except Exception:
+                    pass
+            conn.commit()
+        finally:
+            try: conn.close()
+            except Exception: pass
+        logs_svc.log_portal('admin', 'db_wipe', {'tables': wiped})
+        return _ok({'message': f'wiped {len(wiped)} tables', 'tables': wiped})
+    return _with_db(run)
+
+
+# ---------- Alerts / watchlist ---------------------------------------------
+
+def _watchlist() -> list:
+    return list(current_app.skytrack_config.get('watchlist') or [])
+
+
+@settings_bp.route('/api/settings/alerts/watchlist', methods=['GET'])
+@ADMIN
+def api_watchlist_list():
+    return jsonify({'items': _watchlist()})
+
+
+@settings_bp.route('/api/settings/alerts/watchlist/add', methods=['POST'])
+@ADMIN
+def api_watchlist_add():
+    payload = request.get_json(silent=True) or {}
+    ident = (payload.get('ident') or '').strip().upper()
+    note  = (payload.get('note')  or '').strip()
+    if not ident:
+        return _err('ident required')
+    cfg = current_app.skytrack_config
+    items = [i for i in _watchlist() if i.get('ident') != ident]
+    items.append({'ident': ident, 'note': note})
+    cfg['watchlist'] = items
+    _persist({'watchlist': items})
+    logs_svc.log_portal('admin', 'watchlist_add', {'ident': ident})
+    return _ok({'items': items})
+
+
+@settings_bp.route('/api/settings/alerts/watchlist/remove', methods=['POST'])
+@ADMIN
+def api_watchlist_remove():
+    payload = request.get_json(silent=True) or {}
+    ident = (payload.get('ident') or '').strip().upper()
+    cfg = current_app.skytrack_config
+    items = [i for i in _watchlist() if i.get('ident') != ident]
+    cfg['watchlist'] = items
+    _persist({'watchlist': items})
+    logs_svc.log_portal('admin', 'watchlist_remove', {'ident': ident})
+    return _ok({'items': items})
+
+
+# ---------- Updates: backups + power aliases -------------------------------
+
+@settings_bp.route('/api/settings/updates/backups', methods=['GET'])
+@ADMIN
+def api_updates_backups():
+    items = _list_backups()
+    for b in items:
+        b.setdefault('created', b.pop('created_at', ''))
+    return jsonify({'backups': items})
+
+
+@settings_bp.route('/api/settings/updates/backup', methods=['POST'])
+@ADMIN
+def api_updates_backup_alias():
+    return api_backup_create()
+
+
+@settings_bp.route('/api/settings/updates/backup/delete', methods=['POST'])
+@ADMIN
+def api_backup_delete():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    if not name or '/' in name or '..' in name:
+        return _err('invalid backup name')
+    path = _backup_dir() / name
+    if not path.exists():
+        return _err('not found', 404)
+    try:
+        path.unlink()
+    except Exception as e:
+        return _err(f'delete failed: {e}', 500)
+    logs_svc.log_portal('admin', 'backup_delete', {'name': name})
+    return _ok()
+
+
+@settings_bp.route('/api/settings/updates/restart-app', methods=['POST'])
+@ADMIN
+def api_updates_restart_app():
+    return api_restart_app()
+
+
+@settings_bp.route('/api/settings/updates/restart-network', methods=['POST'])
+@ADMIN
+def api_updates_restart_network():
+    return api_restart_network()
+
+
+@settings_bp.route('/api/settings/updates/reboot', methods=['POST'])
+@ADMIN
+def api_updates_reboot():
+    return api_reboot()
+
+
+@settings_bp.route('/api/settings/updates/shutdown', methods=['POST'])
+@ADMIN
+def api_updates_shutdown():
+    return api_shutdown()
+
+
+# ---------- Diagnostics -----------------------------------------------------
+
+@settings_bp.route('/api/settings/diagnostics/system', methods=['GET'])
+@ADMIN
+def api_diag_system():
+    import platform
+    out = {
+        'hostname': platform.node(),
+        'kernel':   platform.release(),
+    }
+    # CPU load via os.getloadavg
+    try:
+        load1, _, _ = os.getloadavg()
+        out['cpu_load'] = round(load1, 2)
+    except Exception:
+        out['cpu_load'] = None
+    out['cpu_count'] = os.cpu_count() or 1
+
+    # Memory via /proc/meminfo (Linux-specific but cheap)
+    try:
+        info = {}
+        with open('/proc/meminfo') as f:
+            for line in f:
+                k, _, v = line.partition(':')
+                info[k.strip()] = int(v.strip().split()[0]) * 1024
+        total = info.get('MemTotal', 0)
+        avail = info.get('MemAvailable', info.get('MemFree', 0))
+        out['mem_total'] = total
+        out['mem_used']  = max(0, total - avail)
+        out['mem_used_pct'] = round(100 * (total - avail) / total, 1) if total else None
+    except Exception:
+        out['mem_total'] = out['mem_used'] = None
+        out['mem_used_pct'] = None
+
+    # SoC temperature (Pi)
+    out['cpu_temp_c'] = None
+    for p in ('/sys/class/thermal/thermal_zone0/temp',):
+        try:
+            with open(p) as f:
+                out['cpu_temp_c'] = int(f.read().strip()) / 1000.0
+            break
+        except Exception:
+            pass
+
+    # Uptime
+    try:
+        with open('/proc/uptime') as f:
+            out['uptime'] = float(f.read().split()[0])
+    except Exception:
+        out['uptime'] = None
+
+    return jsonify(out)
+
+
+@settings_bp.route('/api/settings/diagnostics/services', methods=['GET'])
+@ADMIN
+def api_diag_services():
+    units = ('skytrack-app', 'skytrack-ingest', 'skytrack-network',
+             'skytrack-hotspot', 'skytrack-display',
+             'hostapd', 'dnsmasq', 'dump1090-fa')
+    items = []
+    for unit in units:
+        try:
+            r = subprocess.run(['systemctl', 'is-active', unit],
+                               capture_output=True, text=True, timeout=3)
+            state = r.stdout.strip() or 'unknown'
+        except Exception:
+            state = 'unknown'
+        items.append({'name': unit, 'state': state})
+    return jsonify({'services': items})
+
+
+@settings_bp.route('/api/settings/diagnostics/log-tail', methods=['GET'])
+@ADMIN
+def api_diag_log_tail():
+    cfg = current_app.skytrack_config
+    log_dir = cfg.get('log_dir') or '/var/log/skytrack'
+    log_path = os.path.join(log_dir, 'skytrack.log')
+    lines = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, 'rb') as f:
+                try:
+                    f.seek(-8192, os.SEEK_END)
+                except OSError:
+                    f.seek(0)
+                data = f.read().decode('utf-8', errors='replace')
+                lines = data.splitlines()[-80:]
+        except Exception as e:
+            lines = [f'(could not read log: {e})']
+    else:
+        # Fall back to journalctl if we have it.
+        ok, out = _shell(['journalctl', '-u', 'skytrack-app', '-n', '80', '--no-pager'], timeout=5)
+        if ok:
+            lines = out.splitlines()
+    return jsonify({'lines': lines})
+
+
+@settings_bp.route('/api/settings/diagnostics/loglevel', methods=['POST'])
+@ADMIN
+def api_diag_loglevel_alias():
+    return api_log_level()
