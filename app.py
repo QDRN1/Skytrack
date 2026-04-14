@@ -370,6 +370,7 @@ def _register_blueprints(app: Flask) -> None:
     from blueprints.settings import settings_bp
     from blueprints.logs import logs_bp
     from blueprints.network import network_bp
+    from blueprints.onboarding import onboarding_bp
     from blueprints.super import super_bp
     from blueprints.api import api_bp
 
@@ -378,6 +379,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(settings_bp)
     app.register_blueprint(logs_bp)
     app.register_blueprint(network_bp)
+    app.register_blueprint(onboarding_bp)
     app.register_blueprint(super_bp)
     app.register_blueprint(api_bp)
 
