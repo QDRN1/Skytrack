@@ -56,9 +56,19 @@ def api_state():
     """Return the canonical onboarding state.
 
     Public so the kiosk page can render before any login. Returns the
-    full shape documented on `onboarding.get_state()`.
+    full shape documented on `onboarding.get_state()`, plus a
+    `hotspot_password` field when the current stage is
+    `setup_now_hotspot` so the on-device kiosk can paint the
+    credentials reveal card after a Chromium reload mid-flow.
     """
-    return jsonify(onboarding.get_state(_cfg()))
+    state = onboarding.get_state(_cfg())
+    if state.get('stage') == 'setup_now_hotspot':
+        rec = auth_lib.read_auth() or {}
+        state['hotspot_password'] = rec.get('hotspot_password') or ''
+        cfg = _cfg()
+        state['hotspot_ssid'] = cfg.get('hotspot_ssid', 'SkyTrack-Portal')
+        state['hotspot_gateway'] = cfg.get('hotspot_gateway', '10.4.26.89')
+    return jsonify(state)
 
 
 # ---------------------------------------------------------------------------

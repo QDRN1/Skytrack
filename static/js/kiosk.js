@@ -1,232 +1,345 @@
 /* SkyTrack on-device kiosk display.
  *
- * Drives /kiosk — the fullscreen Chromium target running on the Pi's HDMI
- * output. This is the ENTIRE operator experience on the appliance; it never
- * navigates to another page (except to fall back to the file:// splash if
- * the backend dies at runtime), never scrolls, never shows browser chrome.
+ * Drives /kiosk — the fullscreen Chromium target on the appliance HDMI
+ * output. Branches on the canonical onboarding state machine returned
+ * by /api/onboarding/state and never navigates anywhere else (except
+ * the file:// splash if the runtime watchdog trips on a backend death).
  *
- * Three visual stages only:
+ * Visual stages map 1:1 to the onboarding stages in onboarding.py:
  *
- *   1. setup-video    — unconfigured: loop the branded setup video with a
- *                       device-ID pill at the top. If the video file fails
- *                       to decode, fall back to a canvas-particles
- *                       background + "SETUP REQUIRED" text card.
+ *   boot_video         → one-shot intro video (auto-advances)
+ *   setup_video        → looping branded explainer (auto-advances after a
+ *                        short hold so the operator sees it once)
+ *   pin_required       → on-screen 4–8 digit PIN keypad (first entry)
+ *   pin_confirm        → re-enter the same PIN
+ *   setup_offer        → "Set Up Now / Skip For Now" prompt
+ *   setup_now_hotspot  → hotspot credentials reveal card
+ *   operational        → permanent compact live dashboard
  *
- *   2. boot-video     — one-shot transition played the moment configured
- *                       flips true (fresh setup) OR when the kiosk loads
- *                       already-configured (e.g. after a reboot).
+ * The poll loop calls /api/onboarding/state every ~1.5s so the kiosk
+ * follows along when the admin's phone wizard pushes the state machine
+ * forward, or when a super-user resets onboarding from the console.
  *
- *   3. operational    — permanent live-display mode. Compact 2x2 stat grid
- *                       with branded header (device/clock/weather) and
- *                       footer (device-id + radar URL). Polls the public
- *                       dashboard APIs every ~5s. No redirects, no scroll,
- *                       no browser chrome.
- *
- * Status polling checks /api/auth/status on a short interval so a fresh
- * setup finish on the admin's phone transitions the kiosk automatically.
- *
- * RUNTIME WATCHDOG:
- * In parallel with everything else we poll /healthz every 5s. If the
- * backend stops answering for HEALTH_FALLBACK_MS we navigate back to the
- * file:// splash (with ?from=kiosk so it jumps straight to the "service
- * unavailable" video state). The splash continues polling and will bounce
- * back to /kiosk the moment the backend recovers. Without this, a runtime
- * app crash would leave the kiosk rendering stale data forever.
+ * Runtime watchdog: in parallel with everything else we poll /healthz
+ * and fall back to the file:// splash if the backend stops answering
+ * for HEALTH_FALLBACK_MS. The splash continues polling and bounces back
+ * to /kiosk the moment the backend recovers.
  */
 (function () {
   'use strict';
 
-  const STATUS_URL  = '/api/auth/status';
+  // ----- Endpoints -----------------------------------------------------
+  const ONBOARD_URL = '/api/onboarding/state';
+  const ADVANCE_URL = '/api/onboarding/advance';
+  const PIN_URL     = '/api/onboarding/pin';
+  const RESET_URL   = '/api/onboarding/reset';
   const CARDS_URL   = '/api/dashboard/cards';
   const WEATHER_URL = '/api/weather';
   const DEVICE_URL  = '/api/device';
   const HEALTH_URL  = '/healthz';
   const SPLASH_URL  = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
 
-  const STATUS_POLL_MS        = 1500;   // only runs in setup-video stage
-  const OP_CARDS_POLL_MS      = 5000;
-  const OP_WEATHER_POLL_MS    = 5 * 60 * 1000;
-  const OP_DEVICE_POLL_MS     = 60 * 1000;
-  const SETUP_VIDEO_FAIL_MS   = 2500;
-  const BOOT_VIDEO_FAIL_MS    = 3000;
-  const BOOT_VIDEO_HARD_MS    = 30000;
+  // ----- Cadences ------------------------------------------------------
+  const ONB_POLL_MS         = 1500;
+  const OP_CARDS_POLL_MS    = 5000;
+  const OP_WEATHER_POLL_MS  = 5 * 60 * 1000;
+  const OP_DEVICE_POLL_MS   = 60 * 1000;
+  const SETUP_VIDEO_FAIL_MS = 2500;
+  const SETUP_VIDEO_HOLD_MS = 6000;
+  const BOOT_VIDEO_FAIL_MS  = 3000;
+  const BOOT_VIDEO_HARD_MS  = 12000;
+  const HEALTH_POLL_MS      = 5000;
+  const HEALTH_FALLBACK_MS  = 30000;
 
-  // Runtime watchdog — fall back to splash if /healthz is down > this long.
-  const HEALTH_POLL_MS        = 5000;
-  const HEALTH_FALLBACK_MS    = 30000;
+  // ----- Mutable state -------------------------------------------------
+  // visual = the screen currently painted in the DOM. NOT the persistent
+  // server stage — that's `serverStage` below.
+  let visual      = 'init';
+  let serverStage = (document.body && document.body.dataset.stage) || 'boot_video';
+  let pinSetCached = (document.body && document.body.dataset.pinSet === '1');
 
-  // ------------------------------------------------------------------
-  // State
-  // ------------------------------------------------------------------
-  /** @type {'init'|'setup-video'|'setup-fallback'|'boot-video'|'operational'} */
-  let stage = 'init';
+  let onbTimer = null, opCardsTimer = null, opWxTimer = null;
+  let opDevTimer = null, opClockTimer = null, healthTimer = null;
+  let particles = null;
 
-  let statusTimer   = null;
-  let opCardsTimer  = null;
-  let opWxTimer     = null;
-  let opDevTimer    = null;
-  let opClockTimer  = null;
-  let healthTimer   = null;
-  let particles     = null;
+  // PIN keypad local buffers (the first PIN never leaves the kiosk; we
+  // only POST after a local match against the second entry).
+  let pinFirst = '';
+  let pinBuf   = '';
 
-  // Watchdog — timestamp of last successful /healthz response.
-  // Seeded to now() so a slow first response doesn't trigger a bounce.
+  // Health watchdog — timestamp of last successful /healthz response.
   let lastHealthyAt = Date.now();
-  let fellBack      = false;
+  let fellBack = false;
 
-  // ------------------------------------------------------------------
-  // DOM helpers
-  // ------------------------------------------------------------------
+  // ----- DOM helpers ---------------------------------------------------
   function $(id)    { return document.getElementById(id); }
   function show(el) { if (el) el.hidden = false; }
   function hide(el) { if (el) el.hidden = true; }
-
-  function setText(id, value) {
+  function setText(id, v) {
     const el = $(id);
-    if (el && el.textContent !== value) el.textContent = value;
+    if (el && el.textContent !== v) el.textContent = v;
   }
 
-  // ------------------------------------------------------------------
-  // Setup-video stage (unconfigured)
-  // ------------------------------------------------------------------
-  function showSetupVideo() {
-    if (stage === 'setup-video') return;
-    stage = 'setup-video';
-    stopParticles();
-    hideOp();
-
+  function hideAllScreens() {
+    hide($('kiosk-setup-video'));
     hide($('kiosk-boot-video'));
     hide($('kiosk-particles'));
     hide($('kiosk-fallback'));
+    hide($('kiosk-device-id-overlay'));
+    hide($('kiosk-pin'));
+    hide($('kiosk-offer'));
+    hide($('kiosk-hotspot'));
+    hide($('kiosk-op'));
+    stopParticles();
+    stopOperationalTimers();
+    const sv = $('kiosk-setup-video');
+    const bv = $('kiosk-boot-video');
+    if (sv) { try { sv.pause(); } catch (_e) {} }
+    if (bv) { try { bv.pause(); } catch (_e) {} }
+  }
 
+  // ----- Stage dispatch ------------------------------------------------
+  // applyStage is the single source of truth that decides which DOM
+  // screen is visible. The poll loop calls it on every tick; it bails
+  // immediately if the visual already matches the requested stage.
+  function applyStage(stage) {
+    if (stage === serverStage && visual !== 'init') return;
+    serverStage = stage;
+    switch (stage) {
+      case 'boot_video':        showBootVideo(true);   break;
+      case 'setup_video':       showSetupVideo();      break;
+      case 'pin_required':      showPinPad('first');   break;
+      case 'pin_confirm':       showPinPad('confirm'); break;
+      case 'setup_offer':       showSetupOffer();      break;
+      case 'setup_now_hotspot': showHotspotCard();     break;
+      case 'operational':       showOperational();     break;
+      default:                  showSetupFallback();
+    }
+  }
+
+  // ----- Boot video stage --------------------------------------------
+  // Plays the one-shot boot loop. On a fresh boot we tell the server to
+  // advance to setup_video when it ends; on an already-configured device
+  // the server stage is operational, so we only land here as a transient
+  // visual when the user manually advance back through setup.
+  function showBootVideo(advanceWhenDone) {
+    if (visual === 'boot-video') return;
+    visual = 'boot-video';
+    hideAllScreens();
+    const b = $('kiosk-boot-video');
+    show(b);
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (advanceWhenDone && serverStage === 'boot_video') {
+        advanceServer('setup_video').catch(() => {});
+      }
+    };
+
+    const failTimer = setTimeout(finish, BOOT_VIDEO_FAIL_MS);
+    setTimeout(finish, BOOT_VIDEO_HARD_MS);
+
+    if (b) {
+      b.addEventListener('canplay', () => clearTimeout(failTimer), { once: true });
+      b.addEventListener('error', finish, { once: true });
+      b.addEventListener('ended', finish, { once: true });
+      try {
+        const p = b.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (_e) {}
+    } else {
+      finish();
+    }
+  }
+
+  // ----- Setup video stage -------------------------------------------
+  // Loops the branded explainer. Hold for SETUP_VIDEO_HOLD_MS so the
+  // operator gets a clean read of it, then ask the server to advance to
+  // pin_required. The poll loop will paint the keypad on the next tick.
+  function showSetupVideo() {
+    if (visual === 'setup-video') return;
+    visual = 'setup-video';
+    hideAllScreens();
     const v = $('kiosk-setup-video');
     show(v);
     show($('kiosk-device-id-overlay'));
 
-    let failed = false;
+    let advanced = false;
+    const askAdvance = () => {
+      if (advanced) return;
+      advanced = true;
+      setTimeout(() => {
+        if (serverStage === 'setup_video') {
+          advanceServer('pin_required').catch(() => {});
+        }
+      }, SETUP_VIDEO_HOLD_MS);
+    };
+
     const failTimer = setTimeout(() => {
-      if (v && v.readyState < 2 && stage === 'setup-video') {
-        failed = true;
+      if (v && v.readyState < 2 && visual === 'setup-video') {
         showSetupFallback();
+        askAdvance();
       }
     }, SETUP_VIDEO_FAIL_MS);
 
     if (v) {
       v.addEventListener('canplay', () => {
-        if (failed) return;
         clearTimeout(failTimer);
+        askAdvance();
       }, { once: true });
       v.addEventListener('error', () => {
         clearTimeout(failTimer);
-        if (stage === 'setup-video') showSetupFallback();
+        showSetupFallback();
+        askAdvance();
       }, { once: true });
-
       try {
         const p = v.play();
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => { /* handled by failTimer */ });
-        }
-      } catch (_e) { /* same */ }
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (_e) {}
+    } else {
+      showSetupFallback();
+      askAdvance();
     }
   }
 
   function showSetupFallback() {
-    if (stage === 'setup-fallback') return;
-    stage = 'setup-fallback';
-
-    const v = $('kiosk-setup-video');
-    if (v) { try { v.pause(); } catch (_e) {} }
-    hide(v);
+    if (visual === 'setup-fallback') return;
+    visual = 'setup-fallback';
+    hide($('kiosk-setup-video'));
     hide($('kiosk-boot-video'));
-    hide($('kiosk-device-id-overlay'));
-    hideOp();
-
     show($('kiosk-particles'));
     show($('kiosk-fallback'));
     startParticles();
   }
 
-  // ------------------------------------------------------------------
-  // Boot-video stage (one-shot transition)
-  // ------------------------------------------------------------------
-  function showBootVideo() {
-    if (stage === 'boot-video' || stage === 'operational') return;
-    stage = 'boot-video';
-    stopStatusPolling();
-    stopParticles();
-
-    const sv = $('kiosk-setup-video');
-    if (sv) { try { sv.pause(); } catch (_e) {} }
-
-    hide(sv);
-    hide($('kiosk-particles'));
-    hide($('kiosk-fallback'));
-    hide($('kiosk-device-id-overlay'));
-    hideOp();
-
-    const b = $('kiosk-boot-video');
-    show(b);
-
-    const done = () => {
-      if (stage === 'operational') return;
-      showOperational();
-    };
-
-    let bootFailed = false;
-    const bootFailTimer = setTimeout(() => {
-      if (b && b.readyState < 2 && stage === 'boot-video') {
-        bootFailed = true;
-        done();
-      }
-    }, BOOT_VIDEO_FAIL_MS);
-
-    if (b) {
-      b.addEventListener('canplay', () => {
-        if (bootFailed) return;
-        clearTimeout(bootFailTimer);
-      }, { once: true });
-      b.addEventListener('error', () => {
-        clearTimeout(bootFailTimer);
-        done();
-      }, { once: true });
-      b.addEventListener('ended', done, { once: true });
-
-      // Hard safety — some Chromium codecs fire 'pause' instead of 'ended'
-      setTimeout(() => {
-        if (stage === 'boot-video') done();
-      }, BOOT_VIDEO_HARD_MS);
-
-      try {
-        const p = b.play();
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => { /* handled by timers */ });
-        }
-      } catch (_e) { /* same */ }
+  // ----- PIN keypad ---------------------------------------------------
+  // Drives both pin_required (first entry) and pin_confirm (re-entry).
+  // The first PIN is held in JS only; we POST to /api/onboarding/pin
+  // once both entries match locally. On a mismatch we POST to
+  // /api/onboarding/reset and re-paint the first keypad.
+  function showPinPad(mode) {
+    const visualName = (mode === 'confirm') ? 'pin-confirm' : 'pin-required';
+    if (visual === visualName) return;
+    visual = visualName;
+    hideAllScreens();
+    show($('kiosk-pin'));
+    if (mode === 'confirm') {
+      setText('kiosk-pin-title', 'Confirm Admin PIN');
+      setText('kiosk-pin-sub',   'Re-enter the same digits');
     } else {
-      done();
+      setText('kiosk-pin-title', 'Set Admin PIN');
+      setText('kiosk-pin-sub',   'Choose 4 to 8 digits');
+      pinFirst = '';
+    }
+    pinBuf = '';
+    paintPinDots();
+    setText('kiosk-pin-error', '\u00A0');
+  }
+
+  function paintPinDots() {
+    const wrap = $('kiosk-pin-dots');
+    if (!wrap) return;
+    const slots = Math.max(4, Math.min(pinBuf.length || 4, 8));
+    let html = '';
+    for (let i = 0; i < slots; i++) {
+      html += '<span class="pin-dot' + (i < pinBuf.length ? ' filled' : '') + '"></span>';
+    }
+    wrap.innerHTML = html;
+  }
+
+  function pinKey(k) {
+    if (pinBuf.length >= 8) return;
+    pinBuf += k;
+    paintPinDots();
+  }
+  function pinClear() {
+    pinBuf = '';
+    paintPinDots();
+    setText('kiosk-pin-error', '\u00A0');
+  }
+  function pinError(msg) {
+    setText('kiosk-pin-error', msg);
+  }
+
+  async function pinSubmit() {
+    if (pinBuf.length < 4) { pinError('Enter at least 4 digits'); return; }
+    if (pinBuf.length > 8) { pinError('PIN is too long'); return; }
+    if (!/^\d+$/.test(pinBuf)) { pinError('Digits only'); return; }
+
+    if (visual === 'pin-required') {
+      pinFirst = pinBuf;
+      pinBuf = '';
+      try {
+        await advanceServer('pin_confirm');
+        showPinPad('confirm');
+      } catch (_e) {
+        pinError('Could not advance — try again');
+      }
+      return;
+    }
+
+    if (visual === 'pin-confirm') {
+      if (pinBuf !== pinFirst) {
+        pinFirst = '';
+        pinBuf   = '';
+        pinError('PINs did not match — start over');
+        try {
+          await fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' });
+        } catch (_e) {}
+        showPinPad('first');
+        return;
+      }
+      try {
+        const r = await fetch(PIN_URL, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ pin: pinFirst, confirm: pinBuf }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.ok) {
+          pinError(data.error || 'PIN save failed');
+          pinFirst = ''; pinBuf = '';
+          return;
+        }
+        pinSetCached = true;
+        pinFirst = ''; pinBuf = '';
+        // Server already advanced us to setup_offer; force one
+        // immediate poll so the screen swaps without waiting for the
+        // next 1.5s tick.
+        pollOnboarding();
+      } catch (e2) {
+        pinError(e2.message || 'Network error');
+      }
     }
   }
 
-  // ------------------------------------------------------------------
-  // Operational stage (permanent live display)
-  // ------------------------------------------------------------------
+  // ----- Setup-offer prompt ------------------------------------------
+  function showSetupOffer() {
+    if (visual === 'setup-offer') return;
+    visual = 'setup-offer';
+    hideAllScreens();
+    show($('kiosk-offer'));
+  }
+
+  // ----- Hotspot reveal card -----------------------------------------
+  // Credentials come from /api/onboarding/state, which only exposes the
+  // password while the persistent stage IS setup_now_hotspot. That keeps
+  // the cred bundle off the wire any other time.
+  function showHotspotCard() {
+    if (visual === 'hotspot') return;
+    visual = 'hotspot';
+    hideAllScreens();
+    show($('kiosk-hotspot'));
+  }
+
+  // ----- Operational stage -------------------------------------------
   function showOperational() {
-    if (stage === 'operational') return;
-    stage = 'operational';
-    stopStatusPolling();
-    stopParticles();
-
-    const sv = $('kiosk-setup-video');
-    const bv = $('kiosk-boot-video');
-    if (sv) { try { sv.pause(); } catch (_e) {} }
-    if (bv) { try { bv.pause(); } catch (_e) {} }
-
-    hide(sv);
-    hide(bv);
-    hide($('kiosk-particles'));
-    hide($('kiosk-fallback'));
-    hide($('kiosk-device-id-overlay'));
-
+    if (visual === 'operational') return;
+    visual = 'operational';
+    hideAllScreens();
     show($('kiosk-op'));
 
     startClock();
@@ -234,14 +347,9 @@
     refreshWeather();
     refreshDevice();
 
-    if (!opCardsTimer) opCardsTimer = setInterval(refreshCards,  OP_CARDS_POLL_MS);
+    if (!opCardsTimer) opCardsTimer = setInterval(refreshCards,   OP_CARDS_POLL_MS);
     if (!opWxTimer)    opWxTimer    = setInterval(refreshWeather, OP_WEATHER_POLL_MS);
     if (!opDevTimer)   opDevTimer   = setInterval(refreshDevice,  OP_DEVICE_POLL_MS);
-  }
-
-  function hideOp() {
-    hide($('kiosk-op'));
-    stopOperationalTimers();
   }
 
   function stopOperationalTimers() {
@@ -333,9 +441,7 @@
         setText('op-last-value', '—');
         setText('op-last-sub',   'awaiting contacts');
       }
-    } catch (_e) {
-      /* Transient — leave stale values; the kiosk must never go blank. */
-    }
+    } catch (_e) { /* transient */ }
   }
 
   async function refreshWeather() {
@@ -368,42 +474,63 @@
       if (!r.ok) return;
       const data = await r.json();
       if (data && data.radar_url) {
-        // Strip protocol so the footer doesn't look like a browser URL bar
         const clean = String(data.radar_url).replace(/^https?:\/\//i, '');
         setText('op-radar-url', clean);
       }
     } catch (_e) { /* transient */ }
   }
 
-  // ------------------------------------------------------------------
-  // Setup-state status polling (only while unconfigured)
-  // ------------------------------------------------------------------
-  async function checkStatus() {
+  // ----- Onboarding state polling ------------------------------------
+  // Single engine that keeps the kiosk in sync with whatever happens
+  // elsewhere (phone wizard, super-user console, hotspot watchdog).
+  async function pollOnboarding() {
     try {
-      const r = await fetch(STATUS_URL, {
+      const r = await fetch(ONBOARD_URL, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
       if (!r.ok) return;
-      const data = await r.json();
-      if (data && data.configured) {
-        showBootVideo();
+      const s = await r.json();
+      if (!s || typeof s.stage !== 'string') return;
+      pinSetCached = !!s.pin_set;
+      // The state endpoint surfaces hotspot creds while the stage is
+      // setup_now_hotspot. Paint them whenever we can — covers both the
+      // first-paint case and a Chromium reload mid-flow.
+      if (s.stage === 'setup_now_hotspot') {
+        if (s.hotspot_password) setText('kiosk-hs-pw', s.hotspot_password);
+        if (s.hotspot_ssid)     setText('kiosk-hs-ssid', s.hotspot_ssid);
+        if (s.hotspot_gateway)  setText('kiosk-hs-url', 'http://' + s.hotspot_gateway);
       }
+      applyStage(s.stage);
     } catch (_e) { /* transient */ }
   }
 
-  function startStatusPolling() {
-    if (statusTimer) return;
-    statusTimer = setInterval(checkStatus, STATUS_POLL_MS);
-  }
-  function stopStatusPolling() {
-    if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+  async function advanceServer(to) {
+    const body = (to ? JSON.stringify({ to: to }) : '{}');
+    const r = await fetch(ADVANCE_URL, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: body,
+    });
+    if (!r.ok) throw new Error('advance failed: ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    if (data && data.state && data.state.stage) {
+      applyStage(data.state.stage);
+    }
+    return data;
   }
 
-  // ------------------------------------------------------------------
-  // Runtime healthz watchdog — fall back to splash if the backend dies.
-  // ------------------------------------------------------------------
+  function startOnboardingPolling() {
+    if (onbTimer) return;
+    onbTimer = setInterval(pollOnboarding, ONB_POLL_MS);
+  }
+  function stopOnboardingPolling() {
+    if (onbTimer) { clearInterval(onbTimer); onbTimer = null; }
+  }
+
+  // ----- Health watchdog ---------------------------------------------
   async function checkHealth() {
     if (fellBack) return;
     let ok = false;
@@ -419,16 +546,10 @@
       if (r && r.ok) ok = true;
     } catch (_e) { /* treated as failure */ }
 
-    if (ok) {
-      lastHealthyAt = Date.now();
-      return;
-    }
-    const down = Date.now() - lastHealthyAt;
-    if (down >= HEALTH_FALLBACK_MS) {
+    if (ok) { lastHealthyAt = Date.now(); return; }
+    if ((Date.now() - lastHealthyAt) >= HEALTH_FALLBACK_MS) {
       fellBack = true;
-      // Clean up before we navigate away, otherwise the splash inherits
-      // leftover timers via back/forward cache.
-      stopStatusPolling();
+      stopOnboardingPolling();
       stopOperationalTimers();
       stopParticles();
       if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
@@ -443,9 +564,7 @@
     healthTimer = setInterval(checkHealth, HEALTH_POLL_MS);
   }
 
-  // ------------------------------------------------------------------
-  // Canvas particles (only used as a setup-state fallback)
-  // ------------------------------------------------------------------
+  // ----- Canvas particles (setup-state fallback background) ---------
   function startParticles() {
     if (particles) return;
     const canvas = $('kiosk-particles');
@@ -532,30 +651,53 @@
     particles = null;
   }
 
-  // ------------------------------------------------------------------
-  // Boot
-  // ------------------------------------------------------------------
+  // ----- Boot --------------------------------------------------------
   document.addEventListener('DOMContentLoaded', () => {
-    const initiallyConfigured = document.body.dataset.configured === '1';
-    if (initiallyConfigured) {
-      // Already configured — play the boot video once, then settle into the
-      // operational stage. Never redirect anywhere (unless the runtime
-      // watchdog trips).
-      showBootVideo();
-    } else {
-      // First-boot — loop the setup video and poll for completion.
-      showSetupVideo();
-      startStatusPolling();
-      // Immediate check so a fast wizard finish doesn't linger for a tick.
-      checkStatus();
+    // PIN keypad delegation — one listener for all 12 buttons.
+    const pad = $('kiosk-pin-pad');
+    if (pad) {
+      pad.addEventListener('click', (e) => {
+        const btn = e.target.closest('.pin-key');
+        if (!btn) return;
+        if (btn.dataset.action === 'clear') { pinClear();  return; }
+        if (btn.dataset.action === 'enter') { pinSubmit(); return; }
+        if (btn.dataset.key !== undefined)  { pinKey(btn.dataset.key); }
+      });
+      // Also support a hardware keyboard (helpful for development).
+      window.addEventListener('keydown', (e) => {
+        if (visual !== 'pin-required' && visual !== 'pin-confirm') return;
+        if (e.key >= '0' && e.key <= '9') { pinKey(e.key); e.preventDefault(); }
+        else if (e.key === 'Backspace')   { pinBuf = pinBuf.slice(0, -1); paintPinDots(); e.preventDefault(); }
+        else if (e.key === 'Enter')       { pinSubmit(); e.preventDefault(); }
+        else if (e.key === 'Escape')      { pinClear(); e.preventDefault(); }
+      });
     }
-    // Runtime watchdog runs in every stage.
+
+    // Setup-offer buttons
+    const setupNow  = $('kiosk-offer-now');
+    const setupSkip = $('kiosk-offer-skip');
+    if (setupNow)  setupNow.addEventListener('click',  () => advanceServer('setup_now_hotspot').catch(() => {}));
+    if (setupSkip) setupSkip.addEventListener('click', () => advanceServer('operational').catch(() => {}));
+
+    // Hotspot Continue button
+    const hsDone = $('kiosk-hotspot-done');
+    if (hsDone) hsDone.addEventListener('click', () => advanceServer('operational').catch(() => {}));
+
+    // Paint whatever stage the server stamped on the body. If this is
+    // a fresh boot we land on boot_video; if the device was previously
+    // operational we go straight to the live dashboard.
+    applyStage(serverStage);
+
+    // Always start polling — the kiosk follows along with the phone
+    // wizard and any super-user state changes.
+    startOnboardingPolling();
     startHealthWatchdog();
   });
 
-  // If Chromium is hard-reloaded mid-session, clean up any timers first.
+  // Hard reload safety — wipe timers so the new page doesn't inherit
+  // them via the back/forward cache.
   window.addEventListener('beforeunload', () => {
-    stopStatusPolling();
+    stopOnboardingPolling();
     stopOperationalTimers();
     stopParticles();
     if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }

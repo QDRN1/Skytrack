@@ -32,6 +32,7 @@ from flask import (Blueprint, current_app, jsonify, redirect, render_template,
 import auth as auth_lib
 import device_id
 import logs_svc
+import onboarding
 
 logger = logging.getLogger('skytrack.auth_bp')
 
@@ -67,23 +68,28 @@ def root():
 #
 # Distinct from the admin's /setup wizard. The admin walks through /setup
 # on their phone over the SkyTrack-Portal hotspot. The on-device display
-# is a Chromium kiosk pointed at /kiosk and just needs to look pretty:
+# is a Chromium kiosk pointed at /kiosk and renders the appropriate
+# screen for the current `onboarding.stage`:
 #
-#   • Not configured  → fullscreen looping setup video + device ID overlay
-#                       (with a particles + text fallback if the video
-#                       file isn't there yet).
-#   • Configured      → fullscreen boot video, then redirect to /dashboard
-#                       once the video ends.
+#   boot_video         one-shot intro video (fresh boot)
+#   setup_video        looping setup explainer
+#   pin_required       on-screen PIN keypad (first entry)
+#   pin_confirm        on-screen PIN keypad (re-entry)
+#   setup_offer        "Set Up Now / Skip" prompt
+#   setup_now_hotspot  hotspot credentials card
+#   operational        permanent live dashboard
 #
-# The page polls /api/auth/status every ~1.5s so that the moment the
-# admin finishes the wizard on their phone, the kiosk transitions away
-# from the setup video on its own — no Chromium reload required.
+# kiosk.js polls /api/onboarding/state every ~1.5s so the kiosk advances
+# in lockstep with whatever happens on the admin's phone (or another
+# kiosk operator). It never navigates away from /kiosk except to the
+# file:// splash if the backend dies (handled by the runtime watchdog).
 
 @auth_bp.route('/kiosk')
 def kiosk_display():
     """Fullscreen kiosk landing page for the on-device Chromium display."""
     cfg = current_app.skytrack_config
     identity = current_app.config.get('DEVICE_RECORD', {})
+    onb_state = onboarding.get_state(cfg)
     return render_template(
         'kiosk.html',
         device_id=current_app.config.get('DEVICE_ID', ''),
@@ -91,6 +97,8 @@ def kiosk_display():
         ssid=cfg.get('hotspot_ssid', 'SkyTrack-Portal'),
         gateway=cfg.get('hotspot_gateway', '10.4.26.89'),
         kiosk_configured=auth_lib.is_configured(),
+        onboarding_state=onb_state,
+        onboarding_stage=onb_state.get('stage') or 'boot_video',
     )
 
 
@@ -149,12 +157,19 @@ def setup_submit():
 
     payload = request.get_json(silent=True) or request.form
     pin = (payload.get('pin') or '').strip()
+    cfg = current_app.skytrack_config
 
+    # Drive the onboarding state machine. set_pin() advances the stage
+    # to setup_offer; the phone wizard already shows the hotspot password
+    # card on the next screen, so jump straight to operational and let
+    # the kiosk follow along on its next poll.
     try:
-        rec = auth_lib.complete_setup(pin)
+        onboarding.set_pin(pin, config=cfg)
+        onboarding.advance(to='operational', config=cfg)
     except ValueError as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
 
+    rec = auth_lib.read_auth() or {}
     auth_lib.login_as(auth_lib.ROLE_ADMIN)
     logs_svc.log_portal('admin', 'first_boot_setup_complete', {
         'device': current_app.config.get('DEVICE_ID'),

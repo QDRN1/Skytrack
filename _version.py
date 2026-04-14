@@ -10,4 +10,4 @@ Semver: MAJOR.MINOR.PATCH.
   PATCH — bug fixes only
 """
 
-__version__ = "2.4.3"
+__version__ = "2.5.0"
