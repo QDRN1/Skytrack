@@ -165,10 +165,32 @@ def complete_setup(pin: str,
     return rec
 
 
-def _random_hotspot_password(length: int = 12) -> str:
-    """Generate an easy-to-read WPA2 password (no ambiguous characters)."""
-    alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+# Easy-to-read WPA2 passphrase generator: two short aviation-flavored words
+# plus a 2-digit number, e.g. "BlueSky-47". Still ≥ 8 chars (WPA2 minimum),
+# but typeable on a phone without squinting. The list is small and curated —
+# nothing rude, ambiguous, or hard to spell out over voice.
+_HS_WORDS = (
+    'Alpha',  'Bravo',  'Delta',  'Echo',   'Foxtrot',
+    'Golf',   'Hotel',  'India',  'Juliet', 'Kilo',
+    'Lima',   'Mike',   'November','Oscar', 'Papa',
+    'Quebec', 'Romeo',  'Sierra', 'Tango',  'Uniform',
+    'Victor', 'Whiskey','Xray',   'Yankee', 'Zulu',
+    'Radar',  'Tower',  'Cloud',  'Sky',    'Wing',
+    'Pilot',  'Runway', 'Cirrus', 'Nimbus', 'Zenith',
+    'Beacon', 'Compass','Horizon','Orbit',  'Vector',
+)
+
+
+def _random_hotspot_password(length: int = 0) -> str:
+    """Generate a memorable WPA2 passphrase: Word-Word-NN.
+
+    `length` is accepted for signature compatibility with older callers but
+    is ignored — the generated string is always 10-16 characters.
+    """
+    a = secrets.choice(_HS_WORDS)
+    b = secrets.choice([w for w in _HS_WORDS if w != a])
+    n = secrets.randbelow(90) + 10  # 10..99, always 2 digits
+    return f'{a}-{b}-{n}'
 
 
 # ---------------------------------------------------------------------------

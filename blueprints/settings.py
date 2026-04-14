@@ -940,37 +940,91 @@ def api_radar():
 @settings_bp.route('/api/settings/network/status', methods=['GET'])
 @ADMIN
 def api_network_status():
+    """Touch-shell status tiles for /settings → Network.
+
+    Reads network_svc.get_network_status() and translates the service-level
+    keys into the small {state, detail, ...} shape the settings.js tiles
+    expect. Also surfaces which interface is currently carrying the default
+    route so the UI can mark it as the active WAN.
+    """
     cfg = current_app.skytrack_config
     try:
         base = network_svc.get_network_status(cfg) or {}
     except Exception as e:
-        base = {'error': str(e)}
-    def wrap(src, **over):
-        out = {'state': src.get('state') or ('on' if src.get('connected') else 'off')}
-        out.update(over)
-        return out
+        logger.warning('network status read failed: %s', e)
+        base = {}
+
     cellular = base.get('cellular') or {}
     wifi     = base.get('wifi')     or {}
-    hotspot  = base.get('hotspot')  or {}
-    internet = base.get('internet') or {}
+    hs       = base.get('hotspot')  or {}
+    online   = bool(base.get('online') or base.get('internet'))
+    primary  = base.get('primary') or 'none'
+    primary_iface = base.get('primary_interface') or ''
+
+    # --- Cellular tile ----------------------------------------------------
+    cell_up = bool(cellular.get('detected')) and (
+        'connected' in (cellular.get('state') or '').lower()
+        or (cellular.get('signal_pct') or 0) > 0
+    )
+    cell_detail_bits = []
+    if cellular.get('carrier'):
+        cell_detail_bits.append(cellular['carrier'])
+    if cellular.get('access_tech'):
+        cell_detail_bits.append(cellular['access_tech'])
+    if cellular.get('signal_pct'):
+        cell_detail_bits.append(f"{cellular['signal_pct']}%")
+    if not cell_up and cellular.get('detected'):
+        cell_detail_bits.append(cellular.get('state') or 'detected, not connected')
+    if not cellular.get('detected'):
+        cell_detail_bits.append('no modem')
+
+    # --- WiFi client tile -------------------------------------------------
+    wifi_up = bool(wifi.get('connected'))
+    if hs.get('enabled'):
+        wifi_detail = 'disabled — hotspot is using wlan0'
+    elif wifi_up:
+        wifi_detail = wifi.get('ssid') or 'connected'
+    else:
+        wifi_detail = 'not connected'
+
+    # --- Hotspot tile -----------------------------------------------------
+    hs_up   = bool(hs.get('enabled'))
+    clients = hs.get('clients') or []
+    if hs_up:
+        hs_detail = f"{len(clients)} client" + ('' if len(clients) == 1 else 's')
+    else:
+        hs_detail = 'off'
+
+    # --- Internet tile ----------------------------------------------------
+    if online:
+        inet_detail = f"via {primary_iface}" if primary_iface else 'reachable'
+    else:
+        inet_detail = 'no route'
+
     return jsonify({
         'cellular': {
-            'state': 'on' if cellular.get('connected') else 'off',
-            'detail': cellular.get('operator') or cellular.get('signal') or '',
+            'state':  'on' if cell_up else 'off',
+            'detail': ' · '.join(cell_detail_bits) or '—',
+            'active': primary == 'cellular',
         },
         'wifi': {
-            'state': 'on' if wifi.get('connected') else 'off',
-            'ssid': wifi.get('ssid') or '',
+            'state':  'on' if wifi_up else 'off',
+            'ssid':   wifi.get('ssid') or '',
+            'detail': wifi_detail,
+            'active': primary == 'wifi' and not hs_up,
         },
         'hotspot': {
-            'state': 'on' if hotspot.get('active') else 'off',
-            'ssid': hotspot.get('ssid') or cfg.get('hotspot_ssid') or '',
-            'clients': hotspot.get('clients'),
+            'state':   'on' if hs_up else 'off',
+            'ssid':    hs.get('ssid') or cfg.get('hotspot_ssid') or '',
+            'clients': len(clients),
+            'detail':  hs_detail,
         },
         'internet': {
-            'state': 'online' if internet.get('online') else 'offline',
-            'detail': internet.get('detail') or '',
+            'state':  'online' if online else 'offline',
+            'detail': inet_detail,
         },
+        'primary':            primary,
+        'primary_interface':  primary_iface,
     })
 
 

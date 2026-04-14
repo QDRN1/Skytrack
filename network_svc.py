@@ -147,14 +147,69 @@ def internet_reachable(timeout: float = 2.0) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Default-route detection — the kernel's answer to "which link actually
+# carries outbound traffic right now". This is the single source of truth
+# for the "active network" indicator; sniffing individual interfaces can
+# give confusing results when several are up at once.
+# ---------------------------------------------------------------------------
+
+def default_route_interface() -> Optional[str]:
+    """Return the iface carrying the IPv4 default route, or None."""
+    try:
+        r = subprocess.run(
+            ['ip', '-4', 'route', 'show', 'default'],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in (r.stdout or '').splitlines():
+            # Format: "default via 10.4.26.1 dev wlan0 proto dhcp ..."
+            parts = line.split()
+            if 'dev' in parts:
+                i = parts.index('dev')
+                if i + 1 < len(parts):
+                    return parts[i + 1]
+    except Exception:
+        pass
+    return None
+
+
+def classify_link(iface: Optional[str]) -> str:
+    """Map an interface name to a friendly link type label."""
+    if not iface:
+        return 'none'
+    if iface.startswith(('wwan', 'ppp', 'usb')) or iface == 'rmnet0':
+        return 'cellular'
+    if iface.startswith(('wlan', 'wlp')):
+        return 'wifi'
+    if iface.startswith(('eth', 'enp', 'enx', 'end')):
+        return 'ethernet'
+    return 'other'
+
+
+# ---------------------------------------------------------------------------
 # Aggregate
 # ---------------------------------------------------------------------------
 
 def get_network_status(config) -> dict:
+    wifi     = wifi_status()
+    cellular = cellular_status()
+    hs       = hotspot.hotspot_status(config)
+    online   = internet_reachable()
+    route_if = default_route_interface()
+    primary  = classify_link(route_if)
+
+    # Hotspot mode on wlan0 *excludes* wifi-client on the same radio. If the
+    # hotspot is up we explicitly force the wifi client tile to "off" rather
+    # than echoing stale iwconfig state from before the radio was reprovisioned.
+    if hs.get('enabled'):
+        wifi = {**wifi, 'connected': False, 'ssid': '', 'signal_dbm': None, 'signal_pct': 0}
+
     return {
-        'wifi': wifi_status(),
-        'cellular': cellular_status(),
-        'hotspot': hotspot.hotspot_status(config),
-        'internet': internet_reachable(),
-        'metered': bool(config.get('metered_connection')),
+        'wifi':     wifi,
+        'cellular': cellular,
+        'hotspot':  hs,
+        'internet': online,                 # legacy bool kept for topbar
+        'online':   online,                 # preferred key
+        'metered':  bool(config.get('metered_connection')),
+        'primary':  primary,                # cellular | wifi | ethernet | other | none
+        'primary_interface': route_if or '',
     }

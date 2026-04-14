@@ -307,18 +307,43 @@
     if (!$('#net-cell-tile')) return;
     try {
       const r = await window.api.get('/api/settings/network/status');
-      const set = (id, val, sub) => {
+      const setTile = (id, tile) => {
+        const t = $('#' + id + '-tile');
         const v = $('#' + id + '-value');
         const s = $('#' + id + '-sub');
-        if (v) v.textContent = val || '—';
-        if (s && sub != null) s.textContent = sub;
+        if (!t) return;
+        const state = (tile && tile.state) || 'off';
+        if (v) v.textContent = state;
+        if (s) s.textContent = (tile && tile.detail) || '';
+        t.classList.toggle('is-on',     state === 'on' || state === 'online');
+        t.classList.toggle('is-off',    state === 'off' || state === 'offline');
+        t.classList.toggle('is-active', !!(tile && tile.active));
       };
-      set('net-cell', r.cellular && r.cellular.state || 'off', r.cellular && r.cellular.detail);
-      set('net-wifi', r.wifi && r.wifi.state || 'off',         r.wifi && r.wifi.ssid);
-      set('net-hot',  r.hotspot && r.hotspot.state || 'off',   r.hotspot && r.hotspot.clients != null ? `${r.hotspot.clients} client(s)` : '');
-      set('net-inet', r.internet && r.internet.state || 'unknown', r.internet && r.internet.detail);
+      setTile('net-cell', r.cellular);
+      setTile('net-wifi', r.wifi);
+      setTile('net-hot',  r.hotspot);
+      setTile('net-inet', r.internet);
       if (r.hotspot && r.hotspot.ssid) {
         const el = $('#net-hot-ssid'); if (el) el.textContent = r.hotspot.ssid;
+      }
+      // Primary-link banner
+      const banner = $('#net-primary-banner');
+      if (banner) {
+        const pretty = {
+          cellular: 'Cellular',
+          wifi:     'WiFi client',
+          ethernet: 'Ethernet',
+          other:    'other link',
+          none:     'no uplink',
+        }[r.primary || 'none'] || r.primary;
+        const iface = r.primary_interface ? ` (${r.primary_interface})` : '';
+        if ((r.primary || 'none') === 'none') {
+          banner.textContent = 'Not reaching the internet right now.';
+          banner.dataset.tone = 'warn';
+        } else {
+          banner.textContent = `Active uplink: ${pretty}${iface}`;
+          banner.dataset.tone = 'ok';
+        }
       }
     } catch (e) { /* leave placeholders */ }
     refreshSavedWifi();

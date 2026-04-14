@@ -4,30 +4,38 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Connectivity</h2>
-      <p class="muted">Cellular is the primary WAN. WiFi client and the SkyTrack-Portal hotspot share <code>wlan0</code>.</p>
+      <p class="muted">
+        Three independent roles share this Pi: a <b>Cellular</b> modem (if
+        installed) carries outbound traffic; the <b>WiFi client</b> can join a
+        nearby network on <code>wlan0</code>; and the <b>SkyTrack-Portal
+        hotspot</b> uses <code>wlan0</code> as an access point for operators.
+        WiFi client and hotspot can't both run at once — they share the radio.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-network"
           data-endpoint="/api/settings/network"
           data-section="network">
 
+      <div class="net-primary-banner" id="net-primary-banner" data-tone="info">Checking active uplink…</div>
+
       <div class="status-grid">
-        <div class="status-tile" id="net-cell-tile">
+        <div class="status-tile" id="net-cell-tile" title="Cellular modem (wwan/ppp)">
           <span class="st-label">Cellular</span>
           <span class="st-value" id="net-cell-value">…</span>
           <span class="st-sub muted" id="net-cell-sub">checking</span>
         </div>
-        <div class="status-tile" id="net-wifi-tile">
+        <div class="status-tile" id="net-wifi-tile" title="WiFi client mode on wlan0">
           <span class="st-label">WiFi client</span>
           <span class="st-value" id="net-wifi-value">…</span>
           <span class="st-sub muted" id="net-wifi-sub">checking</span>
         </div>
-        <div class="status-tile" id="net-hot-tile">
+        <div class="status-tile" id="net-hot-tile" title="SkyTrack-Portal access point on wlan0">
           <span class="st-label">Hotspot</span>
           <span class="st-value" id="net-hot-value">…</span>
           <span class="st-sub muted" id="net-hot-sub">checking</span>
         </div>
-        <div class="status-tile" id="net-inet-tile">
+        <div class="status-tile" id="net-inet-tile" title="Can reach the public internet">
           <span class="st-label">Internet</span>
           <span class="st-value" id="net-inet-value">…</span>
           <span class="st-sub muted" id="net-inet-sub">probe</span>
