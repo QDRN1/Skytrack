@@ -26,14 +26,14 @@ DEFAULT_CONFIG = {
     'units_temperature': 'F',   # F | C
     'units_speed': 'kts',       # kts | mph | kmh
     'clock_format': '12h',      # 12h | 24h
-    'default_theme': 'light',   # light | dark
+    'default_theme': 'dark',    # light | dark | auto
 
     # --- Location defaults (Red Wing, MN) ---
     'latitude': 44.602016,
     'longitude': -92.494604,
     'map_zoom': 8,
 
-    # --- Hardware ---
+    # --- Hardware (DHT + buzzer pins) -----------------------------------
     'dht_pin': 21,
     'buzzer_pin': 18,
     'buzzer_enabled': True,
@@ -42,14 +42,20 @@ DEFAULT_CONFIG = {
     'buzzer_volume': 60,        # 0-100 PWM duty cycle
     'sensor_interval': 15,      # seconds between reads
 
-    # --- ADS-B ingestion ---
+    # --- ADS-B ingestion -----------------------------------------------
     'dump1090_json_path': '/run/dump1090-fa/aircraft.json',
     'dump1090_url': 'http://localhost:8080/data/aircraft.json',
     'ingest_interval': 5,       # seconds
     'sightings_retention_days': 7,
     'logs_retention_days': 30,
+    'max_records': 100000,
+    'ignore_helicopters': False,
+    'ignore_ground_targets': False,
+    'min_altitude_ft': 0,
+    'signal_threshold_dbm': -100,
+    'default_dashboard_time_filter': '24h',  # 1h | 6h | 24h | 7d
 
-    # --- Hotspot / Network ---
+    # --- Hotspot / Network ----------------------------------------------
     'hotspot_ssid': 'SkyTrack-Portal',
     'hotspot_gateway': '10.4.26.89',
     'hotspot_subnet': '10.4.26.0/24',
@@ -57,9 +63,13 @@ DEFAULT_CONFIG = {
     'hotspot_dhcp_end': '10.4.26.200',
     'hotspot_channel': 6,
     'hotspot_country': 'US',
-    'metered_connection': False,  # cellular metered mode
+    'hotspot_auto_start': True,
+    'metered_connection': False,    # cellular metered mode
+    'cellular_enabled': True,
+    'wifi_client_enabled': True,
+    'time_sync_source': 'ntp',      # ntp | cellular | gps
 
-    # --- Integrations (keys live in auth.json) ---
+    # --- Integrations (keys live in auth.json) --------------------------
     'aeroapi_enabled': False,
     'aeroapi_calls_per_hour': 10,
     'aeroapi_calls_per_day': 200,
@@ -67,23 +77,33 @@ DEFAULT_CONFIG = {
     'opensky_enabled': False,
     'opensky_poll_minutes': 10,
     'enrichment_ttl_hours': 24,
+    'weather_provider': 'openmeteo',  # openmeteo | openweathermap
 
-    # --- Weather ---
+    # --- Weather --------------------------------------------------------
     'weather_interval': 1800,     # 30 min
 
-    # --- Radar publishing (display-only in phase 1) ---
+    # --- Feeders (sharing) ----------------------------------------------
+    'feed_over_cellular': False,
+    'feed_over_wifi_only': True,
+
+    # --- Radar publishing (display-only in phase 1) ---------------------
     'radar_publish_enabled': False,
 
-    # --- Auth / sessions ---
-    'session_timeout_hours': 8,
-    'admin_password_session_minutes': 15,  # re-auth prompt in settings
+    # --- Auth / sessions ------------------------------------------------
+    'session_timeout_hours': 2,    # sliding window
+    'admin_password_session_minutes': 15,
+    'lockout_max_attempts': 5,
+    'lockout_window_seconds': 300,
 
-    # --- Updates ---
+    # --- Updates & backup -----------------------------------------------
     'ota_remote': 'origin',
     'ota_branch': 'main',
     'ota_enabled': True,
+    'update_check_enabled': True,
+    'update_allow_cellular': False,
+    'auto_backup_frequency': 'weekly',  # off | daily | weekly | monthly
 
-    # --- Paths ---
+    # --- Paths ----------------------------------------------------------
     'data_dir': '/var/lib/skytrack',
     'geo_data_dir': '/var/lib/skytrack/geo',
     'log_dir': '/var/log/skytrack',
@@ -92,21 +112,35 @@ DEFAULT_CONFIG = {
     'device_id_path': '/var/lib/skytrack/device_id',
     'backup_dir': '/var/lib/skytrack/backups',
 
-    # --- Display / kiosk ---
+    # --- Display / kiosk ------------------------------------------------
+    # display_rotation accepts: 0 | 90 | 180 | 270
+    # (UI labels these "Normal", "Right", "Upside Down", "Left")
     'display_rotation': '0',
     'display_output': 'HDMI-1',
+    'display_brightness': 100,           # 0-100
+    'display_sleep_minutes': 0,          # 0 = never dim
+    'display_animation_level': 'full',   # full | reduced | off
+    'display_particle_density': 80,      # 0-100
+    'display_fullscreen_on_boot': True,
 
-    # --- Burn-in prevention ---
+    # --- Burn-in prevention ---------------------------------------------
     'jitter_interval': 300,       # 5 min
     'refresh_interval': 3600,     # 60 min
 
-    # --- Logging ---
+    # --- Alerts ---------------------------------------------------------
+    'alert_no_aircraft_minutes': 30,
+    'alert_cell_disconnect': True,
+    'alert_wifi_disconnect': False,
+    'alert_api_budget_pct': 80,    # warn at 80% of daily budget
+    'alert_low_storage_pct': 90,   # warn at 90% disk usage
+
+    # --- Logging --------------------------------------------------------
     'log_level': 'INFO',
 
-    # --- GPS / geocoding ---
+    # --- GPS / geocoding -----------------------------------------------
     'geo_offline_enabled': True,
 
-    # --- Cloudflare Tunnel (optional remote access) ---
+    # --- Cloudflare Tunnel (optional remote access) --------------------
     'cloudflared_enabled': False,
 }
 
