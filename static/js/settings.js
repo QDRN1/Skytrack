@@ -98,7 +98,7 @@
       if (name === 'diagnostics')  refreshDiagnostics();
       if (name === 'data')         refreshDataUsage();
       if (name === 'updates')      refreshBackups();
-      if (name === 'alerts')       refreshWatchlist();
+      if (name === 'alerts')     { refreshWatchlist(); refreshHardwareStatus(); }
     }
 
     buttons.forEach(b => b.addEventListener('click', () => show(b.dataset.section)));
@@ -350,6 +350,13 @@
       if (r.hotspot && r.hotspot.ssid) {
         const el = $('#net-hot-ssid'); if (el) el.textContent = r.hotspot.ssid;
       }
+      // Reflect the LIVE APN (read straight off the gsm connection) in
+      // the input so the operator sees what NetworkManager is actually
+      // using, not whatever stale value happens to be in config.yaml.
+      const apnIn = $('#net-cell-apn');
+      if (apnIn && r.cellular && r.cellular.apn && document.activeElement !== apnIn) {
+        apnIn.value = r.cellular.apn;
+      }
       // Primary-link banner
       const banner = $('#net-primary-banner');
       if (banner) {
@@ -418,32 +425,61 @@
       } catch (_) { toast('Could not reveal password', true); }
     });
 
+    // Hotspot password regenerate — single canonical implementation.
+    // Both Settings → Network and the legacy /network page eventually
+    // call this same handler if they live on the same page; the network
+    // page also has its own JS that hits the same backend endpoint.
     const regen = $('#btn-hot-regen');
-    if (regen) regen.addEventListener('click', () => withConfirm(
-      Object.assign(regen, { dataset: Object.assign(regen.dataset, {
-        confirmTitle: regen.dataset.confirmTitle || 'Regenerate hotspot password?',
-        confirmBody:  regen.dataset.confirmBody  || 'Anyone currently connected will be kicked off.'
-      })}),
-      async () => {
-        try {
-          const r = await window.api.post('/api/settings/network/hotspot/regenerate');
+    if (regen) regen.addEventListener('click', async () => {
+      const ok = await confirmModal(
+        'Regenerate hotspot password?',
+        'Anyone currently connected will be kicked off and will need the new password.'
+      );
+      if (!ok) return;
+      regen.disabled = true;
+      try {
+        const r = await window.api.post('/api/settings/network/hotspot/regenerate');
+        if (r && r.password) {
+          const code = $('#net-hot-pw');
+          if (code) {
+            code.textContent = r.password;
+            const showBtn = $('#btn-hot-show');
+            if (showBtn) {
+              showBtn.textContent = 'Hide';
+              showBtn.dataset.shown = '1';
+            }
+          }
           toast('Hotspot password regenerated');
-          if (r.password) { const c = $('#net-hot-pw'); if (c) c.textContent = r.password; }
-        } catch (e) { toast('Failed to regenerate', true); }
+        } else {
+          toast('Regenerate returned no password', true);
+        }
+      } catch (e) {
+        const msg = (e && e.data && (e.data.message || e.data.error)) || 'Failed to regenerate';
+        toast(msg, true);
+        if (window.uiModal) window.uiModal.alert(msg, 'Hotspot password');
+      } finally {
+        regen.disabled = false;
       }
-    ));
+    });
 
     const restartHs = $('#btn-hot-restart');
-    if (restartHs) restartHs.addEventListener('click', () => withConfirm(
-      Object.assign(restartHs, { dataset: Object.assign(restartHs.dataset, {
-        confirmTitle: 'Restart hotspot?',
-        confirmBody:  'You may lose this session for ~10 seconds if you are connected over the hotspot.'
-      })}),
-      async () => {
-        try { await window.api.post('/api/settings/network/hotspot/restart'); toast('Hotspot restarting'); }
-        catch (e) { toast('Restart failed', true); }
+    if (restartHs) restartHs.addEventListener('click', async () => {
+      const ok = await confirmModal(
+        'Restart hotspot?',
+        'You may lose this session for ~10 seconds if you are connected over the hotspot.'
+      );
+      if (!ok) return;
+      restartHs.disabled = true;
+      try {
+        await window.api.post('/api/settings/network/hotspot/restart');
+        toast('Hotspot restarting');
+      } catch (e) {
+        const msg = (e && e.data && (e.data.message || e.data.error)) || 'Restart failed';
+        toast(msg, true);
+      } finally {
+        restartHs.disabled = false;
       }
-    ));
+    });
 
     // Hotspot auto-start switch (single-flag form-less toggle).
     const autostart = $('#net-hot-autostart');
@@ -470,21 +506,37 @@
 
     // APN apply button — fires the dedicated endpoint so the value
     // reaches NetworkManager even when the operator hasn't submitted the
-    // main Connectivity form yet.
+    // main Connectivity form yet. Surfaces the live nmcli error verbatim
+    // when polkit / modem state rejects the change instead of pretending
+    // it succeeded.
     const apnBtn = $('#btn-cell-apn-apply');
     const apnIn  = $('#net-cell-apn');
     if (apnBtn && apnIn) apnBtn.addEventListener('click', async () => {
       const apn = (apnIn.value || '').trim();
-      if (!apn) { toast('APN cannot be empty', true); return; }
+      if (!apn) {
+        toast('APN cannot be empty', true);
+        return;
+      }
+      apnBtn.disabled = true;
       try {
         const r = await window.api.post('/api/settings/network/cellular/apn', { apn });
-        if (r.ok) {
-          toast(`APN saved: ${apn}`);
+        if (r && r.ok) {
+          const tail = r.applied ? ' (live)' : ' (saved — modem will pick it up)';
+          toast(`APN saved: ${apn}${tail}`);
+          // Re-pull live status so the field reflects what NM is actually using.
+          refreshNetworkStatus();
         } else {
-          toast(r.message || 'APN save failed', true);
-          if (window.uiModal && r.message) window.uiModal.alert(r.message, 'APN');
+          const msg = (r && r.message) || 'APN save failed';
+          toast(msg, true);
+          if (window.uiModal) window.uiModal.alert(msg, 'APN');
         }
-      } catch (e) { toast('APN save failed', true); }
+      } catch (e) {
+        const msg = (e && e.data && (e.data.message || e.data.error)) || 'APN save failed';
+        toast(msg, true);
+        if (window.uiModal) window.uiModal.alert(msg, 'APN');
+      } finally {
+        apnBtn.disabled = false;
+      }
     });
 
     // WiFi scan button — delegates to the new backend-agnostic endpoint.
@@ -678,6 +730,52 @@
     }
   }
 
+  // Render the live hardware truthfulness panel (sensor + buzzer).
+  // Lives inside the Alerts section so operators can immediately tell
+  // whether the buzzer they're tuning will actually beep and whether the
+  // temperature in the topbar is real DHT22 data or mock.
+  async function refreshHardwareStatus() {
+    const wrap = $('#hw-status');
+    if (!wrap) return;
+    try {
+      const r = await window.api.get('/api/settings/hardware/status');
+      const s = (r && r.sensor) || {};
+      const b = (r && r.buzzer) || {};
+
+      const setText = (id, txt) => { const el = $('#' + id); if (el) el.textContent = txt; };
+      const setDot  = (id, ok) => {
+        const el = $('#' + id);
+        if (!el) return;
+        el.classList.toggle('hw-ok',  !!ok);
+        el.classList.toggle('hw-bad', !ok);
+      };
+
+      // Sensor row
+      const srcLabel = ({
+        dht22:        'DHT22 (live)',
+        dht22_cached: 'DHT22 (cached)',
+        mock:         'Mock (no sensor)',
+      })[s.source] || (s.source || 'unknown');
+      setDot('hw-sensor-dot', s.available && !s.mock);
+      setText('hw-sensor-source', srcLabel);
+      setText('hw-sensor-temp',
+        s.temperature_f != null ? `${s.temperature_f}°F` : '—');
+      setText('hw-sensor-pin', s.pin != null ? `pin ${s.pin}` : '');
+      setText('hw-sensor-error', s.last_error || '');
+
+      // Buzzer row
+      setDot('hw-buzz-dot', b.available);
+      const buzzState = !b.available
+        ? 'not available'
+        : b.enabled ? 'available, enabled' : 'available, disabled';
+      setText('hw-buzz-state', buzzState);
+      setText('hw-buzz-pin', b.pin ? `pin ${b.pin}` : '');
+      setText('hw-buzz-error', b.last_error || '');
+    } catch (_) {
+      // Leave placeholders alone.
+    }
+  }
+
   function bindAlertExtras() {
     const f = $('#form-watchlist-add');
     if (f) f.addEventListener('submit', async (e) => {
@@ -697,6 +795,41 @@
       try { await window.api.post('/api/settings/alerts/watchlist/remove', { ident }); toast('Removed'); refreshWatchlist(); }
       catch (_) { toast('Remove failed', true); }
     });
+
+    // Buzzer test button — single source of truth for "does this beep".
+    // Always toasts the structured backend result (available/enabled/error)
+    // instead of a generic success/fail, so the operator can tell whether
+    // it's a wiring problem, a config switch, or a permission issue.
+    const buzz = $('#btn-buzzer-test');
+    if (buzz) buzz.addEventListener('click', async () => {
+      buzz.disabled = true;
+      const orig = buzz.textContent;
+      buzz.textContent = 'Beeping…';
+      try {
+        const r = await window.api.post('/api/settings/alerts/buzzer/test');
+        if (r && r.ok) {
+          toast('Buzzer test sent');
+        } else {
+          let msg = (r && r.message) || 'Buzzer test failed';
+          if (r && r.last_error) msg += ` — ${r.last_error}`;
+          if (r && r.available === false) msg += ' (no buzzer detected)';
+          else if (r && r.enabled === false) msg += ' (buzzer disabled in config)';
+          toast(msg, true);
+          if (window.uiModal) window.uiModal.alert(msg, 'Buzzer test');
+        }
+      } catch (e) {
+        const msg = (e && e.data && (e.data.message || e.data.error)) || 'Buzzer test failed';
+        toast(msg, true);
+        if (window.uiModal) window.uiModal.alert(msg, 'Buzzer test');
+      } finally {
+        buzz.textContent = orig;
+        buzz.disabled = false;
+        refreshHardwareStatus();
+      }
+    });
+
+    const hwRefresh = $('#btn-hw-refresh');
+    if (hwRefresh) hwRefresh.addEventListener('click', refreshHardwareStatus);
   }
 
   // ------------------------------------------------------------------
@@ -795,15 +928,40 @@
       }
     });
 
-    // Power buttons
-    const power = (id, url, msg) => {
+    // Power buttons — toast the actual server response so a failed
+    // reboot doesn't leave the operator looking at a green "Rebooting…"
+    // for ten minutes. Backend returns {ok, message} from _power_action,
+    // and we surface the message verbatim on failure.
+    const power = (id, url, successMsg) => {
       const b = $('#' + id);
       if (!b) return;
       b.addEventListener('click', async () => {
         const ok = await confirmModal(b.dataset.confirmTitle, b.dataset.confirmBody);
         if (!ok) return;
-        try { await window.api.post(url); toast(msg); }
-        catch (_) { toast('Failed', true); }
+        b.disabled = true;
+        try {
+          const r = await window.api.post(url);
+          if (r && r.ok === false) {
+            const msg = r.message || 'Failed';
+            toast(msg, true);
+            if (window.uiModal) window.uiModal.alert(msg, 'Power action');
+          } else {
+            toast((r && r.message) || successMsg);
+          }
+        } catch (e) {
+          // The reboot path may drop the socket between dbus accepting
+          // the call and Flask flushing the response; treat dropped
+          // connections as success-in-progress only for reboot/shutdown.
+          if (id === 'btn-reboot' || id === 'btn-shutdown') {
+            toast(successMsg);
+            return;
+          }
+          const msg = (e && e.data && (e.data.message || e.data.error)) || 'Failed';
+          toast(msg, true);
+          if (window.uiModal) window.uiModal.alert(msg, 'Power action');
+        } finally {
+          b.disabled = false;
+        }
       });
     };
     power('btn-restart-app',     '/api/settings/updates/restart-app',     'App restarting');

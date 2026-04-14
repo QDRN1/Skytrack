@@ -183,6 +183,53 @@
     </form>
   </div>
 
+  {# ---- Hardware truthfulness panel ---------------------------------- #}
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Hardware status</h2>
+      <p class="muted">
+        Live readout of the on-board temperature/humidity sensor and the
+        alert buzzer. If either says <em>not available</em> or <em>mock</em>,
+        the topbar reading and the buzzer test below are not coming from
+        real hardware.
+      </p>
+    </header>
+
+    <div class="card-body">
+      <div class="hw-status" id="hw-status">
+        <div class="hw-row">
+          <span class="hw-dot" id="hw-sensor-dot"></span>
+          <span class="hw-label">Temperature sensor</span>
+          <span class="hw-value" id="hw-sensor-source">checking…</span>
+          <span class="hw-sub muted" id="hw-sensor-temp">—</span>
+          <span class="hw-sub muted" id="hw-sensor-pin"></span>
+          <span class="hw-error muted small" id="hw-sensor-error"></span>
+        </div>
+        <div class="hw-row">
+          <span class="hw-dot" id="hw-buzz-dot"></span>
+          <span class="hw-label">Alert buzzer</span>
+          <span class="hw-value" id="hw-buzz-state">checking…</span>
+          <span class="hw-sub muted" id="hw-buzz-pin"></span>
+          <span class="hw-error muted small" id="hw-buzz-error"></span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-buzzer-test">
+          Test buzzer
+        </button>
+        <button type="button" class="btn btn-lg" id="btn-hw-refresh">
+          Refresh
+        </button>
+      </div>
+      <p class="muted small">
+        The test sends three short beeps to the on-board GPIO buzzer.
+        If the operator hears nothing, the panel above explains why
+        (no hardware, disabled in config, or a permissions / wiring error).
+      </p>
+    </div>
+  </div>
+
   <div class="settings-card subtle">
     <header class="card-header">
       <h2>Watchlist</h2>

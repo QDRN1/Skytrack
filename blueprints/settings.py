@@ -373,8 +373,16 @@ def api_network():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
         rec = auth_lib.read_auth()
+        live = network_svc.get_network_status(cfg) or {}
+        # Surface the live APN value (read straight off the gsm connection)
+        # so the input field in Settings → Network reflects whatever NM is
+        # actually using, not just whatever happens to be persisted to YAML.
+        live_apn = (live.get('cellular') or {}).get('apn') or ''
+        cfg_view = {k: cfg.get(k) for k in _NETWORK_KEYS}
+        if live_apn:
+            cfg_view['cellular_apn'] = live_apn
         return jsonify({
-            'config': {k: cfg.get(k) for k in _NETWORK_KEYS},
+            'config': cfg_view,
             'hotspot': {
                 'ssid': cfg.get('hotspot_ssid'),
                 'gateway': cfg.get('hotspot_gateway'),
@@ -382,7 +390,7 @@ def api_network():
                 'password': rec.get('hotspot_password'),
                 'auto_start': cfg.get('hotspot_auto_start', True),
             },
-            'status': network_svc.get_network_status(cfg),
+            'status': live,
             'saved_wifi': cfg.get('saved_wifi_networks', []),
         })
 
@@ -746,9 +754,71 @@ def api_alerts():
 @settings_bp.route('/api/settings/alerts/buzzer/test', methods=['POST'])
 @ADMIN
 def api_buzzer_test():
-    result = current_app.buzzer.test()
-    logs_svc.log_portal('admin', 'buzzer_test', result)
+    """Sound the on-board buzzer for a quick three-beep audible check.
+
+    Always returns a structured result the UI can toast verbatim:
+        {ok, available, enabled, last_error, message}
+    `ok=False` is returned (200) when the GPIO is missing or the
+    operator has the buzzer disabled, so the UI can show the actual
+    reason instead of a generic failure.
+    """
+    bz = current_app.buzzer
+    result = bz.test()
+    result.setdefault('available', bool(getattr(bz, '_available', False)))
+    result['enabled'] = bool(getattr(bz, 'enabled', False))
+    result['last_error'] = getattr(bz, 'last_error', '') or ''
+    logs_svc.log_portal('admin', 'buzzer_test', {
+        'ok': bool(result.get('ok')),
+        'available': bool(result.get('available')),
+        'enabled': bool(result.get('enabled')),
+    })
     return jsonify(result)
+
+
+@settings_bp.route('/api/settings/alerts/buzzer/status', methods=['GET'])
+@ADMIN
+def api_buzzer_status():
+    bz = current_app.buzzer
+    return jsonify({
+        'available':  bool(bz.available()),
+        'enabled':    bool(getattr(bz, 'enabled', False)),
+        'volume':     int(getattr(bz, 'volume', 0)),
+        'pin':        int(getattr(bz, 'pin', 0)),
+        'last_error': getattr(bz, 'last_error', '') or '',
+    })
+
+
+@settings_bp.route('/api/settings/hardware/status', methods=['GET'])
+@ADMIN
+def api_hardware_status():
+    """Combined sensor + buzzer truthfulness panel for Settings → Alerts.
+
+    Returns the actual init outcome of both subsystems so the operator
+    can tell at a glance whether the temperature in the topbar is real
+    DHT22 data or mock, and whether the buzzer test will actually beep.
+    """
+    sensor_reading = current_app.sensor_svc.read() or {}
+    bz = current_app.buzzer
+    return jsonify({
+        'sensor': {
+            'available':     bool(getattr(current_app.sensor_svc, 'available', False)),
+            'source':        sensor_reading.get('source') or 'mock',
+            'mock':          bool(sensor_reading.get('mock')),
+            'pin':           sensor_reading.get('pin'),
+            'temperature_f': sensor_reading.get('temperature_f'),
+            'temperature_c': sensor_reading.get('temperature_c'),
+            'humidity':      sensor_reading.get('humidity'),
+            'last_error':    sensor_reading.get('last_error') or getattr(current_app.sensor_svc, 'last_error', '') or '',
+            'timestamp':     sensor_reading.get('timestamp'),
+        },
+        'buzzer': {
+            'available':  bool(bz.available()),
+            'enabled':    bool(getattr(bz, 'enabled', False)),
+            'volume':     int(getattr(bz, 'volume', 0)),
+            'pin':        int(getattr(bz, 'pin', 0)),
+            'last_error': getattr(bz, 'last_error', '') or '',
+        },
+    })
 
 
 # ===========================================================================
@@ -1146,63 +1216,91 @@ def api_selfcheck():
 @settings_bp.route('/api/settings/diagnostics/restart-app', methods=['POST'])
 @ADMIN
 def api_restart_app():
+    """Restart the SkyTrack app via systemd, returning verified status.
+
+    `--no-block` is critical here: restarting our own unit would otherwise
+    SIGTERM us mid-response, the HTTP socket would die, and the operator
+    would see a generic "fetch failed" toast even though the restart
+    actually worked. With --no-block, systemd just queues the job and we
+    flush the response cleanly before the restart fires.
+    """
     logs_svc.log_portal('admin', 'restart_app_requested', {})
-    ok, msg = _shell(['systemctl', 'restart', 'skytrack-app'], timeout=15)
-    return jsonify({'ok': ok, 'message': msg or 'restart issued'})
+    ok, msg = _shell(['systemctl', '--no-block', 'restart', 'skytrack-app'], timeout=10)
+    if ok:
+        return jsonify({'ok': True, 'message': 'App restart queued'})
+    return jsonify({
+        'ok': False,
+        'message': (msg or 'restart failed').strip()[:300],
+    }), 500
 
 
 @settings_bp.route('/api/settings/diagnostics/restart-network', methods=['POST'])
 @ADMIN
 def api_restart_network():
+    """Restart the network helper unit via systemd, returning verified status."""
     logs_svc.log_portal('admin', 'restart_network_requested', {})
-    ok, msg = _shell(['systemctl', 'restart', 'skytrack-network'], timeout=15)
-    return jsonify({'ok': ok, 'message': msg or 'restart issued'})
+    ok, msg = _shell(['systemctl', '--no-block', 'restart', 'skytrack-network'], timeout=10)
+    if ok:
+        return jsonify({'ok': True, 'message': 'Network restart queued'})
+    return jsonify({
+        'ok': False,
+        'message': (msg or 'restart failed').strip()[:300],
+    }), 500
+
+
+def _power_action(verb: str, label: str):
+    """Run a login1 power action via systemctl --no-block and verify it
+    was accepted by the OS before claiming success to the UI.
+
+    `--no-block` returns the moment the request lands in dbus, which is
+    long before the actual reboot fires, so the HTTP response always
+    flushes. If polkit rejects the call we get a non-zero exit AND a
+    visible error string we can surface in a toast — no more silent
+    "rebooting…" ghost.
+
+    Falls back to `shutdown -r +1 / -h +1` only if the systemctl call
+    itself failed for an unrelated reason (e.g. dbus down). Both verbs
+    are explicitly granted to the skytrack user in
+    config_templates/skytrack.polkit.rules.
+    """
+    logs_svc.log_portal('admin', f'{verb}_requested', {})
+    cmd_systemctl = ['systemctl', '--no-block', verb]
+    ok, msg = _shell(cmd_systemctl, timeout=10)
+    if ok:
+        return jsonify({'ok': True, 'message': f'{label} queued — system going down'})
+    fallback = ['shutdown', '-r' if verb == 'reboot' else '-h', '+1']
+    ok2, msg2 = _shell(fallback, timeout=10)
+    if ok2:
+        return jsonify({
+            'ok': True,
+            'message': f'{label} scheduled in 1 minute (systemctl path returned: {msg.strip()[:200]})',
+        })
+    detail = (msg or msg2 or '').strip()[:300] or 'unknown failure'
+    return jsonify({
+        'ok': False,
+        'message': f'{label} rejected by the OS: {detail}',
+    }), 500
 
 
 @settings_bp.route('/api/settings/diagnostics/reboot', methods=['POST'])
 @ADMIN
 def api_reboot():
-    """Immediate reboot — schedules 3s delay so the HTTP response can flush.
+    """Immediate reboot via systemd-logind, with verified queueing.
 
-    We deliberately do NOT use `shutdown -r +1` here (which schedules a full
-    60-second delay and makes operators think the button "doesn't work").
-    Instead we spawn a detached background reboot after 3 seconds and
-    return 200 immediately so the UI can show its "rebooting…" state.
+    Uses `systemctl --no-block reboot`, which talks to logind through
+    dbus and returns success only if the polkit grant for
+    `org.freedesktop.login1.reboot` resolves. The grant for the
+    `skytrack` service user is installed by install.sh (see
+    config_templates/skytrack.polkit.rules).
     """
-    import subprocess
-    logs_svc.log_portal('admin', 'reboot_requested', {})
-    try:
-        subprocess.Popen(
-            ['/bin/sh', '-c', 'sleep 3; systemctl reboot || /sbin/reboot || shutdown -r now'],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return jsonify({'ok': True, 'message': 'rebooting in 3 seconds'})
-    except Exception as e:
-        logger.error('reboot spawn failed: %s', e)
-        return jsonify({'ok': False, 'message': f'reboot failed: {e}'}), 500
+    return _power_action('reboot', 'Reboot')
 
 
 @settings_bp.route('/api/settings/diagnostics/shutdown', methods=['POST'])
 @ADMIN
 def api_shutdown():
-    """Immediate power-off — same pattern as api_reboot."""
-    import subprocess
-    logs_svc.log_portal('admin', 'shutdown_requested', {})
-    try:
-        subprocess.Popen(
-            ['/bin/sh', '-c', 'sleep 3; systemctl poweroff || /sbin/poweroff || shutdown -h now'],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return jsonify({'ok': True, 'message': 'shutting down in 3 seconds'})
-    except Exception as e:
-        logger.error('shutdown spawn failed: %s', e)
-        return jsonify({'ok': False, 'message': f'shutdown failed: {e}'}), 500
+    """Immediate power-off — same verified path as api_reboot."""
+    return _power_action('poweroff', 'Shutdown')
 
 
 # ===========================================================================
@@ -1303,15 +1401,22 @@ def api_network_status():
 
     return jsonify({
         'cellular': {
-            'state':  'on' if cell_up else 'off',
-            'detail': ' · '.join(cell_detail_bits) or '—',
-            'active': primary == 'cellular',
+            'state':       'on' if cell_up else 'off',
+            'detail':      ' · '.join(cell_detail_bits) or '—',
+            'active':      primary == 'cellular',
+            'apn':         cellular.get('apn') or '',
+            'apn_source':  cellular.get('apn_source') or '',
+            'carrier':     cellular.get('carrier') or '',
+            'signal_pct':  int(cellular.get('signal_pct') or 0),
+            'access_tech': cellular.get('access_tech') or '',
+            'detected':    bool(cellular.get('detected')),
         },
         'wifi': {
-            'state':  'on' if wifi_up else 'off',
-            'ssid':   wifi.get('ssid') or '',
-            'detail': wifi_detail,
-            'active': primary == 'wifi' and not hs_up,
+            'state':      'on' if wifi_up else 'off',
+            'ssid':       wifi.get('ssid') or '',
+            'detail':     wifi_detail,
+            'active':     primary == 'wifi' and not hs_up,
+            'signal_pct': int(wifi.get('signal_pct') or 0),
         },
         'hotspot': {
             'state':   'on' if hs_up else 'off',
@@ -1432,9 +1537,13 @@ def api_wifi_scan():
 @ADMIN
 def api_cellular_apn():
     """Set the APN on the active gsm connection and persist it into
-    config.yaml. Operators see the value they typed even before nmcli
-    reports it back, because `get_network_status` falls back to the
-    config value when the modem is still reprovisioning.
+    config.yaml. The backend re-activates the connection so the new APN
+    takes effect on the live cellular link, not just the next modem cycle.
+
+    Failure handling: if NetworkManager rejects the change (most often
+    because the polkit grant is missing), we surface the actual nmcli
+    stderr verbatim AND return a non-200 status so the JS client toasts
+    a real error instead of a green checkmark on a no-op.
     """
     payload = request.get_json(silent=True) or {}
     apn = (payload.get('apn') or '').strip()
@@ -1445,15 +1554,22 @@ def api_cellular_apn():
     _persist({'cellular_apn': apn})
     result = network_svc.set_cellular_apn(apn)
     logs_svc.log_network('cellular_apn_set', {
-        'apn': apn, 'ok': bool(result.get('ok')),
-        'backend': result.get('backend'),
-    })
-    return jsonify({
-        'ok': bool(result.get('ok')),
         'apn': apn,
+        'ok': bool(result.get('ok')),
         'backend': result.get('backend'),
-        'message': result.get('message') or 'APN updated',
+        'applied': bool(result.get('applied')),
     })
+    payload_out = {
+        'ok':         bool(result.get('ok')),
+        'apn':        apn,
+        'backend':    result.get('backend'),
+        'connection': result.get('connection'),
+        'applied':    bool(result.get('applied')),
+        'message':    result.get('message') or 'APN updated',
+    }
+    if not result.get('ok'):
+        return jsonify(payload_out), 500
+    return jsonify(payload_out)
 
 
 @settings_bp.route('/api/settings/network/backend', methods=['GET'])

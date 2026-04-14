@@ -1193,3 +1193,42 @@ button.topbar-link {
   padding: 0.55rem 0.95rem;
 }
 
+/* -------- Topbar status pill states -------- */
+.topbar-secondary .meta.meta-ok    { color: var(--accent, #6acff5); }
+.topbar-secondary .meta.meta-bad   { color: var(--accent-warn, #f0a23a); }
+.topbar-secondary .meta.meta-off   { color: var(--fg-muted, #7a8290); }
+.topbar-secondary .meta.meta-active{
+  font-weight: 600;
+  text-shadow: 0 0 6px rgba(106, 207, 245, 0.45);
+}
+
+/* -------- Hardware truthfulness panel (Settings → Alerts) -------- */
+.hw-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 14px;
+}
+.hw-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+}
+.hw-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--fg-muted, #7a8290);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset;
+  flex: 0 0 auto;
+}
+.hw-dot.hw-ok  { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+.hw-dot.hw-bad { background: #f0a23a; box-shadow: 0 0 8px rgba(240, 162, 58, 0.5); }
+.hw-label { min-width: 160px; color: var(--fg); font-weight: 600; }
+.hw-value { color: var(--fg); }
+.hw-sub   { font-size: 0.9em; }
+.hw-error { flex: 1 1 100%; color: var(--accent-warn); font-style: italic; }
+

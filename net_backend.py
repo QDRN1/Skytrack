@@ -445,11 +445,20 @@ def _read_apn_nm() -> (str, str):
 
 
 def set_apn(apn: str, connection_name: Optional[str] = None) -> Dict:
-    """Write a new APN into an existing NM gsm connection, or create one.
+    """Write a new APN into an existing NM gsm connection (or create one)
+    and re-activate it so the modem actually dials with the new value.
 
-    If there's already a gsm connection, we edit it in place (non-destructive).
-    Otherwise we create a new connection named 'skytrack-cellular' so the
-    modem has something to dial against the first time the SIM is inserted.
+    Sequence:
+      1. If a gsm connection exists, `nmcli connection modify <name> gsm.apn`.
+         Otherwise create `skytrack-cellular` with the new APN.
+      2. `nmcli connection down <name>` (best effort) then `up <name>`
+         so the new APN takes effect immediately on the live link, not
+         only on the next modem cycle.
+      3. Return `{ok, backend, message, connection, applied}`.
+
+    Permission errors are surfaced verbatim from nmcli stderr so the UI
+    can tell operators exactly which polkit action is missing instead of
+    pretending the save succeeded.
     """
     apn = (apn or '').strip()
     if not apn:
@@ -464,41 +473,54 @@ def set_apn(apn: str, connection_name: Optional[str] = None) -> Dict:
         }
 
     target = connection_name or _read_apn_nm()[1]
+    created = False
     if target:
         r = _run(
             ['nmcli', 'connection', 'modify', target, 'gsm.apn', apn],
-            timeout=10,
+            timeout=15,
         )
         if not r['ok']:
             return {
                 'ok': False, 'backend': 'nm',
                 'message': r['stderr'] or 'nmcli modify failed',
+                'connection': target, 'applied': False,
             }
         logger.info('APN on %s set to %s', target, apn)
-        return {
-            'ok': True, 'backend': 'nm',
-            'message': f'APN set to {apn}',
-            'connection': target, 'created': False,
-        }
+    else:
+        target = 'skytrack-cellular'
+        r = _run(
+            ['nmcli', 'connection', 'add', 'type', 'gsm',
+             'con-name', target, 'ifname', '*', 'apn', apn],
+            timeout=15,
+        )
+        if not r['ok']:
+            return {
+                'ok': False, 'backend': 'nm',
+                'message': r['stderr'] or 'nmcli add failed',
+                'connection': target, 'applied': False,
+            }
+        created = True
+        logger.info('Created NM gsm connection %s with apn=%s', target, apn)
 
-    # No gsm connection yet — create one. This doesn't activate anything until
-    # a SIM is actually present and the modem registers.
-    name = 'skytrack-cellular'
-    r = _run(
-        ['nmcli', 'connection', 'add', 'type', 'gsm',
-         'con-name', name, 'ifname', '*', 'apn', apn],
-        timeout=10,
-    )
-    if not r['ok']:
-        return {
-            'ok': False, 'backend': 'nm',
-            'message': r['stderr'] or 'nmcli add failed',
-        }
-    logger.info('Created NM gsm connection %s with apn=%s', name, apn)
+    # Best-effort re-activate so the running pppd/mobile-broadband session
+    # picks up the new APN. If the modem isn't present (no SIM yet), this
+    # call simply fails — that's expected and we don't downgrade the result.
+    applied = False
+    apply_msg = ''
+    _run(['nmcli', 'connection', 'down', target], timeout=15)
+    up = _run(['nmcli', 'connection', 'up', target], timeout=45)
+    if up['ok']:
+        applied = True
+        apply_msg = 'connection re-activated'
+    else:
+        apply_msg = up['stderr'] or up['stdout'] or 'connection saved; modem will pick it up on next dial'
+
     return {
         'ok': True, 'backend': 'nm',
-        'message': f'Created connection {name} with APN {apn}',
-        'connection': name, 'created': True,
+        'message': f'APN set to {apn} — {apply_msg}',
+        'connection': target,
+        'created': created,
+        'applied': applied,
     }
 
 
