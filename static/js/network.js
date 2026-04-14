@@ -1,4 +1,8 @@
-/* Network page: status panels + hotspot actions. */
+/* Network page: status panels + hotspot actions.
+ *
+ * All user-visible dialogs go through window.uiModal (static/js/modal.js)
+ * so the kiosk never sees a native Chromium alert box.
+ */
 (function () {
   document.addEventListener('DOMContentLoaded', () => {
     refresh();
@@ -7,18 +11,34 @@
     bind('#btn-hotspot-show', async () => {
       try {
         const r = await window.api.get('/api/network/hotspot/credentials');
-        alert(`SSID: ${r.ssid}\nPassword: ${r.password || '(not set)'}`);
-      } catch (e) { alert('Admin role required'); }
+        await window.uiModal.alert(
+          `SSID: ${r.ssid}\nPassword: ${r.password || '(not set)'}`,
+          'Hotspot credentials'
+        );
+      } catch (e) {
+        await window.uiModal.alert('Admin role required.', 'Not allowed');
+      }
     });
     bind('#btn-hotspot-regenerate', async () => {
-      if (!confirm('Generate a new hotspot password?')) return;
+      if (!(await window.uiModal.confirm(
+        'This will rotate the hotspot password. Anyone currently connected '
+        + 'will need to re-enter the new password.',
+        'Generate new hotspot password?'
+      ))) return;
       const r = await window.api.post('/api/network/hotspot/regenerate');
-      alert(`New password:\n${r.password}`);
+      await window.uiModal.alert(`New password:\n${r.password}`, 'Hotspot password');
     });
     bind('#btn-hotspot-restart', async () => {
-      if (!confirm('Restart hotspot services?')) return;
+      if (!(await window.uiModal.confirm(
+        'Restart hostapd, dnsmasq, and skytrack-hotspot. Clients will '
+        + 'briefly disconnect.',
+        'Restart hotspot services?'
+      ))) return;
       const r = await window.api.post('/api/network/hotspot/restart');
-      alert(r.message || (r.ok ? 'OK' : 'Failed'));
+      await window.uiModal.alert(
+        r.message || (r.ok ? 'Hotspot restarted.' : 'Restart failed.'),
+        r.ok ? 'Done' : 'Failed'
+      );
     });
 
     const metered = document.getElementById('metered-toggle');

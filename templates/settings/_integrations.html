@@ -56,11 +56,62 @@
           <p class="muted small">SkyTrack will stop hitting AeroAPI once this month's spend reaches the cap.</p>
         </div>
 
+        <div class="field">
+          <label for="i-aeroapi-cost">Cost per call (USD)</label>
+          <input id="i-aeroapi-cost" name="aeroapi_cost_per_call" type="number"
+                 min="0" max="1" step="0.001"
+                 value="{{ '%.3f'|format(config.aeroapi_cost_per_call or 0.01) }}">
+          <p class="muted small">
+            Used to project your monthly spend. Defaults to <code>$0.01</code> per
+            call, which matches the FlightAware AeroAPI Basic plan. Change this if
+            you're on a different plan.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="i-aeroapi-hour">Calls per hour (rate limit)</label>
+          <input id="i-aeroapi-hour" name="aeroapi_calls_per_hour" type="number"
+                 min="0" max="1000" step="1"
+                 value="{{ config.aeroapi_calls_per_hour or 10 }}">
+          <p class="muted small">
+            Hard ceiling on how often SkyTrack fires an AeroAPI lookup. Protects
+            you from a runaway loop eating through budget. Set to <code>0</code>
+            to disable lookups entirely without turning the integration off.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="i-aeroapi-day">Calls per day (pacing limit)</label>
+          <input id="i-aeroapi-day" name="aeroapi_calls_per_day" type="number"
+                 min="0" max="10000" step="1"
+                 value="{{ config.aeroapi_calls_per_day or 200 }}">
+          <p class="muted small">
+            Daily ceiling. SkyTrack evenly spreads lookups across the day so you
+            never wake up to a blown month-end bill from one noisy flight.
+          </p>
+        </div>
+
         <div class="readonly-grid" id="aeroapi-usage-box">
           <div class="readonly-row">
-            <span class="ro-label">This month</span>
+            <span class="ro-label">This month (actual)</span>
             <code class="ro-value">${{ '%.2f'|format(usage_aeroapi.cost_30d or 0) }}
               <span class="muted small">({{ usage_aeroapi.calls_30d or 0 }} calls)</span>
+            </code>
+          </div>
+          <div class="readonly-row">
+            <span class="ro-label">This month (projected)</span>
+            <code class="ro-value">
+              ~${{ '%.2f'|format((config.aeroapi_calls_per_day or 0) * (config.aeroapi_cost_per_call or 0) * 30) }}
+              <span class="muted small">
+                at {{ config.aeroapi_calls_per_day or 0 }} calls/day ×
+                ${{ '%.3f'|format(config.aeroapi_cost_per_call or 0) }}/call
+              </span>
+            </code>
+          </div>
+          <div class="readonly-row">
+            <span class="ro-label">Budget cap</span>
+            <code class="ro-value">
+              ${{ '%.2f'|format(config.aeroapi_monthly_budget_usd or 0) }}
             </code>
           </div>
         </div>

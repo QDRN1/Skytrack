@@ -1120,3 +1120,76 @@ button.topbar-link {
   border-color: color-mix(in srgb, var(--accent-warn) 45%, transparent);
 }
 
+/* -------------------------------------------------------------------------
+ * In-app modal dialogs (static/js/modal.js).
+ *
+ * Replaces native alert/confirm/prompt on kiosk hardware, where the touch
+ * keyboard + portrait rotation make the native ones unreliable.
+ * ------------------------------------------------------------------------- */
+.ui-modal-root[hidden] { display: none; }
+.ui-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.ui-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 10, 20, 0.72);
+  backdrop-filter: blur(4px);
+}
+.ui-modal-card {
+  position: relative;
+  min-width: 280px;
+  max-width: min(440px, 92vw);
+  background: var(--panel, #141a24);
+  color: var(--fg, #e8eef6);
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+  padding: 1.25rem 1.25rem 1rem;
+  font-family: inherit;
+}
+.ui-modal-head {
+  margin-bottom: 0.5rem;
+}
+.ui-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--fg, #e8eef6);
+}
+.ui-modal-body {
+  margin: 0.25rem 0 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-muted, #c8d2dc);
+}
+.ui-modal-input-wrap[hidden] { display: none; }
+.ui-modal-input-wrap {
+  margin-bottom: 0.9rem;
+}
+.ui-modal-input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  background: var(--bg, #0b1017);
+  color: inherit;
+  font: inherit;
+}
+.ui-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.ui-modal-actions .btn {
+  min-width: 92px;
+  padding: 0.55rem 0.95rem;
+}
+

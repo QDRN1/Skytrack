@@ -284,15 +284,26 @@
 
   // ------------------------------------------------------------------
   // Confirm modal
+  //
+  // Priority:
+  //   1. The settings page has its own #confirm-modal (richer layout).
+  //   2. Otherwise we fall back to the global uiModal helper.
+  //   3. Never fall back to window.confirm — kiosks don't render it well.
   // ------------------------------------------------------------------
   let _confirmResolve = null;
   function confirmModal(title, body) {
     const modal = $('#confirm-modal');
-    if (!modal) return Promise.resolve(window.confirm(`${title}\n\n${body || ''}`));
-    $('#confirm-title', modal).textContent = title || 'Are you sure?';
-    $('#confirm-body',  modal).textContent = body  || '';
-    modal.hidden = false;
-    return new Promise(resolve => { _confirmResolve = resolve; });
+    if (modal) {
+      $('#confirm-title', modal).textContent = title || 'Are you sure?';
+      $('#confirm-body',  modal).textContent = body  || '';
+      modal.hidden = false;
+      return new Promise(resolve => { _confirmResolve = resolve; });
+    }
+    if (window.uiModal && window.uiModal.confirm) {
+      return window.uiModal.confirm(body || '', title || 'Are you sure?');
+    }
+    // Last-ditch — never hit in prod because modal.js loads in base.html.
+    return Promise.resolve(window.confirm(`${title}\n\n${body || ''}`));
   }
   function bindConfirmModal() {
     const modal = $('#confirm-modal');
@@ -455,6 +466,95 @@
         toast('WiFi network saved');
         refreshSavedWifi();
       } catch (e) { toast('Could not save network', true); }
+    });
+
+    // APN apply button — fires the dedicated endpoint so the value
+    // reaches NetworkManager even when the operator hasn't submitted the
+    // main Connectivity form yet.
+    const apnBtn = $('#btn-cell-apn-apply');
+    const apnIn  = $('#net-cell-apn');
+    if (apnBtn && apnIn) apnBtn.addEventListener('click', async () => {
+      const apn = (apnIn.value || '').trim();
+      if (!apn) { toast('APN cannot be empty', true); return; }
+      try {
+        const r = await window.api.post('/api/settings/network/cellular/apn', { apn });
+        if (r.ok) {
+          toast(`APN saved: ${apn}`);
+        } else {
+          toast(r.message || 'APN save failed', true);
+          if (window.uiModal && r.message) window.uiModal.alert(r.message, 'APN');
+        }
+      } catch (e) { toast('APN save failed', true); }
+    });
+
+    // WiFi scan button — delegates to the new backend-agnostic endpoint.
+    const scanBtn = $('#btn-wifi-scan');
+    const scanList = $('#wifi-scan-list');
+    const scanStatus = $('#wifi-scan-status');
+    if (scanBtn && scanList) scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      if (scanStatus) scanStatus.textContent = 'Scanning…';
+      scanList.innerHTML = '<li class="muted">Scanning nearby networks…</li>';
+      try {
+        const r = await window.api.get('/api/settings/network/wifi/scan');
+        if (!r.ok) {
+          scanList.innerHTML = `<li class="muted">${escapeHtml(r.error || 'Scan unavailable on this device.')}</li>`;
+          if (scanStatus) scanStatus.textContent = 'Scan unavailable.';
+          return;
+        }
+        const nets = r.networks || [];
+        if (!nets.length) {
+          scanList.innerHTML = '<li class="muted">No networks visible right now.</li>';
+          if (scanStatus) scanStatus.textContent = 'No networks found.';
+          return;
+        }
+        scanList.innerHTML = '';
+        nets.forEach(n => {
+          const li = document.createElement('li');
+          li.className = 'saved-wifi-item';
+          const lock = (n.security && n.security !== '' && n.security !== '--') ? '🔒' : '🔓';
+          const inUse = n.in_use ? '<span class="muted small"> · connected</span>' : '';
+          li.innerHTML = `
+            <span class="sw-ssid">${lock} ${escapeHtml(n.ssid)}${inUse}</span>
+            <span class="muted small">${n.signal || 0}%</span>
+            <button type="button" class="btn" data-wifi-join="${escapeAttr(n.ssid)}" data-wifi-sec="${escapeAttr(n.security || '')}">Join</button>`;
+          scanList.appendChild(li);
+        });
+        if (scanStatus) scanStatus.textContent = `${nets.length} network${nets.length === 1 ? '' : 's'} found.`;
+      } catch (e) {
+        scanList.innerHTML = '<li class="muted">Scan failed — check admin role and network service.</li>';
+        if (scanStatus) scanStatus.textContent = 'Scan failed.';
+      } finally {
+        scanBtn.disabled = false;
+      }
+    });
+
+    // Delegated join handler for scan results — prompts for password if
+    // the AP is secured, then hits the live wifi/connect endpoint.
+    document.addEventListener('click', async (e) => {
+      const j = e.target.closest('[data-wifi-join]');
+      if (!j) return;
+      const ssid = j.dataset.wifiJoin;
+      const sec  = j.dataset.wifiSec || '';
+      let password = null;
+      if (sec && sec !== '' && sec !== '--') {
+        password = await window.uiModal.prompt(
+          `Enter the password for ${ssid}.`, '', 'Join Wi-Fi'
+        );
+        if (password === null) return;
+      }
+      try {
+        const r = await window.api.post('/api/settings/network/wifi/connect', { ssid, password });
+        if (r.ok) {
+          toast(`Joining ${ssid}…`);
+          refreshNetworkStatus();
+          refreshSavedWifi();
+        } else {
+          window.uiModal.alert(r.message || 'Connect failed.', 'Join Wi-Fi');
+        }
+      } catch (err) {
+        window.uiModal.alert('Connect failed. Check the password and try again.', 'Join Wi-Fi');
+      }
     });
 
     // Connect / forget delegated clicks.

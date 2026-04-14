@@ -19,6 +19,11 @@ DEFAULT_CONFIG = {
     'port': 8080,
     'debug': False,
     'secret_key': 'skytrack-change-me-in-production',
+    # mock_mode is NOT a hardware kill-switch — sensors/buzzer try real
+    # hardware first regardless. It only affects code paths that *cannot*
+    # gracefully fall back on their own (e.g. ADS-B mock fleet). Real
+    # installs should leave this True; the sensor layer ignores it on a
+    # detected Pi and always probes the GPIO before using mock values.
     'mock_mode': True,
     'timezone': 'auto',
 
@@ -70,6 +75,10 @@ DEFAULT_CONFIG = {
     'hotspot_auto_start': True,
     'metered_connection': False,    # cellular metered mode
     'cellular_enabled': True,
+    # Default APN for the cellular modem. The operator can change this in
+    # Settings → Network → Cellular. `nrbroadband` is the SkyTrack product
+    # default; env/YAML still wins.
+    'cellular_apn': 'nrbroadband',
     'wifi_client_enabled': True,
     'time_sync_source': 'ntp',      # ntp | cellular | gps
 
@@ -113,6 +122,16 @@ DEFAULT_CONFIG = {
     'ota_last_check': None,
     'ota_workspace_dir': '/var/lib/skytrack/ota-workspace',
     'ota_repo_url': 'https://github.com/QDRN1/Skytrack.git',
+    # OTA git auth mode — how the workspace authenticates to the upstream.
+    #   'ssh'         — use git's ssh (works with deploy keys or user keys)
+    #   'https_none'  — public HTTPS, no credentials
+    #   'https_token' — HTTPS with a personal-access token read from
+    #                   auth.json as ota_git_token. When set, the token is
+    #                   injected into the remote URL only at command time,
+    #                   never persisted into the workspace's git config.
+    # Today's installs use deploy keys (mode='ssh'). This is designed so
+    # moving away from deploy keys is a one-line change, not a code rewrite.
+    'ota_auth_mode': 'ssh',
     'update_check_enabled': True,
     'update_allow_cellular': False,
     'auto_backup_frequency': 'weekly',  # off | daily | weekly | monthly

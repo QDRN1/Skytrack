@@ -36,7 +36,11 @@
     };
 
     bind('#btn-regen-device', async () => {
-      if (!confirm('Force-regenerate device ID? Anyone displaying the old ID will need to re-pair.')) return;
+      if (!(await window.uiModal.confirm(
+        'Anyone displaying the old ID on the radar page will need to re-pair. '
+        + 'This action cannot be undone.',
+        'Force-regenerate device ID?'
+      ))) return;
       const r = await window.api.post('/api/super/device/regenerate', { reason: 'super-console' });
       log(`device → ${r.device.device_id}`);
     });
@@ -52,7 +56,12 @@
     });
 
     bind('#btn-factory-reset', async () => {
-      if (!confirm('Wipe auth.json and re-run the first-boot wizard?')) return;
+      if (!(await window.uiModal.confirm(
+        'This wipes auth.json (admin PIN, hotspot password, API keys) and '
+        + 'forces the device back to the first-boot wizard. Your aircraft '
+        + 'database is kept. This cannot be undone.',
+        'Factory reset?'
+      ))) return;
       await window.api.post('/api/super/factory_reset');
       log('factory reset — redirecting to /setup');
       setTimeout(() => window.location.href = '/setup', 1500);

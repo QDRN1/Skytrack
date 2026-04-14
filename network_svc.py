@@ -1,137 +1,67 @@
-"""Unified network status — WiFi client, cellular modem, hotspot.
+"""SkyTrack network facade.
 
-Phase 1 is read-only. We surface what's there for the top bar and the
-Settings → Network tab. We don't switch radios or manage failover here.
+All network reads go through `net_backend` (NetworkManager-first with a
+direct-tool fallback). This module adds the higher-level aggregation that
+the topbar, /api/network/status, and Settings → Network tiles expect, plus
+internet-reachability probing.
+
+Keep this thin — the actual OS-level work lives in `net_backend.py` so the
+stack can be standardized in one place.
 """
 
 import logging
-import re
-import shutil
 import socket
-import subprocess
 from typing import Optional
 
 import hotspot
+import net_backend
 
 logger = logging.getLogger('skytrack.network')
 
 
 # ---------------------------------------------------------------------------
-# WiFi client (only meaningful when hotspot is OFF — single radio)
+# Thin re-exports so existing call-sites keep working
 # ---------------------------------------------------------------------------
 
 def wifi_status() -> dict:
-    """Best-effort WiFi-client read using iwconfig + iw."""
-    info = {
-        'connected': False,
-        'ssid': '',
-        'signal_dbm': None,
-        'signal_pct': 0,
-    }
-    if not shutil.which('iwconfig'):
-        return info
-    try:
-        result = subprocess.run(
-            ['iwconfig', 'wlan0'],
-            capture_output=True, text=True, timeout=3,
-        )
-        text = result.stdout or ''
-        m = re.search(r'ESSID:"([^"]*)"', text)
-        if m and m.group(1):
-            info['ssid'] = m.group(1)
-            info['connected'] = True
-        m = re.search(r'Signal level=(-?\d+)\s*dBm', text)
-        if m:
-            dbm = int(m.group(1))
-            info['signal_dbm'] = dbm
-            info['signal_pct'] = max(0, min(100, 2 * (dbm + 100)))
-    except Exception as e:
-        logger.debug('iwconfig wlan0 failed: %s', e)
-    return info
+    return net_backend.wifi_status()
 
 
-# ---------------------------------------------------------------------------
-# Cellular modem (read-only via mmcli, fallback to interface detection)
-# ---------------------------------------------------------------------------
+def wifi_scan() -> dict:
+    return net_backend.wifi_scan()
+
+
+def wifi_saved() -> dict:
+    return net_backend.wifi_saved()
+
+
+def wifi_connect(ssid: str, password: Optional[str] = None) -> dict:
+    return net_backend.wifi_connect(ssid, password)
+
+
+def wifi_forget(ssid: str) -> dict:
+    return net_backend.wifi_forget(ssid)
+
 
 def cellular_status() -> dict:
-    info = {
-        'detected': False,
-        'state': 'unknown',
-        'carrier': '',
-        'signal_pct': 0,
-        'signal_quality': '',
-        'access_tech': '',
-        'interface': '',
-    }
-    if shutil.which('mmcli'):
-        info.update(_mmcli_status())
-    if not info['detected']:
-        info.update(_interface_fallback())
-    return info
+    return net_backend.cellular_status()
 
 
-def _mmcli_status() -> dict:
-    info = {}
-    try:
-        listing = subprocess.run(
-            ['mmcli', '-L'],
-            capture_output=True, text=True, timeout=3,
-        )
-        m = re.search(r'/Modem/(\d+)', listing.stdout or '')
-        if not m:
-            return info
-        idx = m.group(1)
-        info['detected'] = True
-
-        detail = subprocess.run(
-            ['mmcli', '-m', idx],
-            capture_output=True, text=True, timeout=4,
-        )
-        text = detail.stdout or ''
-
-        for key, regex in (
-            ('carrier', r'operator name:\s*(.+)'),
-            ('state', r'state:\s*(.+)'),
-            ('access_tech', r'access tech:\s*(.+)'),
-            ('signal_quality', r'signal quality:\s*\(?(\d+)%'),
-        ):
-            mm = re.search(regex, text, re.IGNORECASE)
-            if mm:
-                info[key] = mm.group(1).strip()
-
-        if info.get('signal_quality'):
-            try:
-                info['signal_pct'] = int(info['signal_quality'])
-            except ValueError:
-                pass
-
-        # Find the bearer interface name
-        m_iface = re.search(r'interface:\s*(\w+)', text, re.IGNORECASE)
-        if m_iface:
-            info['interface'] = m_iface.group(1).strip()
-    except Exception as e:
-        logger.debug('mmcli status failed: %s', e)
-    return info
+def set_cellular_apn(apn: str) -> dict:
+    return net_backend.set_apn(apn)
 
 
-def _interface_fallback() -> dict:
-    info = {}
-    try:
-        result = subprocess.run(
-            ['ip', '-o', 'link', 'show'],
-            capture_output=True, text=True, timeout=3,
-        )
-        for line in (result.stdout or '').splitlines():
-            for iface in ('wwan0', 'usb0', 'ppp0'):
-                if f' {iface}:' in line:
-                    info['detected'] = True
-                    info['interface'] = iface
-                    info['state'] = 'up' if 'state UP' in line else 'down'
-                    return info
-    except Exception:
-        pass
-    return info
+def backend_info() -> dict:
+    return net_backend.backend_info()
+
+
+def default_route_interface() -> Optional[str]:
+    return net_backend.active_uplink().get('interface') or None
+
+
+def classify_link(iface: Optional[str]) -> str:
+    """Map an interface name to a friendly link type label."""
+    return net_backend._classify(iface)
 
 
 # ---------------------------------------------------------------------------
@@ -147,69 +77,48 @@ def internet_reachable(timeout: float = 2.0) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Default-route detection — the kernel's answer to "which link actually
-# carries outbound traffic right now". This is the single source of truth
-# for the "active network" indicator; sniffing individual interfaces can
-# give confusing results when several are up at once.
-# ---------------------------------------------------------------------------
-
-def default_route_interface() -> Optional[str]:
-    """Return the iface carrying the IPv4 default route, or None."""
-    try:
-        r = subprocess.run(
-            ['ip', '-4', 'route', 'show', 'default'],
-            capture_output=True, text=True, timeout=3,
-        )
-        for line in (r.stdout or '').splitlines():
-            # Format: "default via 10.4.26.1 dev wlan0 proto dhcp ..."
-            parts = line.split()
-            if 'dev' in parts:
-                i = parts.index('dev')
-                if i + 1 < len(parts):
-                    return parts[i + 1]
-    except Exception:
-        pass
-    return None
-
-
-def classify_link(iface: Optional[str]) -> str:
-    """Map an interface name to a friendly link type label."""
-    if not iface:
-        return 'none'
-    if iface.startswith(('wwan', 'ppp', 'usb')) or iface == 'rmnet0':
-        return 'cellular'
-    if iface.startswith(('wlan', 'wlp')):
-        return 'wifi'
-    if iface.startswith(('eth', 'enp', 'enx', 'end')):
-        return 'ethernet'
-    return 'other'
-
-
-# ---------------------------------------------------------------------------
-# Aggregate
+# Aggregate status consumed by the topbar + Settings tiles
 # ---------------------------------------------------------------------------
 
 def get_network_status(config) -> dict:
+    """Return the full picture the UI needs in one call.
+
+    The dict intentionally keeps historical keys (`internet`, `primary`,
+    `primary_interface`) so existing callers don't break, and adds:
+
+      * `backend` — 'nm' | 'direct' — which stack is live
+      * `uplink`  — {interface, kind, nm_connection, ...}
+      * `cellular.apn` — currently-configured APN, if any
+    """
     wifi     = wifi_status()
     cellular = cellular_status()
+
+    # Config override for APN always wins over what NM currently has, so the
+    # UI shows the value the operator asked for even before nmcli reports it
+    # back (e.g. during a brief modem reprovision).
+    cfg_apn = (config.get('cellular_apn') or '').strip()
+    if cfg_apn and not cellular.get('apn'):
+        cellular['apn'] = cfg_apn
+        cellular['apn_source'] = 'config'
+
     hs       = hotspot.hotspot_status(config)
     online   = internet_reachable()
-    route_if = default_route_interface()
-    primary  = classify_link(route_if)
+    uplink   = net_backend.active_uplink()
+    primary  = uplink['kind']
 
-    # Hotspot mode on wlan0 *excludes* wifi-client on the same radio. If the
-    # hotspot is up we explicitly force the wifi client tile to "off" rather
-    # than echoing stale iwconfig state from before the radio was reprovisioned.
+    # Hotspot mode on wlan0 *excludes* wifi-client on the same radio.
     if hs.get('enabled'):
         wifi = {**wifi, 'connected': False, 'ssid': '', 'signal_dbm': None, 'signal_pct': 0}
 
     return {
-        'wifi':     wifi,
-        'cellular': cellular,
-        'hotspot':  hs,
-        'internet': online,                 # legacy bool kept for topbar
-        'online':   online,                 # preferred key
-        'metered':  bool(config.get('metered_connection')),
-        'primary':  primary,                # cellular | wifi | ethernet | other | none
-        'primary_interface': route_if or '',
+        'backend':           net_backend.detect_backend(),
+        'wifi':              wifi,
+        'cellular':          cellular,
+        'hotspot':           hs,
+        'internet':          online,
+        'online':            online,
+        'metered':           bool(config.get('metered_connection')),
+        'primary':           primary,
+        'primary_interface': uplink.get('interface') or '',
+        'uplink':            uplink,
     }

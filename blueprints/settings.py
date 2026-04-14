@@ -35,6 +35,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 import auth as auth_lib
 import device_id
 import enrich
+import git_auth
 import logs_svc
 import network_svc
 from config import save_user_config
@@ -359,8 +360,8 @@ def api_access_session():
 # ===========================================================================
 
 _NETWORK_KEYS = (
-    'cellular_enabled', 'wifi_client_enabled', 'hotspot_auto_start',
-    'time_sync_source', 'metered_connection',
+    'cellular_enabled', 'cellular_apn', 'wifi_client_enabled',
+    'hotspot_auto_start', 'time_sync_source', 'metered_connection',
 )
 _VALID_TIME_SOURCES = {'ntp', 'cellular', 'gps'}
 
@@ -392,13 +393,33 @@ def api_network():
               'metered_connection'):
         if k in updates:
             updates[k] = bool(updates[k])
+    if 'cellular_apn' in updates:
+        updates['cellular_apn'] = str(updates['cellular_apn'] or '').strip()
     if 'hotspot_ssid' in payload:
         updates['hotspot_ssid'] = str(payload['hotspot_ssid']).strip() \
             or cfg.get('hotspot_ssid')
+    apn_changed = (
+        'cellular_apn' in updates
+        and updates['cellular_apn']
+        and updates['cellular_apn'] != (cfg.get('cellular_apn') or '')
+    )
     cfg.update(updates)
     _persist(updates)
+    # Push APN to NetworkManager alongside config persistence so operators
+    # don't have to hit a second button just to have the modem pick it up.
+    apn_result = None
+    if apn_changed:
+        apn_result = network_svc.set_cellular_apn(updates['cellular_apn'])
+        logs_svc.log_network('cellular_apn_set', {
+            'apn': updates['cellular_apn'],
+            'ok': bool(apn_result.get('ok')),
+            'backend': apn_result.get('backend'),
+        })
     logs_svc.log_portal('admin', 'settings_network_update', updates)
-    return _ok({'config': {k: cfg.get(k) for k in _NETWORK_KEYS}})
+    return _ok({
+        'config': {k: cfg.get(k) for k in _NETWORK_KEYS},
+        'apn_result': apn_result,
+    })
 
 
 @settings_bp.route('/api/settings/network/hotspot/password', methods=['POST'])
@@ -822,49 +843,31 @@ def _ota_workspace() -> str:
 
 
 def _ota_repo_url() -> str:
+    """Return the OTA upstream URL, with credentials injected for the
+    configured `ota_auth_mode` (ssh / https_none / https_token).
+
+    For ssh and https_none this is the raw URL. For https_token we splice
+    the token from auth.json into the netloc at command time — it never
+    lands in the workspace's .git/config. All of that logic lives in
+    `git_auth` so swapping away from deploy keys is a config change, not
+    a code change.
+    """
     cfg = current_app.skytrack_config
-    return (cfg.get('ota_repo_url')
-            or 'https://github.com/QDRN1/Skytrack.git').strip()
+    url = git_auth.resolve_remote_url(cfg)
+    if not url:
+        return 'https://github.com/QDRN1/Skytrack.git'
+    return url
 
 
 def _ota_env() -> dict:
     """Return a copy of os.environ tuned for non-interactive git.
 
-    - HOME points at a writable dir we control (so ~/.ssh/known_hosts exists)
-    - GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS=/bin/true — never prompt on stdin
-    - GIT_SSH_COMMAND uses BatchMode + accept-new + a known_hosts path we
-      can actually write to, so SSH-based remotes don't fail on first contact
+    Delegates to `git_auth.build_env`, which picks the right set of
+    GIT_* / SSH variables based on the current `ota_auth_mode`. See
+    git_auth.py for the full contract.
     """
-    home = _ota_home()
-    ssh_dir = os.path.join(home, '.ssh')
-    try:
-        os.makedirs(ssh_dir, mode=0o700, exist_ok=True)
-    except Exception:
-        pass
-    kh = os.path.join(ssh_dir, 'known_hosts')
-    if not os.path.exists(kh):
-        try:
-            with open(kh, 'a'):
-                pass
-            os.chmod(kh, 0o600)
-        except Exception:
-            pass
-    env = os.environ.copy()
-    env.update({
-        'HOME': home,
-        'GIT_TERMINAL_PROMPT': '0',
-        'GIT_ASKPASS': '/bin/true',
-        'GIT_SSH_COMMAND': (
-            'ssh -o BatchMode=yes '
-            '-o StrictHostKeyChecking=accept-new '
-            f'-o UserKnownHostsFile={kh} '
-            '-o ConnectTimeout=10'
-        ),
-    })
-    # Strip anything that could re-enable interactive prompting
-    for k in ('SSH_ASKPASS', 'DISPLAY', 'SSH_AUTH_SOCK'):
-        env.pop(k, None)
-    return env
+    cfg = current_app.skytrack_config
+    return git_auth.build_env(cfg, _ota_home())
 
 
 def _ensure_ota_workspace() -> tuple:
@@ -1381,13 +1384,97 @@ def api_wifi_forget():
 @settings_bp.route('/api/settings/network/wifi/connect', methods=['POST'])
 @ADMIN
 def api_wifi_connect():
+    """Join a WiFi network via NetworkManager, falling back to the
+    direct-tool path on boxes without nmcli. Delegates to
+    `network_svc.wifi_connect`, which returns a structured
+    `{ok, message, backend}` dict we pass straight through.
+    """
     payload = request.get_json(silent=True) or {}
     ssid = (payload.get('ssid') or '').strip()
+    password = payload.get('password') or None
     if not ssid:
         return _err('ssid required')
-    ok, msg = _shell(['nmcli', 'device', 'wifi', 'connect', ssid], timeout=25)
-    logs_svc.log_network('wifi_connect', {'ssid': ssid, 'ok': ok})
-    return jsonify({'ok': ok, 'message': msg or 'connect issued'})
+    result = network_svc.wifi_connect(ssid, password)
+    logs_svc.log_network('wifi_connect', {
+        'ssid': ssid, 'ok': bool(result.get('ok')),
+        'backend': result.get('backend'),
+    })
+    # Persist a remembered entry so Settings → Saved lists it consistently
+    # with the direct-config path. The PSK itself is stored in auth.json.
+    if result.get('ok'):
+        cfg = current_app.skytrack_config
+        saved = [n for n in (cfg.get('saved_wifi_networks') or [])
+                 if n.get('ssid') != ssid]
+        saved.append({'ssid': ssid, 'has_password': bool(password)})
+        cfg['saved_wifi_networks'] = saved
+        _persist({'saved_wifi_networks': saved})
+        if password:
+            auth_lib.set_secret(f'wifi_psk_{ssid}', password)
+    return jsonify(result)
+
+
+@settings_bp.route('/api/settings/network/wifi/scan', methods=['GET', 'POST'])
+@ADMIN
+def api_wifi_scan():
+    """Return a list of WiFi networks visible to the radio right now.
+
+    Uses `nmcli device wifi list --rescan yes` via network_svc when
+    NetworkManager is available, and falls back to `iwlist` otherwise.
+    The list is sorted strongest-first with duplicate SSIDs collapsed so
+    the UI can render it directly.
+    """
+    result = network_svc.wifi_scan()
+    return jsonify(result)
+
+
+@settings_bp.route('/api/settings/network/cellular/apn', methods=['POST'])
+@ADMIN
+def api_cellular_apn():
+    """Set the APN on the active gsm connection and persist it into
+    config.yaml. Operators see the value they typed even before nmcli
+    reports it back, because `get_network_status` falls back to the
+    config value when the modem is still reprovisioning.
+    """
+    payload = request.get_json(silent=True) or {}
+    apn = (payload.get('apn') or '').strip()
+    if not apn:
+        return _err('apn required')
+    cfg = current_app.skytrack_config
+    cfg['cellular_apn'] = apn
+    _persist({'cellular_apn': apn})
+    result = network_svc.set_cellular_apn(apn)
+    logs_svc.log_network('cellular_apn_set', {
+        'apn': apn, 'ok': bool(result.get('ok')),
+        'backend': result.get('backend'),
+    })
+    return jsonify({
+        'ok': bool(result.get('ok')),
+        'apn': apn,
+        'backend': result.get('backend'),
+        'message': result.get('message') or 'APN updated',
+    })
+
+
+@settings_bp.route('/api/settings/network/backend', methods=['GET'])
+@ADMIN
+def api_network_backend():
+    """Report which network backend is live (nm / direct) and what it
+    can actually do. Settings → Network uses this to hide buttons whose
+    underlying tool is missing instead of letting them 500 on click.
+    """
+    return jsonify(network_svc.backend_info())
+
+
+@settings_bp.route('/api/settings/updates/git_auth', methods=['GET'])
+@ADMIN
+def api_updates_git_auth():
+    """Return a display-safe summary of the current OTA git auth mode.
+
+    This is what Settings → Updates shows so operators can see at a
+    glance whether they're on deploy keys (ssh) or a token, and what
+    remote URL we'd hand to git. Token is NOT included in the response.
+    """
+    return jsonify(git_auth.describe(current_app.skytrack_config))
 
 
 # ---------- Feeders ---------------------------------------------------------

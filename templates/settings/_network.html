@@ -56,6 +56,21 @@
       </div>
 
       <div class="field">
+        <label for="net-cell-apn">Cellular APN</label>
+        <div class="input-with-button">
+          <input id="net-cell-apn" name="cellular_apn" type="text"
+                 spellcheck="false" autocapitalize="off" autocomplete="off"
+                 value="{{ config.cellular_apn or 'nrbroadband' }}">
+          <button type="button" class="btn" id="btn-cell-apn-apply">Apply APN</button>
+        </div>
+        <p class="muted small">
+          The access point name your SIM requires. SkyTrack ships with
+          <code>nrbroadband</code> (the QDRN default). Changing this rewrites
+          the NetworkManager gsm connection in place and logs the change.
+        </p>
+      </div>
+
+      <div class="field">
         <label class="switch-row">
           <span>Treat cellular as metered</span>
           <span class="switch">
@@ -148,6 +163,28 @@
         <button type="button" class="btn btn-lg" id="btn-hot-regen">Generate new password</button>
         <button type="button" class="btn btn-lg btn-warn" id="btn-hot-restart">Restart hotspot</button>
       </div>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Nearby Wi-Fi networks</h2>
+      <p class="muted">
+        Tap <em>Scan</em> to list Wi-Fi networks the radio can see right now,
+        then tap a network to join it. This uses NetworkManager directly and
+        requires the radio to be free — if the SkyTrack-Portal hotspot is on,
+        turn it off first.
+      </p>
+    </header>
+
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-wifi-scan">Scan for networks</button>
+        <span class="muted small" id="wifi-scan-status">Tap Scan to refresh.</span>
+      </div>
+      <ul class="saved-wifi-list" id="wifi-scan-list">
+        <li class="muted">No scan results yet.</li>
+      </ul>
     </div>
   </div>
 
