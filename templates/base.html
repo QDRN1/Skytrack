@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="{{ config.default_theme or 'light' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0e27">
+  <title>{% block title %}SkyTrack Portal{% endblock %} — {{ device_id or 'SkyTrack' }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="page page-{% block body_class %}default{% endblock %}">
+  <div id="particles-bg" class="particles-bg" aria-hidden="true"></div>
+
+  {% block topbar %}
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="topbar-logo" id="topbar-logo" aria-label="SkyTrack — tap 5x for super user">
+        <span class="logo-mark">QDRN</span>
+        <span class="logo-text">SkyTrack&nbsp;Portal</span>
+      </button>
+      <span class="topbar-device">{{ device_id }}</span>
+    </div>
+    <nav class="topbar-nav">
+      <a href="{{ url_for('dashboard.index') }}" class="topbar-link">Dashboard</a>
+      <a href="{{ url_for('settings.index') }}" class="topbar-link">Settings</a>
+      <a href="{{ url_for('network.index') }}" class="topbar-link">Network</a>
+      <a href="{{ url_for('logs.index') }}" class="topbar-link">Logs</a>
+    </nav>
+    <div class="topbar-right">
+      <button id="theme-toggle" class="iconbtn" title="Toggle theme">◐</button>
+      {% if current_role %}
+      <a href="{{ url_for('auth.logout') }}" class="topbar-link">Sign out</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="topbar-secondary">
+    <span class="meta">Radar:&nbsp;<a href="{{ radar_url }}" target="_blank" rel="noopener">{{ radar_url }}</a></span>
+    <span class="meta" id="meta-clock">--:--</span>
+    <span class="meta" id="meta-net">net&nbsp;…</span>
+    <span class="meta" id="meta-cell">cell&nbsp;…</span>
+    <span class="meta" id="meta-temp">--°F</span>
+  </div>
+  {% endblock %}
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>SkyTrack Portal v{{ app_version }} • {{ device_id }}{% if dev_mode %} • DEV{% endif %}</span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/bus.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/api.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/topbar.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Super User Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/superuser.css') }}">
+</head>
+<body class="page page-super">
+  <div class="matrix-bg" id="matrix-bg" aria-hidden="true"></div>
+
+  <header class="super-topbar">
+    <span class="glow">SUPER&nbsp;USER</span>
+    <span class="muted">{{ identity.device_id }} — schema v{{ schema_version }}</span>
+    <a href="{{ url_for('auth.logout') }}" class="topbar-link">Sign out</a>
+  </header>
+
+  <main class="super-shell">
+
+    <section class="super-block">
+      <h2>Device identity</h2>
+      <pre class="log-pre">{{ identity | tojson(indent=2) }}</pre>
+      <button class="btn warn" id="btn-regen-device">Regenerate device ID</button>
+    </section>
+
+    <section class="super-block">
+      <h2>Credentials</h2>
+      <form id="form-super-creds" autocomplete="off">
+        <input type="text" name="username" placeholder="new username" required>
+        <input type="password" name="password" placeholder="new password" required>
+        <button type="submit" class="btn primary">Update super user</button>
+      </form>
+    </section>
+
+    <section class="super-block">
+      <h2>Database</h2>
+      <button class="btn" id="btn-prune">Run prune</button>
+      <button class="btn" id="btn-vacuum">Vacuum</button>
+    </section>
+
+    <section class="super-block danger">
+      <h2>Factory reset</h2>
+      <p class="muted">Wipes <code>auth.json</code> and re-runs the first-boot wizard. Device ID is preserved.</p>
+      <button class="btn danger" id="btn-factory-reset">Factory reset</button>
+    </section>
+
+    <pre class="log-pre" id="super-output"></pre>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/superuser.js') }}" defer></script>
+</body>
+</html>

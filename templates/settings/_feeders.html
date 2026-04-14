@@ -1,0 +1,14 @@
+<form class="form" id="form-feeders" data-endpoint="/api/settings/feeders">
+  <h2>ADS-B feeder credentials</h2>
+  <p class="muted">If you share data with FlightRadar24 or PiAware, store your IDs here. They are kept in <code>/var/lib/skytrack/auth.json</code> and never written to git.</p>
+
+  <label>FlightRadar24 sharing key
+    <input name="fr24_key" type="password" placeholder="(unset)">
+  </label>
+
+  <label>PiAware feeder ID
+    <input name="piaware_feeder_id" type="text" placeholder="(unset)">
+  </label>
+
+  <button type="submit" class="btn primary">Save feeders</button>
+</form>

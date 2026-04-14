@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SkyTrack Setup — {{ device.device_id }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css') }}">
+</head>
+<body class="page page-setup">
+
+  {# Background: video first, particles fallback #}
+  <video class="setup-video" id="setup-video" autoplay muted loop playsinline>
+    <source src="{{ url_for('static', filename='video/SkyTrack Setup Screen.mp4') }}" type="video/mp4">
+  </video>
+  <div id="particles-bg" class="particles-bg setup-particles" aria-hidden="true"></div>
+
+  <div class="setup-shell">
+    <header class="setup-header">
+      <div class="setup-brand">QDRN&nbsp;<strong>SkyTrack</strong>&nbsp;Portal</div>
+      <div class="setup-badge">First-Boot Setup</div>
+    </header>
+
+    <section class="setup-info">
+      <div class="setup-info-block">
+        <span class="label">Device</span>
+        <span class="value">{{ device.device_id }}</span>
+      </div>
+      <div class="setup-info-block">
+        <span class="label">Hotspot SSID</span>
+        <span class="value">{{ ssid }}</span>
+      </div>
+      <div class="setup-info-block">
+        <span class="label">Setup URL</span>
+        <span class="value">http://{{ gateway }}/setup</span>
+      </div>
+      <div class="setup-info-block">
+        <span class="label">Radar</span>
+        <span class="value"><a href="{{ radar_url }}" target="_blank">{{ radar_url }}</a></span>
+      </div>
+    </section>
+
+    <form class="setup-form" id="setup-form" autocomplete="off">
+      <h2>Create your access</h2>
+      <p class="muted">PIN signs in for everyday use. Admin password protects sensitive actions like updates and credential changes.</p>
+
+      <label for="setup-pin">PIN <span class="muted">(4–8 digits)</span></label>
+      <input id="setup-pin" name="pin" type="password" inputmode="numeric"
+             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required>
+
+      <label for="setup-pin-confirm">Confirm PIN</label>
+      <input id="setup-pin-confirm" name="pin_confirm" type="password" inputmode="numeric"
+             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required>
+
+      <label for="setup-admin">Admin password <span class="muted">(min 6 chars)</span></label>
+      <input id="setup-admin" name="admin_password" type="password" minlength="6" required>
+
+      <label for="setup-admin-confirm">Confirm admin password</label>
+      <input id="setup-admin-confirm" name="admin_password_confirm" type="password" minlength="6" required>
+
+      <button type="submit" class="btn primary">Activate device</button>
+      <p class="setup-error" id="setup-error" hidden></p>
+    </form>
+
+    <footer class="setup-footer muted">
+      Once activated, your hotspot will switch from open to WPA2.
+      The new password will be shown in <em>Settings → Network</em>.
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/setup.js') }}" defer></script>
+</body>
+</html>

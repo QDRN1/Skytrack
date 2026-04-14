@@ -5,3 +5,14 @@ venv/
 .env
 config.yaml
 *.log
+
+# v2 — runtime artifacts
+/var/lib/skytrack/
+/var/log/skytrack/
+auth.json
+device_id.json
+.firstboot-done
+
+# Vendor JS fetched at install time, not committed
+static/vendor/*
+!static/vendor/README.md

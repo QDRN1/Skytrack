@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Network{% endblock %}
+{% block body_class %}network{% endblock %}
+
+{% block content %}
+<section class="settings">
+  <header class="settings-header">
+    <h1>Network</h1>
+    <span class="muted">{{ device_id }}</span>
+  </header>
+
+  <div class="dash-grid">
+
+    <section class="panel">
+      <h3>Hotspot</h3>
+      <div id="hotspot-status"><span class="muted">loading…</span></div>
+      <div class="form-row">
+        <button class="btn" id="btn-hotspot-show">Show password</button>
+        <button class="btn" id="btn-hotspot-regenerate">Regenerate password</button>
+        <button class="btn" id="btn-hotspot-restart">Restart hotspot</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>WiFi client</h3>
+      <div id="wifi-status"><span class="muted">loading…</span></div>
+      <p class="muted">WiFi client and hotspot share <code>wlan0</code>; only one can be active at a time.</p>
+    </section>
+
+    <section class="panel">
+      <h3>Cellular</h3>
+      <div id="cell-status"><span class="muted">loading…</span></div>
+      <label class="checkbox">
+        <input type="checkbox" id="metered-toggle" {% if config.metered_connection %}checked{% endif %}>
+        Metered connection (limit background traffic)
+      </label>
+    </section>
+
+    <section class="panel">
+      <h3>Internet</h3>
+      <div id="internet-status"><span class="muted">checking…</span></div>
+    </section>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/network.js') }}" defer></script>
+{% endblock %}

@@ -1,0 +1,56 @@
+<form class="form" id="form-integrations" data-endpoint="/api/settings/integrations">
+  <h2>AeroAPI (FlightAware)</h2>
+  <p class="muted">Used for richer flight enrichment. We never poll continuously — calls are made only when the dashboard explicitly asks for an aircraft, and are bounded by the budget below.</p>
+
+  <label class="checkbox">
+    <input type="checkbox" name="aeroapi_enabled" {% if config.aeroapi_enabled %}checked{% endif %}>
+    Enable AeroAPI
+  </label>
+
+  <label>API key
+    <input name="aeroapi_key" type="password" placeholder="(stored in /var/lib/skytrack/auth.json)">
+  </label>
+
+  <div class="form-row">
+    <label>Max calls / hour
+      <input name="aeroapi_calls_per_hour" type="number" min="0" value="{{ config.aeroapi_calls_per_hour }}">
+    </label>
+    <label>Max calls / day
+      <input name="aeroapi_calls_per_day" type="number" min="0" value="{{ config.aeroapi_calls_per_day }}">
+    </label>
+    <label>Cost per call (USD)
+      <input name="aeroapi_cost_per_call" type="number" step="0.0001" value="{{ config.aeroapi_cost_per_call }}">
+    </label>
+  </div>
+
+  <div class="usage-block">
+    <strong>Usage (last 30 days):</strong>
+    <span id="usage-aeroapi">{{ usage.month }} calls — ${{ '%.2f' % usage.cost_30d }}</span>
+    <button type="button" class="btn" id="btn-test-aeroapi">Test connection</button>
+  </div>
+
+  <hr>
+
+  <h2>OpenSky Network</h2>
+  <p class="muted">Free fallback. Anonymous works but is rate-limited.</p>
+  <label class="checkbox">
+    <input type="checkbox" name="opensky_enabled" {% if config.opensky_enabled %}checked{% endif %}>
+    Enable OpenSky
+  </label>
+  <label>OpenSky username (optional)
+    <input name="opensky_user" type="text">
+  </label>
+  <label>OpenSky password (optional)
+    <input name="opensky_pass" type="password">
+  </label>
+  <button type="button" class="btn" id="btn-test-opensky">Test OpenSky</button>
+
+  <hr>
+
+  <h2>Cache</h2>
+  <label>Enrichment TTL (hours)
+    <input name="enrichment_ttl_hours" type="number" min="1" max="168" value="{{ config.enrichment_ttl_hours }}">
+  </label>
+
+  <button type="submit" class="btn primary">Save integrations</button>
+</form>

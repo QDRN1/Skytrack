@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Super User</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/superuser.css') }}">
+</head>
+<body class="page page-super">
+  <div class="matrix-bg" id="matrix-bg" aria-hidden="true"></div>
+  <div class="super-card">
+    <h1 class="glow">SUPER&nbsp;USER</h1>
+    <form id="super-form" autocomplete="off">
+      <input type="text" name="username" placeholder="username" required>
+      <input type="password" name="password" placeholder="password" required>
+      <button type="submit" class="btn primary">Authenticate</button>
+    </form>
+    <p class="super-error glow-red" id="super-error" hidden></p>
+  </div>
+  <script src="{{ url_for('static', filename='js/superuser.js') }}" defer></script>
+</body>
+</html>

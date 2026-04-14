@@ -1,0 +1,29 @@
+# SkyTrack Portal hostapd template
+# Rendered by scripts/hotspot_apply.sh into /etc/hostapd/hostapd.conf
+#
+# Variables substituted at install time:
+#   ${SSID}             — broadcast SSID (default SkyTrack-Portal)
+#   ${COUNTRY}          — regulatory country (default US)
+#   ${CHANNEL}          — 2.4 GHz channel (default 6)
+#   ${HOTSPOT_PASSWORD} — WPA2 PSK; if empty, the AP comes up OPEN
+#                         (first-boot mode — closed by the setup wizard)
+
+country_code=${COUNTRY}
+interface=wlan0
+driver=nl80211
+ssid=${SSID}
+hw_mode=g
+channel=${CHANNEL}
+beacon_int=100
+dtim_period=2
+max_num_sta=16
+wmm_enabled=1
+auth_algs=1
+ignore_broadcast_ssid=0
+
+# WPA2 — populated only when HOTSPOT_PASSWORD is set.
+# Lines below are commented out for first-boot OPEN mode.
+#wpa=2
+#wpa_passphrase=${HOTSPOT_PASSWORD}
+#wpa_key_mgmt=WPA-PSK
+#rsn_pairwise=CCMP

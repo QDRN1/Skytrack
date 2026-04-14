@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Sign in required{% endblock %}
+{% block content %}
+<section class="error-shell">
+  <h1>401</h1>
+  <p>Sign in required.</p>
+  <p><a class="btn primary" href="{{ url_for('auth.login_page') }}">Sign in</a></p>
+</section>
+{% endblock %}

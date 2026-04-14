@@ -1,0 +1,16 @@
+<form class="form" id="form-radar" data-endpoint="/api/settings/radar">
+  <h2>Radar publishing</h2>
+  <p class="muted">In phase 1 the radar URL is display-only. Toggling this on will register the device with <code>radar.qdrn.io</code> in a future update.</p>
+
+  <div class="radar-url">
+    <span class="label">Your radar URL</span>
+    <a href="{{ radar_url }}" target="_blank">{{ radar_url }}</a>
+  </div>
+
+  <label class="checkbox">
+    <input type="checkbox" name="radar_publish_enabled" {% if config.radar_publish_enabled %}checked{% endif %}>
+    Publish this device to radar.qdrn.io
+  </label>
+
+  <button type="submit" class="btn primary">Save radar</button>
+</form>

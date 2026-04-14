@@ -1,0 +1,30 @@
+# SkyTrack Portal dnsmasq drop-in template
+# Rendered by scripts/hotspot_apply.sh into /etc/dnsmasq.d/skytrack.conf
+#
+# Variables:
+#   ${GATEWAY}    — wlan0 address (default 10.4.26.89)
+#   ${DHCP_START} — first leaseable address (default 10.4.26.100)
+#   ${DHCP_END}   — last leaseable address  (default 10.4.26.200)
+#
+# Only listens on wlan0 — never the WAN/upstream interfaces.
+
+interface=wlan0
+bind-interfaces
+
+# Don't forward DNS queries we can't answer locally.
+domain-needed
+bogus-priv
+
+# DHCP pool for clients connecting to the SkyTrack-Portal SSID
+dhcp-range=${DHCP_START},${DHCP_END},255.255.255.0,12h
+dhcp-option=3,${GATEWAY}
+dhcp-option=6,${GATEWAY}
+dhcp-authoritative
+
+# Captive portal — every name resolves to the gateway so phones land on /setup
+address=/skytrack.local/${GATEWAY}
+address=/setup.skytrack.local/${GATEWAY}
+address=/portal.skytrack.local/${GATEWAY}
+address=/connectivitycheck.gstatic.com/${GATEWAY}
+address=/captive.apple.com/${GATEWAY}
+address=/www.msftconnecttest.com/${GATEWAY}

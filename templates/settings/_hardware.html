@@ -1,0 +1,38 @@
+<form class="form" id="form-hardware" data-endpoint="/api/settings/hardware">
+  <h2>DHT22 temperature sensor</h2>
+  <label>BCM pin
+    <input name="dht_pin" type="number" min="0" max="40" value="{{ config.dht_pin }}">
+  </label>
+  <label>Read interval (seconds)
+    <input name="sensor_interval" type="number" min="5" max="600" value="{{ config.sensor_interval }}">
+  </label>
+
+  <hr>
+
+  <h2>Buzzer</h2>
+  <label class="checkbox">
+    <input type="checkbox" name="buzzer_enabled" {% if config.buzzer_enabled %}checked{% endif %}>
+    Buzzer enabled
+  </label>
+  <label>Buzzer BCM pin
+    <input name="buzzer_pin" type="number" min="0" max="40" value="{{ config.buzzer_pin }}">
+  </label>
+  <label>Volume (PWM duty cycle %)
+    <input name="buzzer_volume" type="range" min="0" max="100" value="{{ config.buzzer_volume }}">
+    <output id="buzzer-volume-out">{{ config.buzzer_volume }}</output>
+  </label>
+
+  <h3>Threshold</h3>
+  <p class="muted">When the latest sensor reading crosses either threshold, the buzzer beeps and a portal_log entry is created.</p>
+  <label>Temperature threshold (°F)
+    <input name="buzzer_threshold_temp_f" type="number" step="0.1" value="{{ config.buzzer_threshold_temp_f }}">
+  </label>
+  <label>Humidity threshold (%)
+    <input name="buzzer_threshold_hum" type="number" step="0.1" value="{{ config.buzzer_threshold_hum }}">
+  </label>
+
+  <div class="form-row">
+    <button type="submit" class="btn primary">Save hardware</button>
+    <button type="button" class="btn" id="btn-buzzer-test">Test buzzer</button>
+  </div>
+</form>

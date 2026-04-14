@@ -1,0 +1,30 @@
+[Unit]
+Description=SkyTrack Portal v2 — web app
+Documentation=https://github.com/qdrnow/skytrack
+After=network.target skytrack-firstboot.service
+Wants=skytrack-firstboot.service
+
+[Service]
+Type=simple
+User=skytrack
+Group=skytrack
+WorkingDirectory=/opt/skytrack
+EnvironmentFile=-/etc/skytrack/skytrack.env
+ExecStart=/opt/skytrack/venv/bin/python /opt/skytrack/app.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-app
+
+# Hardening (we still need /var/lib/skytrack and /var/log/skytrack writable)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/skytrack /var/log/skytrack
+
+[Install]
+WantedBy=multi-user.target

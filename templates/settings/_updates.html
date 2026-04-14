@@ -1,0 +1,15 @@
+<div class="form">
+  <h2>Software updates</h2>
+  <p class="muted">SkyTrack Portal updates over Git. Pulls from <code>{{ config.ota_remote }}/{{ config.ota_branch }}</code>.</p>
+
+  <div class="form-row">
+    <button type="button" class="btn" id="btn-update-check">Check for updates</button>
+    <button type="button" class="btn primary" id="btn-update-apply">Apply updates</button>
+  </div>
+
+  <pre class="log-pre" id="update-output">No update checked yet.</pre>
+
+  <hr>
+
+  <p class="muted">Currently running version <strong>{{ app_version }}</strong>.</p>
+</div>

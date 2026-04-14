@@ -1,0 +1,16 @@
+[Unit]
+Description=SkyTrack Portal v2 — hotspot health check (rolls back if down)
+After=skytrack-hotspot.service
+ConditionPathExists=/opt/skytrack/scripts/hotspot_rollback.sh
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/skytrack/skytrack.env
+# If hostapd is not active, attempt a one-shot rollback so the operator
+# regains a console and the captive portal stays reachable.
+ExecStart=/bin/sh -c 'systemctl is-active --quiet hostapd || /opt/skytrack/scripts/hotspot_rollback.sh'
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-hotspot-watchdog

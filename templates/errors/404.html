@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Not found{% endblock %}
+{% block content %}
+<section class="error-shell">
+  <h1>404</h1>
+  <p>That page is not on this device.</p>
+  <p><a class="btn" href="{{ url_for('dashboard.index') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}

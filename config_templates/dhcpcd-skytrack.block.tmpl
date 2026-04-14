@@ -1,0 +1,11 @@
+# SkyTrack Portal dhcpcd block template
+# Appended to /etc/dhcpcd.conf by scripts/hotspot_apply.sh
+# Marker line is required for idempotent re-apply / rollback.
+#
+# Variables:
+#   ${GATEWAY} — wlan0 static IPv4 (default 10.4.26.89)
+
+## skytrack-hotspot
+interface wlan0
+static ip_address=${GATEWAY}/24
+nohook wpa_supplicant

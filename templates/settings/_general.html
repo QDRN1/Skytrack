@@ -1,0 +1,45 @@
+<form class="form" id="form-general" data-endpoint="/api/settings/general">
+  <h2>General</h2>
+
+  <label>Device name prefix
+    <input name="device_name_prefix" value="{{ config.device_name_prefix }}">
+  </label>
+
+  <label>Latitude
+    <input name="latitude" type="number" step="0.000001" value="{{ config.latitude }}">
+  </label>
+  <label>Longitude
+    <input name="longitude" type="number" step="0.000001" value="{{ config.longitude }}">
+  </label>
+  <label>Map zoom
+    <input name="map_zoom" type="number" min="2" max="18" value="{{ config.map_zoom }}">
+  </label>
+
+  <label>Temperature units
+    <select name="units_temperature">
+      <option value="F" {% if config.units_temperature == 'F' %}selected{% endif %}>Fahrenheit</option>
+      <option value="C" {% if config.units_temperature == 'C' %}selected{% endif %}>Celsius</option>
+    </select>
+  </label>
+  <label>Speed units
+    <select name="units_speed">
+      <option value="kts" {% if config.units_speed == 'kts' %}selected{% endif %}>Knots</option>
+      <option value="mph" {% if config.units_speed == 'mph' %}selected{% endif %}>MPH</option>
+      <option value="kmh" {% if config.units_speed == 'kmh' %}selected{% endif %}>km/h</option>
+    </select>
+  </label>
+  <label>Clock format
+    <select name="clock_format">
+      <option value="12h" {% if config.clock_format == '12h' %}selected{% endif %}>12 hour</option>
+      <option value="24h" {% if config.clock_format == '24h' %}selected{% endif %}>24 hour</option>
+    </select>
+  </label>
+  <label>Default theme
+    <select name="default_theme">
+      <option value="light" {% if config.default_theme == 'light' %}selected{% endif %}>Light</option>
+      <option value="dark"  {% if config.default_theme == 'dark'  %}selected{% endif %}>Dark</option>
+    </select>
+  </label>
+
+  <button type="submit" class="btn primary">Save general</button>
+</form>

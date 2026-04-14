@@ -1,0 +1,46 @@
+/* Super-user Matrix-style theme */
+
+.page-super {
+  background: #000;
+  color: #00ff88;
+  font-family: ui-monospace, "JetBrains Mono", "SF Mono", monospace;
+  min-height: 100vh;
+}
+.matrix-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.08), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(0, 255, 136, 0.04) 0 2px, transparent 2px 4px);
+}
+.glow { color: #00ff88; text-shadow: 0 0 8px rgba(0, 255, 136, 0.7); letter-spacing: 4px; }
+.glow-red { color: #ff3344; text-shadow: 0 0 8px rgba(255, 51, 68, 0.6); }
+
+.super-card {
+  position: relative; z-index: 5;
+  max-width: 360px; margin: 100px auto; padding: 32px;
+  border: 1px solid #00ff88; border-radius: 6px;
+  background: rgba(0, 20, 8, 0.85);
+}
+.super-card form { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+.super-card input { background: #001408; color: #00ff88; border: 1px solid #00ff88; padding: 10px; border-radius: 4px; }
+.super-card .btn.primary { background: #00ff88; color: #000; border-color: #00ff88; }
+
+.super-topbar {
+  position: relative; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-bottom: 1px solid #00ff88;
+  background: rgba(0, 20, 8, 0.85);
+}
+.super-topbar .topbar-link { color: #00ff88; }
+
+.super-shell { position: relative; z-index: 5; max-width: 900px; margin: 30px auto; padding: 20px; }
+.super-block { border: 1px solid #00ff88; padding: 18px; border-radius: 6px; margin-bottom: 18px; background: rgba(0, 20, 8, 0.7); }
+.super-block.danger { border-color: #ff3344; }
+.super-block h2 { margin-top: 0; color: #00ff88; }
+.super-block input { background: #001408; color: #00ff88; border: 1px solid #00ff88; padding: 8px; border-radius: 4px; margin: 4px 0; }
+
+.super-shell .btn { background: #001408; color: #00ff88; border: 1px solid #00ff88; }
+.super-shell .btn.primary { background: #00ff88; color: #000; }
+.super-shell .btn.warn { background: #ffae00; color: #000; border-color: #ffae00; }
+.super-shell .btn.danger { background: #ff3344; color: #000; border-color: #ff3344; }
+.super-shell .log-pre { background: #001408; color: #00ff88; border: 1px solid #00ff88; }

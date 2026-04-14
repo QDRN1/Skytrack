@@ -1,0 +1,31 @@
+[Unit]
+Description=SkyTrack Portal v2 — touch display kiosk (Chromium fullscreen)
+After=graphical.target skytrack-app.service
+Wants=skytrack-app.service
+ConditionPathExists=/usr/bin/chromium-browser
+
+[Service]
+Type=simple
+User=skytrack
+Group=skytrack
+EnvironmentFile=-/etc/skytrack/skytrack.env
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/skytrack/.Xauthority
+ExecStartPre=/bin/sh -c 'until curl -fsS --max-time 2 http://127.0.0.1:8080/healthz >/dev/null; do sleep 2; done'
+ExecStart=/usr/bin/chromium-browser \
+  --kiosk \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-translate \
+  --disable-features=TranslateUI \
+  --check-for-update-interval=31536000 \
+  --app=http://127.0.0.1:8080/dashboard
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-display
+
+[Install]
+WantedBy=graphical.target

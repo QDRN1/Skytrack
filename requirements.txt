@@ -1,10 +1,32 @@
+# SkyTrack Portal v2 — Python dependencies
+#
+# Install with:
+#     ./venv/bin/pip install -r requirements.txt
+#
+# All packages are pinned to a known-working major version. The Pi-only
+# hardware libs are commented out by default so a fresh dev checkout can
+# run with DEV_MODE=1 against mock sensors.
+
+# --- Web stack ---
 flask>=3.0,<4.0
 flask-socketio>=5.3,<6.0
-pyyaml>=6.0,<7.0
-requests>=2.31,<3.0
+werkzeug>=3.0,<4.0
+itsdangerous>=2.1,<3.0
+jinja2>=3.1,<4.0
 simple-websocket>=0.10
 
-# --- Raspberry Pi sensor (only needed when mock_mode: false) ---
-# Uncomment these on the Pi:
+# --- Config / data ---
+pyyaml>=6.0,<7.0
+
+# --- HTTP (AeroAPI / OpenSky / weather / OTA) ---
+requests>=2.31,<3.0
+
+# --- Misc ---
+python-dateutil>=2.8,<3.0
+
+# --- Raspberry Pi hardware (uncomment on the Pi) ---
+# Used by buzzer.py + sensor polling. With DEV_MODE=1 they are not imported.
 # adafruit-circuitpython-dht>=4.0
+# adafruit-blinka>=8.0
 # RPi.GPIO>=0.7
+# gpiozero>=2.0

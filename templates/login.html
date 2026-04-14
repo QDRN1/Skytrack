@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Sign in{% endblock %}
+{% block body_class %}login{% endblock %}
+
+{% block topbar %}
+<header class="topbar topbar-minimal">
+  <div class="topbar-left">
+    <button class="topbar-logo" id="topbar-logo">
+      <span class="logo-mark">QDRN</span>
+      <span class="logo-text">SkyTrack&nbsp;Portal</span>
+    </button>
+  </div>
+  <div class="topbar-right">
+    <span class="meta">{{ device_id }}</span>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="login-shell">
+  <div class="login-card">
+    <h1>Sign in</h1>
+    <p class="muted">Enter your PIN to unlock the dashboard.</p>
+
+    <div class="login-pin-display" id="pin-display">
+      <span></span><span></span><span></span><span></span>
+      <span class="extra"></span><span class="extra"></span>
+      <span class="extra"></span><span class="extra"></span>
+    </div>
+
+    <div class="keypad">
+      {% for n in [1,2,3,4,5,6,7,8,9] %}
+      <button class="key" data-key="{{ n }}">{{ n }}</button>
+      {% endfor %}
+      <button class="key key-action" data-key="clear">CLR</button>
+      <button class="key" data-key="0">0</button>
+      <button class="key key-action" data-key="enter">↵</button>
+    </div>
+
+    <p class="login-error" id="login-error" hidden></p>
+
+    <details class="login-admin">
+      <summary>Sign in with admin password</summary>
+      <form id="admin-form" autocomplete="off">
+        <input type="password" name="password" placeholder="Admin password" required>
+        <button class="btn" type="submit">Continue</button>
+      </form>
+    </details>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/login.js') }}" defer></script>
+{% endblock %}

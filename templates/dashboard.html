@@ -1,129 +1,104 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QDRNode SkyTrack</title>
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block body_class %}dashboard{% endblock %}
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+{% block content %}
+<section class="dashboard">
 
-  <!-- App CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-
-  <!-- Favicon: plane emoji -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
-</head>
-<body>
-
-  <!-- ===== HEADER ===== -->
-  <header id="header">
-    <div class="header-left">
-      <span id="wifi-indicator" class="conn-indicator" title="WiFi">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
-        </svg>
-        <span class="conn-label">WiFi</span>
-      </span>
-      <span id="cell-indicator" class="conn-indicator" title="Cellular">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M2 22h20V2z" opacity="0.15"/>
-          <path id="cell-bars" d="M2 22h3V17H2v5zm5 0h3V12H7v10zm5 0h3V7h-3v15zm5 0h3V2h-3v20z"/>
-        </svg>
-        <span class="conn-label">Cell</span>
-      </span>
+  {# ----- Filter bar ----- #}
+  <div class="filter-bar">
+    <div class="filter-group" id="range-filter">
+      <button class="chip" data-range="live">Live</button>
+      <button class="chip" data-range="1h">1h</button>
+      <button class="chip" data-range="6h">6h</button>
+      <button class="chip active" data-range="24h">24h</button>
+      <button class="chip" data-range="7d">7d</button>
     </div>
-    <div class="header-center">
-      <span class="header-title">QDRNode SkyTrack</span>
-    </div>
-    <div class="header-right">
-      <span id="clock"></span>
-    </div>
-  </header>
-
-  <!-- ===== MAIN CONTENT ===== -->
-  <main id="main-content">
-
-    <!-- Row 1: Weather -->
-    <section id="weather-row">
-      <div id="weather-current">
-        <div id="weather-primary">
-          <span id="weather-icon" class="weather-icon">--</span>
-          <span id="weather-temp" class="weather-temp">--&deg;F</span>
-          <span id="weather-condition" class="weather-condition">Loading&hellip;</span>
-        </div>
-        <div id="location-label" class="location-label">--</div>
-      </div>
-      <div id="weather-hilo">
-        <span class="weather-hi">H: --&deg;</span>
-        <span class="weather-lo">L: --&deg;</span>
-      </div>
-      <div id="weather-forecast"></div>
-      <div id="weather-status" class="weather-status"></div>
-    </section>
-
-    <!-- Row 2: Map -->
-    <section id="map-row">
-      <div id="map"></div>
-    </section>
-
-    <!-- Row 3: Stats tiles -->
-    <section id="stats-row">
-      <div class="stat-tile" id="tile-frequent">
-        <div class="stat-label" id="freq-label">Most Frequent Plane Today</div>
-        <div class="stat-value" id="freq-flight">--</div>
-        <div class="stat-detail" id="freq-detail">-- messages</div>
-        <div class="card-dots" id="freq-dots">
-          <span class="card-dot active" data-dot="today"></span>
-          <span class="card-dot" data-dot="alltime"></span>
-        </div>
-      </div>
-      <div class="stat-tile" id="tile-total">
-        <div class="stat-label">Planes Seen Today</div>
-        <div class="stat-value" id="total-count">--</div>
-        <div class="stat-detail">unique aircraft since midnight</div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ===== BOOT SPLASH (plays once on load) ===== -->
-  <div id="boot-overlay" class="video-overlay visible">
-    <video id="boot-video" muted playsinline preload="auto"
-           src="{{ url_for('static', filename='video/SkyTrack Boot Screen-V1.mp4') }}"></video>
+    <form class="search-box" id="search-form">
+      <input type="search" id="search-input" placeholder="Search ICAO • callsign • airline • route">
+      <button class="btn" type="submit">Search</button>
+    </form>
   </div>
 
-  <!-- ===== REFRESH SCENE OVERLAY (burn-in prevention) ===== -->
-  <div id="refresh-overlay" class="video-overlay hidden">
-    <video id="refresh-video" muted playsinline preload="auto"></video>
+  {# ----- 4 cards ----- #}
+  <div class="cards">
+    <article class="card">
+      <h3>Aircraft Now</h3>
+      <div class="card-value" id="card-now-value">—</div>
+      <div class="card-sub" id="card-now-sub">last 5 min</div>
+    </article>
+    <article class="card">
+      <h3>Aircraft Today</h3>
+      <div class="card-value" id="card-today-value">—</div>
+      <div class="card-sub" id="card-today-sub">today (UTC)</div>
+    </article>
+    <article class="card">
+      <h3>Busiest Hour</h3>
+      <div class="card-value" id="card-busy-value">—</div>
+      <div class="card-sub" id="card-busy-sub">last 24h</div>
+    </article>
+    <article class="card">
+      <h3>Last Aircraft</h3>
+      <div class="card-value" id="card-last-value">—</div>
+      <div class="card-sub" id="card-last-sub">last 5 min</div>
+    </article>
   </div>
 
-  <!-- ===== CONFIG for JS (injected by Flask) ===== -->
-  <script>
-    window.SKYTRACK_CONFIG = {
-      latitude: {{ config.get('latitude', 44.602016) }},
-      longitude: {{ config.get('longitude', -92.494604) }},
-      mapZoom: {{ config.get('map_zoom', 8) }},
-      jitterInterval: {{ config.get('jitter_interval', 300) }} * 1000,
-      refreshInterval: {{ config.get('refresh_interval', 3600) }} * 1000,
-      refreshDuration: {{ config.get('refresh_duration', 8) }} * 1000,
-      aircraftInterval: {{ config.get('aircraft_interval', 15) }} * 1000,
-      videoBootSrc: "{{ url_for('static', filename='video/SkyTrack Boot Screen-V1.mp4') }}",
-      videoRefreshGreen: "{{ url_for('static', filename='video/SkyTrack Refresh - Green Plane-V1.mp4') }}",
-      videoRefreshBlue: "{{ url_for('static', filename='video/SkyTrack Refresh - Blue Plane-V1.mp4') }}",
-    };
-  </script>
+  {# ----- Two-column body ----- #}
+  <div class="dash-grid">
+    <section class="panel panel-trend">
+      <h3>Activity Trend</h3>
+      <canvas id="trend-chart" height="160"></canvas>
+    </section>
 
-  <!-- SocketIO -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <section class="panel panel-weather">
+      <h3>Weather</h3>
+      <div id="weather-card">
+        <div class="weather-now">
+          <span id="wx-temp">—</span>
+          <span id="wx-cond">—</span>
+        </div>
+        <div class="weather-forecast" id="wx-forecast"></div>
+      </div>
+    </section>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <section class="panel panel-recent">
+      <h3>Recent Aircraft</h3>
+      <table class="data-table">
+        <thead>
+          <tr><th>ICAO</th><th>Callsign</th><th>Alt</th><th>Speed</th><th>Last seen</th></tr>
+        </thead>
+        <tbody id="recent-tbody"></tbody>
+      </table>
+    </section>
 
-  <!-- App JS -->
-  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <section class="panel panel-airlines">
+      <h3>Top Airlines</h3>
+      <ol class="rank-list" id="airlines-list"></ol>
+    </section>
 
-</body>
-</html>
+    <section class="panel panel-routes">
+      <h3>Top Routes</h3>
+      <ol class="rank-list" id="routes-list"></ol>
+    </section>
+
+    <section class="panel panel-map">
+      <h3>Live Map</h3>
+      <div id="aircraft-map"
+           data-lat="{{ center_lat }}"
+           data-lon="{{ center_lon }}"
+           data-zoom="{{ map_zoom }}"></div>
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet.css') }}">
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='vendor/leaflet.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+{% endblock %}

@@ -1,0 +1,20 @@
+[Unit]
+Description=SkyTrack Portal v2 — first-boot bootstrap
+ConditionPathExists=!/var/lib/skytrack/.firstboot-done
+After=local-fs.target network.target
+Before=skytrack-app.service skytrack-network.service skytrack-ingest.service skytrack-hardware.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Group=root
+WorkingDirectory=/opt/skytrack
+EnvironmentFile=-/etc/skytrack/skytrack.env
+ExecStart=/opt/skytrack/scripts/firstboot.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-firstboot
+
+[Install]
+WantedBy=multi-user.target

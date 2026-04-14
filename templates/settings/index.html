@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Settings{% endblock %}
+{% block body_class %}settings{% endblock %}
+
+{% block content %}
+<section class="settings">
+  <header class="settings-header">
+    <h1>Settings</h1>
+    <span class="muted">{{ identity.device_id }} • Radar: <a href="{{ radar_url }}" target="_blank">{{ radar_url }}</a></span>
+  </header>
+
+  <nav class="tablist" id="settings-tablist" role="tablist">
+    <button class="tab active" data-tab="general">General</button>
+    <button class="tab" data-tab="access">Access</button>
+    <button class="tab" data-tab="network">Network</button>
+    <button class="tab" data-tab="integrations">Integrations</button>
+    <button class="tab" data-tab="feeders">Feeders</button>
+    <button class="tab" data-tab="radar">Radar</button>
+    <button class="tab" data-tab="hardware">Hardware</button>
+    <button class="tab" data-tab="updates">Updates</button>
+    <button class="tab" data-tab="logs">Logs</button>
+  </nav>
+
+  <div class="tabpanels">
+    <section class="tabpanel active" data-tabpanel="general">
+      {% include 'settings/_general.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="access">
+      {% include 'settings/_access.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="network">
+      <p class="muted">Network is on its own page. <a href="{{ url_for('network.index') }}">Open Network →</a></p>
+    </section>
+    <section class="tabpanel" data-tabpanel="integrations">
+      {% include 'settings/_integrations.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="feeders">
+      {% include 'settings/_feeders.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="radar">
+      {% include 'settings/_radar.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="hardware">
+      {% include 'settings/_hardware.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="updates">
+      {% include 'settings/_updates.html' %}
+    </section>
+    <section class="tabpanel" data-tabpanel="logs">
+      <p class="muted">Logs are on their own page. <a href="{{ url_for('logs.index') }}">Open Logs →</a></p>
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}" defer></script>
+{% endblock %}

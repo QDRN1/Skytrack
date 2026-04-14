@@ -1,0 +1,21 @@
+<div class="form-grid">
+  <form class="form" id="form-pin" data-endpoint="/api/settings/access/pin">
+    <h2>Change PIN</h2>
+    <p class="muted">Used for everyday sign-in. 4–8 digits.</p>
+    <label>New PIN
+      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" required>
+    </label>
+    <button type="submit" class="btn">Update PIN</button>
+  </form>
+
+  <form class="form" id="form-admin" data-endpoint="/api/settings/access/admin">
+    <h2>Change admin password</h2>
+    <p class="muted">Required for sensitive actions and updates. Minimum 6 characters.</p>
+    <label>New admin password
+      <input name="password" type="password" minlength="6" required>
+    </label>
+    <button type="submit" class="btn">Update admin password</button>
+  </form>
+</div>
+
+<p class="muted">Need to manage super-user credentials? Sign in via <code>/superuser</code>.</p>
