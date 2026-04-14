@@ -38,6 +38,7 @@ import enrich
 import git_auth
 import logs_svc
 import network_svc
+from _version import __version__ as SKYTRACK_VERSION
 from config import save_user_config
 
 logger = logging.getLogger('skytrack.settings_bp')
@@ -222,7 +223,7 @@ def api_general():
         return jsonify({
             'config': {k: cfg.get(k) for k in _GENERAL_KEYS},
             'device_id': current_app.config.get('DEVICE_ID', ''),
-            'app_version': '2.0.0',
+            'app_version': SKYTRACK_VERSION,
         })
     payload = request.get_json(silent=True) or {}
     updates = _take(payload, _GENERAL_KEYS)
@@ -781,7 +782,7 @@ def api_updates():
     if request.method == 'GET':
         return jsonify({
             'config': {k: cfg.get(k) for k in _UPDATE_KEYS},
-            'app_version': '2.0.0',
+            'app_version': SKYTRACK_VERSION,
             'backups': _list_backups(),
         })
     payload = request.get_json(silent=True) or {}

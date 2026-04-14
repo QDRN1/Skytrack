@@ -7,28 +7,45 @@
   <!--
     SkyTrack appliance splash.
 
-    This page is loaded by Chromium from file:// BEFORE skytrack-app is
-    listening. It has two visual states and must NEVER go black:
+    Loaded by Chromium from file:// BEFORE skytrack-app is listening. It has
+    three visual states driven by polling /healthz, and each state is a
+    full-bleed looping video plus the Device ID pill at the top. There is
+    NO forced overlay on top of the video: the generated brand/spinner
+    card is a true last-resort fallback that only appears if the active
+    state's <video> element fails to decode (bad file, missing codec,
+    truncated asset). When the video is playing, the only thing drawn
+    on top is the device-ID pill.
 
-      1. state-loading      — "boot" video + "Starting services…" overlay
-                              Shown on cold boot while /healthz is polled.
+    States
+    ------
+      boot         — SkyTrack Boot Screen-V1.mp4
+                     default on cold start; shown while /healthz is still
+                     polling OR after /healthz says configured=true, up
+                     until the redirect to /kiosk fires.
 
-      2. state-unavailable  — "service unavailable" video fullscreen,
-                              overlay is ONLY the device-ID pill at the top.
-                              Shown after 60s of /healthz failure, and also
-                              reached instantly if the kiosk page fell back
-                              here because of a runtime app crash.
+      setup        — SkyTrack Setup Screen.mp4
+                     /healthz answered ok but configured=false. We stay on
+                     the splash (do NOT redirect) and keep polling. The
+                     moment configured flips to true we redirect to /kiosk.
 
-    Both states keep polling /healthz in the background. When the backend
-    responds healthy, we redirect to /kiosk. The page never shows a default
-    Chromium error, never scrolls, never shows browser chrome, and never
-    exposes a raw X root. If either video fails to decode, a dark branded
-    gradient stands in.
+      unavailable  — SkyTrack Service Unavail.mp4
+                     /healthz has been unreachable for UNAVAILABLE_MS, or
+                     kiosk.js bounced us here with ?from=kiosk (runtime
+                     backend crash). Also keeps polling so we auto-recover.
 
-    The device-ID pill is populated by device_id.js which is written next
-    to this file by firstboot.sh (or install.sh step 8). If that file is
-    missing we leave the placeholder dash in place — we never render an
-    empty pill.
+    Device-ID pill
+    --------------
+    Populated by device_id.js which install.sh writes next to this file.
+    If that script is missing (bad OTA) the placeholder "SkyTrack" stays
+    in place — we never render an empty pill.
+
+    Emergency fallback
+    ------------------
+    A hidden center card (brand + spinner + one-line status) is attached
+    to the error/sourceerror events of each <video>. It only ever becomes
+    visible if the current state's video can't decode. When it does, it
+    sits on the static dark branded gradient (#bg-fallback). It is NOT
+    an overlay on top of a working video.
   -->
   <style>
     html, body {
@@ -48,9 +65,21 @@
     }
     body { cursor: none; }
 
-    /* Fullscreen background video layer. Two <video> elements are stacked;
-       we only make one visible at a time. object-fit:cover gives true
-       fullscreen without letterboxing regardless of the source aspect. */
+    /* Last-resort branded gradient behind ALL videos. If every video fails
+       to decode, this plus the fallback card is what the operator sees. */
+    #bg-fallback {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(46,108,246,0.28), transparent 60%),
+        radial-gradient(ellipse at 78% 80%, rgba(242,145,53,0.18), transparent 60%),
+        linear-gradient(180deg, #05070b 0%, #02040e 100%);
+    }
+
+    /* Full-bleed video layer. Three <video> elements are stacked; exactly
+       one is made visible at a time via the .visible class. object-fit
+       cover gives true fullscreen regardless of the source aspect. */
     .bg-video {
       position: fixed;
       inset: 0;
@@ -65,39 +94,9 @@
     }
     .bg-video.visible { opacity: 1; }
 
-    /* Fallback gradient painted underneath both videos — if neither video
-       decodes (missing file, codec fault) the operator still sees a dark
-       branded background rather than black. */
-    #bg-fallback {
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      background:
-        radial-gradient(ellipse at 30% 20%, rgba(46,108,246,0.28), transparent 60%),
-        radial-gradient(ellipse at 78% 80%, rgba(242,145,53,0.18), transparent 60%),
-        linear-gradient(180deg, #05070b 0%, #02040e 100%);
-    }
-
-    /* Loading-state scrim over the boot video so the center text is
-       readable. The unavailable state uses NO scrim — the video is the
-       whole message. */
-    #scrim-loading {
-      position: fixed;
-      inset: 0;
-      z-index: 1;
-      background: radial-gradient(ellipse at center,
-                    rgba(5,7,11,0.30) 0%,
-                    rgba(5,7,11,0.80) 70%,
-                    #05070b 100%);
-      opacity: 0;
-      transition: opacity 400ms ease;
-      pointer-events: none;
-    }
-    #scrim-loading.visible { opacity: 1; }
-
-    /* ---- Device-ID pill (top overlay) -------------------------------
-       Matches the .kiosk-device-id-pill from templates/kiosk.html so the
-       visual identity is consistent between splash and kiosk. */
+    /* Device-ID pill — the ONLY thing drawn on top of a working video.
+       Matches kiosk.html's .kiosk-device-id-pill so the visual identity
+       is consistent between splash and the backend-rendered kiosk page. */
     .device-overlay {
       position: fixed;
       top: 6vh;
@@ -122,9 +121,9 @@
       backdrop-filter: blur(6px);
     }
 
-    /* ---- Loading-state center panel ---------------------------------
-       Only shown while state === "loading". */
-    .loading-panel {
+    /* Emergency fallback card — HIDDEN until revealed by JS.
+       Revealed only when the current state's <video> can't decode. */
+    .fallback-card {
       position: fixed;
       top: 50%;
       left: 50%;
@@ -133,11 +132,10 @@
       text-align: center;
       max-width: 720px;
       padding: 0 32px;
-      opacity: 0;
-      transition: opacity 400ms ease;
       pointer-events: none;
+      display: none;
     }
-    .loading-panel.visible { opacity: 1; }
+    .fallback-card.visible { display: block; }
     .brand {
       font-size: 54px;
       font-weight: 300;
@@ -179,25 +177,43 @@
       margin-top: 12px;
       letter-spacing: 0.04em;
     }
+
+    /* Version tag — small, bottom-right, barely visible. Populated by JS. */
+    .version-tag {
+      position: fixed;
+      right: 14px;
+      bottom: 10px;
+      z-index: 25;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: rgba(255, 255, 255, 0.35);
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <!-- Last-resort branded background, never animated, behind everything -->
   <div id="bg-fallback"></div>
 
-  <!-- Boot video — shown in loading state -->
-  <video id="video-loading" class="bg-video"
+  <!-- Boot video — configured device, cold boot -->
+  <video id="video-boot" class="bg-video"
          autoplay muted loop playsinline preload="auto">
     <source src="file:///opt/skytrack/static/video/SkyTrack%20Boot%20Screen-V1.mp4" type="video/mp4">
   </video>
 
-  <!-- Service-unavailable video — shown when backend is down -->
+  <!-- Setup video — unconfigured device (/healthz returned configured=false) -->
+  <video id="video-setup" class="bg-video"
+         autoplay muted loop playsinline preload="auto">
+    <source src="file:///opt/skytrack/static/video/SkyTrack%20Setup%20Screen.mp4" type="video/mp4">
+  </video>
+
+  <!-- Service-unavailable video — /healthz down for >60s or ?from=kiosk -->
   <video id="video-unavailable" class="bg-video"
          autoplay muted loop playsinline preload="auto">
     <source src="file:///opt/skytrack/static/video/SkyTrack%20Service%20Unavail.mp4" type="video/mp4">
   </video>
-
-  <div id="scrim-loading"></div>
 
   <!-- Device-ID pill — always visible, populated by device_id.js -->
   <div class="device-overlay">
@@ -206,18 +222,21 @@
     </span>
   </div>
 
-  <!-- Loading-state center card (hidden when state === "unavailable") -->
-  <div class="loading-panel" id="loading-panel">
+  <!-- Emergency fallback card — hidden unless the active video fails -->
+  <div class="fallback-card" id="fallback-card">
     <h1 class="brand">Sky<strong>Track</strong></h1>
     <p class="tag">ADS-B Tracker · QDRN</p>
     <div class="spinner" aria-hidden="true"></div>
-    <p class="msg">Starting services…</p>
-    <p class="msg small" id="loading-detail">Initializing</p>
+    <p class="msg" id="fallback-msg">Starting services&hellip;</p>
+    <p class="msg small" id="fallback-detail">Initializing</p>
   </div>
 
-  <!-- device_id.js is written by firstboot.sh and install.sh step 8.
-       It assigns window.SKYTRACK_DEVICE_ID. Missing-file is tolerated
-       (the pill keeps its placeholder). -->
+  <!-- Version tag — bottom-right. Populated from device_id.js below. -->
+  <div class="version-tag" id="version-tag"></div>
+
+  <!-- device_id.js is written by install.sh step 8 and by firstboot.sh.
+       It assigns window.SKYTRACK_DEVICE_ID (and optionally _VERSION).
+       Missing-file is tolerated — the pill keeps its placeholder text. -->
   <script src="device_id.js" onerror="void 0"></script>
 
   <script>
@@ -235,8 +254,8 @@
 
       // ------------------------------------------------------------------
       // URL params — kiosk.js redirects here with ?from=kiosk when it
-      // loses the backend, and we want to jump straight to the unavailable
-      // state instead of sitting on the "Starting services…" card.
+      // loses the backend at runtime and we want to jump straight to the
+      // service-unavailable state instead of sitting on the boot video.
       // ------------------------------------------------------------------
       var queryStart = window.location.href.indexOf("?");
       var params = queryStart >= 0 ? window.location.href.substring(queryStart + 1) : "";
@@ -249,25 +268,55 @@
       if (pillText && typeof window.SKYTRACK_DEVICE_ID === "string" && window.SKYTRACK_DEVICE_ID.length) {
         pillText.textContent = window.SKYTRACK_DEVICE_ID;
       }
-
-      // ------------------------------------------------------------------
-      // DOM refs
-      // ------------------------------------------------------------------
-      var videoLoading     = document.getElementById("video-loading");
-      var videoUnavailable = document.getElementById("video-unavailable");
-      var scrimLoading     = document.getElementById("scrim-loading");
-      var loadingPanel     = document.getElementById("loading-panel");
-      var detail           = document.getElementById("loading-detail");
+      var versionTag = document.getElementById("version-tag");
+      if (versionTag) {
+        var v = (typeof window.SKYTRACK_VERSION === "string" && window.SKYTRACK_VERSION.length)
+                ? window.SKYTRACK_VERSION
+                : "";
+        versionTag.textContent = v ? ("v" + v) : "";
+      }
 
       // ------------------------------------------------------------------
       // State machine
       // ------------------------------------------------------------------
-      var STATE_LOADING     = "loading";
+      var STATE_BOOT        = "boot";
+      var STATE_SETUP       = "setup";
       var STATE_UNAVAILABLE = "unavailable";
-      var state             = startedFromKiosk ? STATE_UNAVAILABLE : STATE_LOADING;
-      var startedAt         = Date.now();
-      var pollCount         = 0;
-      var redirecting       = false;
+
+      var videos = {};
+      videos[STATE_BOOT]        = document.getElementById("video-boot");
+      videos[STATE_SETUP]       = document.getElementById("video-setup");
+      videos[STATE_UNAVAILABLE] = document.getElementById("video-unavailable");
+
+      // Per-state broken flag. Flipped true by <video>.onerror or
+      // <source>.onerror. Once broken, the state's video stays hidden
+      // forever — we paint the fallback card instead.
+      var videoBroken = {};
+      videoBroken[STATE_BOOT]        = false;
+      videoBroken[STATE_SETUP]       = false;
+      videoBroken[STATE_UNAVAILABLE] = false;
+
+      Object.keys(videos).forEach(function (s) {
+        var v = videos[s];
+        if (!v) { videoBroken[s] = true; return; }
+        function markBroken() {
+          if (videoBroken[s]) return;
+          videoBroken[s] = true;
+          if (state === s) applyState();
+        }
+        v.addEventListener("error", markBroken, false);
+        var src = v.querySelector("source");
+        if (src) src.addEventListener("error", markBroken, false);
+      });
+
+      var fallbackCard = document.getElementById("fallback-card");
+      var fallbackMsg  = document.getElementById("fallback-msg");
+      var fallbackDet  = document.getElementById("fallback-detail");
+
+      var state       = startedFromKiosk ? STATE_UNAVAILABLE : STATE_BOOT;
+      var startedAt   = Date.now();
+      var pollCount   = 0;
+      var redirecting = false;
 
       function setVisible(el, visible) {
         if (!el) return;
@@ -275,66 +324,82 @@
         else el.classList.remove("visible");
       }
 
-      function tryPlay(video) {
-        if (!video) return;
+      function tryPlay(v) {
+        if (!v) return;
         try {
-          var p = video.play();
+          var p = v.play();
           if (p && typeof p.catch === "function") {
-            p.catch(function () { /* ignored — object-fit cover + fallback bg */ });
+            p.catch(function () { /* ignored */ });
           }
         } catch (_e) { /* same */ }
       }
 
-      function pauseVideo(video) {
-        if (!video) return;
-        try { video.pause(); } catch (_e) {}
+      function pauseVideo(v) {
+        if (!v) return;
+        try { v.pause(); } catch (_e) {}
+      }
+
+      function fallbackCopyFor(s) {
+        if (s === STATE_SETUP) {
+          return ["Setup required", "Open SkyTrack-Portal on a phone to continue"];
+        }
+        if (s === STATE_UNAVAILABLE) {
+          return ["Service unavailable", "Waiting for backend to recover"];
+        }
+        return ["Starting services\u2026", "Attempt " + pollCount];
       }
 
       function applyState() {
-        if (state === STATE_LOADING) {
-          setVisible(videoLoading, true);
-          setVisible(videoUnavailable, false);
-          setVisible(scrimLoading, true);
-          setVisible(loadingPanel, true);
-          tryPlay(videoLoading);
-          pauseVideo(videoUnavailable);
-        } else {
-          // unavailable
-          setVisible(videoLoading, false);
-          setVisible(videoUnavailable, true);
-          setVisible(scrimLoading, false);
-          setVisible(loadingPanel, false);
-          pauseVideo(videoLoading);
-          tryPlay(videoUnavailable);
+        // 1. Hide and pause every video layer.
+        Object.keys(videos).forEach(function (s) {
+          setVisible(videos[s], false);
+          pauseVideo(videos[s]);
+        });
+
+        // 2. Active video → visible + playing, fallback card hidden.
+        var v = videos[state];
+        if (v && !videoBroken[state]) {
+          setVisible(v, true);
+          tryPlay(v);
+          setVisible(fallbackCard, false);
+          return;
         }
+
+        // 3. Active video is broken or missing → reveal the fallback
+        //    card on top of the static branded gradient.
+        var copy = fallbackCopyFor(state);
+        if (fallbackMsg) fallbackMsg.textContent = copy[0];
+        if (fallbackDet) fallbackDet.textContent = copy[1];
+        setVisible(fallbackCard, true);
       }
 
-      function gotoLoading() {
-        if (state === STATE_LOADING) return;
-        state = STATE_LOADING;
-        applyState();
-      }
-      function gotoUnavailable() {
-        if (state === STATE_UNAVAILABLE) return;
-        state = STATE_UNAVAILABLE;
+      function gotoState(next) {
+        if (state === next) return;
+        state = next;
         applyState();
       }
 
       // ------------------------------------------------------------------
-      // /healthz polling (runs in both states, forever, until we redirect)
+      // /healthz polling (runs in every state, forever, until we redirect)
       // ------------------------------------------------------------------
       function poll() {
         if (redirecting) return;
         pollCount += 1;
-        if (detail) detail.textContent = "Attempt " + pollCount;
+        if (fallbackCard.classList.contains("visible") && fallbackDet) {
+          // Only update the fallback detail line if it's actually visible,
+          // so we don't force layout thrash when the video is playing.
+          var copy = fallbackCopyFor(state);
+          fallbackMsg.textContent = copy[0];
+          fallbackDet.textContent = copy[1];
+        }
 
         var elapsed = Date.now() - startedAt;
 
-        // Cold-boot grace: after UNAVAILABLE_MS of failure, switch to the
-        // service-unavailable video. A reload from a crashed /kiosk skips
-        // the grace entirely (startedFromKiosk).
-        if (state === STATE_LOADING && elapsed >= UNAVAILABLE_MS) {
-          gotoUnavailable();
+        // Cold-boot grace: after UNAVAILABLE_MS of failure on the initial
+        // boot state, switch to the service-unavailable video. Once we've
+        // progressed past boot (setup/unavailable), leave state alone.
+        if (state === STATE_BOOT && elapsed >= UNAVAILABLE_MS) {
+          gotoState(STATE_UNAVAILABLE);
         }
 
         var controller = null;
@@ -353,16 +418,27 @@
             if (!r || !r.ok) throw new Error("http " + (r ? r.status : "?"));
             return r.json().catch(function () { return {}; });
           })
-          .then(function () {
-            // Healthy — hand off to the real kiosk route.
-            redirecting = true;
-            window.location.replace(KIOSK_URL);
+          .then(function (body) {
+            // /healthz returns { ok, configured, device }.
+            var configured = !!(body && body.configured);
+            if (configured) {
+              // Configured device: hand off to the real kiosk route.
+              redirecting = true;
+              window.location.replace(KIOSK_URL);
+              return;
+            }
+            // Backend is up but the device isn't configured yet. Pin the
+            // splash to the Setup Screen video and keep polling. The
+            // admin finishes /setup on their phone over the hotspot, and
+            // the next successful poll with configured=true triggers
+            // the redirect above.
+            if (state !== STATE_SETUP) gotoState(STATE_SETUP);
+            setTimeout(poll, POLL_MS);
           })
           .catch(function () {
             if (timeoutId) clearTimeout(timeoutId);
-            // Still unhealthy — keep polling. Don't switch back to the
-            // loading state from unavailable; only the grace-period check
-            // above controls the forward direction.
+            // /healthz unreachable. Keep polling; the grace timer above
+            // will flip us to the unavailable video at UNAVAILABLE_MS.
             setTimeout(poll, POLL_MS);
           });
       }

@@ -215,18 +215,38 @@ else
 fi
 if [[ -f "$REPO_DIR/static/splash/device_id.js" ]]; then
   if grep -q 'SKYTRACK_DEVICE_ID' "$REPO_DIR/static/splash/device_id.js"; then
-    ok "splash device_id.js present"
+    ok "splash device_id.js has device id"
   else
-    fail "splash device_id.js exists but is malformed"
+    fail "splash device_id.js exists but SKYTRACK_DEVICE_ID is missing"
+  fi
+  if grep -q 'SKYTRACK_VERSION' "$REPO_DIR/static/splash/device_id.js"; then
+    ok "splash device_id.js has version"
+  else
+    fail "splash device_id.js exists but SKYTRACK_VERSION is missing (re-run install.sh step 8 or scripts/firstboot.sh)"
   fi
 else
   fail "missing $REPO_DIR/static/splash/device_id.js"
 fi
-for video in "SkyTrack Boot Screen-V1.mp4" "SkyTrack Service Unavail.mp4"; do
+# All three splash videos must exist. The splash state machine has a
+# per-state broken-flag fallback so a missing video won't black-screen the
+# device, but we still fail the verifier — shipping without a video is a
+# regression, not an emergency fallback.
+for video in "SkyTrack Boot Screen-V1.mp4" "SkyTrack Setup Screen.mp4" "SkyTrack Service Unavail.mp4"; do
   if [[ -s "$REPO_DIR/static/video/$video" ]]; then
     ok "video: $video"
   else
     fail "missing $REPO_DIR/static/video/$video"
+  fi
+done
+# And the splash index.html must reference each of them by name so a
+# filename typo doesn't silently fall through to the emergency fallback.
+for ref in "SkyTrack%20Boot%20Screen-V1\.mp4" \
+           "SkyTrack%20Setup%20Screen\.mp4" \
+           "SkyTrack%20Service%20Unavail\.mp4"; do
+  if grep -q "$ref" "$REPO_DIR/static/splash/index.html" 2>/dev/null; then
+    ok "splash references $(echo "$ref" | sed 's/\\\././g;s/%20/ /g')"
+  else
+    fail "splash missing reference to $(echo "$ref" | sed 's/\\\././g;s/%20/ /g')"
   fi
 done
 
@@ -416,16 +436,12 @@ if [[ "$RUN_RUNTIME" -eq 1 ]]; then
     fi
   fi
 
-  # Splash must reference device_id.js and the unavailable video by name.
+  # Splash must reference device_id.js (the video refs are validated in
+  # the appliance-kiosk section above so we don't double-report here).
   if grep -q 'device_id\.js' "$REPO_DIR/static/splash/index.html" 2>/dev/null; then
     ok "splash references device_id.js"
   else
     fail "splash missing device_id.js reference"
-  fi
-  if grep -q 'SkyTrack%20Service%20Unavail\.mp4' "$REPO_DIR/static/splash/index.html" 2>/dev/null; then
-    ok "splash references service-unavailable video"
-  else
-    fail "splash missing service-unavailable video reference"
   fi
 else
   hdr "runtime"

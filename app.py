@@ -44,6 +44,8 @@ from typing import Optional
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO
 
+from _version import __version__ as SKYTRACK_VERSION
+
 # NOTE: backend modules are imported lazily inside create_app() so that
 # unit tests can import this module without paying the full hardware
 # initialization cost.
@@ -399,7 +401,7 @@ def _register_template_globals(app: Flask) -> None:
             'is_super': role == auth_lib.ROLE_SUPER,
             'configured': auth_lib.is_configured(),
             'dev_mode': app.config.get('DEV_MODE', False),
-            'app_version': '2.0.0',
+            'app_version': SKYTRACK_VERSION,
         }
 
 
