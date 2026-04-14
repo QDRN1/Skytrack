@@ -107,14 +107,25 @@ if [[ "$DEV_INSTALL" != true ]]; then
     gpsd gpsd-clients
     # GPIO / sensors
     libgpiod2 python3-libgpiod
-    # Appliance kiosk stack (X11 only, no display manager)
-    chromium-browser
+    # Appliance kiosk stack (X11 only, no display manager).
+    # chromium / chromium-browser: Raspberry Pi OS Bookworm ships the binary
+    # under both names at different revisions. We install the package that
+    # exists and the xinitrc auto-detects which binary to launch.
     xserver-xorg xserver-xorg-legacy xinit
     openbox unclutter
     # Branded boot splash
     plymouth plymouth-themes
   )
   apt-get install -y -qq "${PKGS[@]}" >> "$LOG_FILE" 2>&1 || warn "some packages failed (continuing)"
+
+  # Chromium — try both package names. Bookworm Lite: chromium-browser.
+  # Newer / non-Pi Debian: chromium. Install whichever is available so the
+  # binary ends up in /usr/bin/ under either name.
+  if ! dpkg -s chromium-browser >/dev/null 2>&1 && ! dpkg -s chromium >/dev/null 2>&1; then
+    apt-get install -y -qq chromium-browser >> "$LOG_FILE" 2>&1 || \
+    apt-get install -y -qq chromium        >> "$LOG_FILE" 2>&1 || \
+      warn "could not install chromium — kiosk will paint a dark screen until installed"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

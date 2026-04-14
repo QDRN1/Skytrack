@@ -16,7 +16,7 @@ sudo nano /opt/skytrack/config.yaml   # set latitude, longitude, weather_api_key
 # --- Pre-reboot verification (catch config errors before reboot) ---
 sudo systemctl start skytrack
 sudo systemctl status skytrack --no-pager
-curl -sf http://127.0.0.1:5000/api/selfcheck | python3 -m json.tool
+curl -sf http://127.0.0.1:8080/api/selfcheck | python3 -m json.tool
 # expect: {"ok": true, "checks": {...}}  — if not, fix config.yaml now
 
 sudo reboot
@@ -28,14 +28,14 @@ sudo reboot
 | `skytrack.service` | active (running) |
 | `skytrack-kiosk.service` | active (running) |
 | HDMI output | Full-screen Chromium showing SkyTrack dashboard, no cursor |
-| TCP :5000 | HTTP 200 with HTML |
+| TCP :8080 | HTTP 200 with HTML |
 | `journalctl -u skytrack` | No tracebacks, shows startup messages |
 | `journalctl -u skytrack-kiosk` | Shows "Backend is up", "Launching Chromium" |
 
 ## 4. Five Verification Commands
 ```bash
 # 1. Backend healthy
-curl -sf http://127.0.0.1:5000/api/selfcheck | python3 -m json.tool
+curl -sf http://127.0.0.1:8080/api/selfcheck | python3 -m json.tool
 
 # 2. Kiosk healthy — service active + Chromium actually rendering
 systemctl is-active skytrack-kiosk && echo "SERVICE OK"
@@ -43,7 +43,7 @@ DISPLAY=:0 xrandr | grep '*'                # confirm active resolution
 pgrep -af chromium | head -3                 # confirm Chromium processes exist
 
 # 3. GPS functional (returns config fallback without hardware)
-curl -sf http://127.0.0.1:5000/api/location | python3 -m json.tool
+curl -sf http://127.0.0.1:8080/api/location | python3 -m json.tool
 # expect: source="config", lat/lon from config.yaml
 
 # 4. Geodata loaded

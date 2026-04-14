@@ -4,7 +4,6 @@ Documentation=https://github.com/qdrnow/skytrack
 After=skytrack-app.service systemd-user-sessions.service
 Requires=skytrack-app.service
 Conflicts=getty@tty1.service
-ConditionPathExists=/usr/bin/chromium-browser
 ConditionPathExists=!/boot/firmware/skytrack-safe-mode
 
 [Service]

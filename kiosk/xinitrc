@@ -25,6 +25,35 @@ unclutter -idle 0 -root >/dev/null 2>&1 &
 # works even before skytrack-app is listening.
 SPLASH_URL="file:///opt/skytrack/static/splash/index.html"
 
+# Resolve the Chromium binary — Raspberry Pi OS Bookworm installs it as
+# /usr/bin/chromium on recent builds but older packages ship
+# /usr/bin/chromium-browser. Try both in order so the appliance works across
+# OS revisions without a rebuild.
+CHROMIUM=""
+for candidate in /usr/bin/chromium /usr/bin/chromium-browser chromium chromium-browser; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    CHROMIUM="$(command -v "$candidate")"
+    break
+  fi
+done
+
+if [ -z "$CHROMIUM" ]; then
+  # No Chromium at all — fall back to a minimal X client that paints the
+  # screen dark so the operator at least sees an intentional state instead
+  # of an uninitialized X root. The display service will Restart=always,
+  # so this loop still runs and will pick up chromium once it's installed.
+  xsetroot -solid "#05070b" 2>/dev/null || true
+  while true; do
+    sleep 10
+    for candidate in /usr/bin/chromium /usr/bin/chromium-browser chromium chromium-browser; do
+      if command -v "$candidate" >/dev/null 2>&1; then
+        CHROMIUM="$(command -v "$candidate")"
+        break 2
+      fi
+    done
+  done
+fi
+
 # Fresh per-launch profile dir — prevents Chromium restore bubbles
 PROFILE_DIR="/tmp/skytrack-kiosk-profile"
 
@@ -32,7 +61,7 @@ while true; do
   rm -rf "$PROFILE_DIR" 2>/dev/null || true
   mkdir -p "$PROFILE_DIR"
 
-  /usr/bin/chromium-browser \
+  "$CHROMIUM" \
     --user-data-dir="$PROFILE_DIR" \
     --app="$SPLASH_URL" \
     --kiosk \

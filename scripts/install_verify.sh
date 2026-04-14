@@ -149,10 +149,12 @@ else
   ok "safe-mode marker absent (normal appliance boot)"
 fi
 
-if command -v chromium-browser >/dev/null 2>&1; then
-  ok "chromium-browser in PATH"
+if command -v chromium >/dev/null 2>&1; then
+  ok "chromium in PATH ($(command -v chromium))"
+elif command -v chromium-browser >/dev/null 2>&1; then
+  ok "chromium-browser in PATH ($(command -v chromium-browser))"
 else
-  fail "chromium-browser not installed"
+  fail "no chromium binary found (neither 'chromium' nor 'chromium-browser')"
 fi
 
 if [[ -f "$REPO_DIR/static/splash/index.html" ]]; then
