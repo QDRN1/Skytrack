@@ -1,28 +1,94 @@
-<div class="form-grid">
-  <form class="form" id="form-admin" data-endpoint="/api/settings/access/admin">
-    <h2>Admin password</h2>
-    <p class="muted">
-      Required for every sensitive action — settings, network, integrations,
-      updates, diagnostics. Minimum 6 characters.
-    </p>
-    <label>New admin password
-      <input name="password" type="password" minlength="6" required>
-    </label>
-    <button type="submit" class="btn">Update admin password</button>
-  </form>
+{# Settings → Access #}
+<section class="settings-section" data-section-pane="access">
 
-  <form class="form" id="form-pin" data-endpoint="/api/settings/access/pin">
-    <h2>PIN <span class="muted">(optional)</span></h2>
-    <p class="muted">
-      Optional alternate sign-in for the admin role. Anyone with the PIN gets
-      the same access as someone with the admin password — keep it private.
-      Leave blank and submit to remove the PIN entirely.
-    </p>
-    <label>New PIN <span class="muted">(4–8 digits, blank to clear)</span>
-      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}">
-    </label>
-    <button type="submit" class="btn">Save PIN</button>
-  </form>
-</div>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Admin password</h2>
+      <p class="muted">Required for every sensitive action. Minimum 6 characters.</p>
+    </header>
 
-<p class="muted">Need to manage super-user credentials? Sign in via <code>/superuser</code>.</p>
+    <form class="card-body card-form" id="form-admin-password"
+          data-endpoint="/api/settings/access/admin"
+          data-section="access">
+      <div class="field">
+        <label for="ax-pw">New admin password</label>
+        <input id="ax-pw" name="password" type="password" minlength="6"
+               autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="ax-pw2">Confirm new password</label>
+        <input id="ax-pw2" name="password_confirm" type="password" minlength="6"
+               autocomplete="new-password" required data-confirm-of="password">
+      </div>
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Update password</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>PIN <span class="muted small">optional</span></h2>
+      <p class="muted">Alternate sign-in for the admin role. Leave blank and submit to remove the PIN entirely.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-pin"
+          data-endpoint="/api/settings/access/pin"
+          data-section="access"
+          data-allow-empty="pin">
+      <div class="field">
+        <label for="ax-pin">PIN <span class="muted small">(4–8 digits, blank to clear)</span></label>
+        <input id="ax-pin" name="pin" type="password" inputmode="numeric"
+               pattern="[0-9]{4,8}" maxlength="8" autocomplete="off">
+      </div>
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save PIN</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Session &amp; lockout</h2>
+      <p class="muted">How long admin stays signed in and how many failed attempts trigger a temporary lockout.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-session"
+          data-endpoint="/api/settings/access/session"
+          data-section="access">
+      <div class="field">
+        <label for="ax-timeout">Session timeout (hours, sliding)</label>
+        <input id="ax-timeout" name="session_timeout_hours" type="number"
+               min="1" max="72" value="{{ config.session_timeout_hours or 2 }}">
+      </div>
+      <div class="field">
+        <label for="ax-attempts">Failed-login attempt limit</label>
+        <input id="ax-attempts" name="lockout_max_attempts" type="number"
+               min="1" max="50" value="{{ config.lockout_max_attempts or 5 }}">
+      </div>
+      <div class="field">
+        <label for="ax-window">Lockout duration (seconds)</label>
+        <input id="ax-window" name="lockout_window_seconds" type="number"
+               min="30" max="86400" step="30"
+               value="{{ config.lockout_window_seconds or 300 }}">
+      </div>
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Session Policy</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Hotspot password</h2>
+      <p class="muted">Manage the WPA2 password from the Network section so you can see and regenerate it together with the SSID.</p>
+    </header>
+    <div class="card-body">
+      <button type="button" class="btn btn-lg" data-jump-section="network">Open Network →</button>
+    </div>
+  </div>
+
+</section>

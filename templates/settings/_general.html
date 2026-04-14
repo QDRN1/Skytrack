@@ -1,45 +1,93 @@
-<form class="form" id="form-general" data-endpoint="/api/settings/general">
-  <h2>General</h2>
+{# Settings → General #}
+<section class="settings-section active" data-section-pane="general">
 
-  <label>Device name prefix
-    <input name="device_name_prefix" value="{{ config.device_name_prefix }}">
-  </label>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>General</h2>
+      <p class="muted">Identity, units, and the look of the dashboard.</p>
+    </header>
 
-  <label>Latitude
-    <input name="latitude" type="number" step="0.000001" value="{{ config.latitude }}">
-  </label>
-  <label>Longitude
-    <input name="longitude" type="number" step="0.000001" value="{{ config.longitude }}">
-  </label>
-  <label>Map zoom
-    <input name="map_zoom" type="number" min="2" max="18" value="{{ config.map_zoom }}">
-  </label>
+    <form class="card-body card-form" id="form-general"
+          data-endpoint="/api/settings/general"
+          data-section="general">
 
-  <label>Temperature units
-    <select name="units_temperature">
-      <option value="F" {% if config.units_temperature == 'F' %}selected{% endif %}>Fahrenheit</option>
-      <option value="C" {% if config.units_temperature == 'C' %}selected{% endif %}>Celsius</option>
-    </select>
-  </label>
-  <label>Speed units
-    <select name="units_speed">
-      <option value="kts" {% if config.units_speed == 'kts' %}selected{% endif %}>Knots</option>
-      <option value="mph" {% if config.units_speed == 'mph' %}selected{% endif %}>MPH</option>
-      <option value="kmh" {% if config.units_speed == 'kmh' %}selected{% endif %}>km/h</option>
-    </select>
-  </label>
-  <label>Clock format
-    <select name="clock_format">
-      <option value="12h" {% if config.clock_format == '12h' %}selected{% endif %}>12 hour</option>
-      <option value="24h" {% if config.clock_format == '24h' %}selected{% endif %}>24 hour</option>
-    </select>
-  </label>
-  <label>Default theme
-    <select name="default_theme">
-      <option value="light" {% if config.default_theme == 'light' %}selected{% endif %}>Light</option>
-      <option value="dark"  {% if config.default_theme == 'dark'  %}selected{% endif %}>Dark</option>
-    </select>
-  </label>
+      <div class="field">
+        <label for="g-tz">Timezone</label>
+        <input id="g-tz" name="timezone" type="text"
+               value="{{ config.timezone }}" placeholder="auto">
+        <p class="muted small">Use <code>auto</code> for system tz, or an IANA name like <code>America/Chicago</code>.</p>
+      </div>
 
-  <button type="submit" class="btn primary">Save general</button>
-</form>
+      <div class="field">
+        <label>Temperature units</label>
+        <div class="segmented" role="radiogroup" aria-label="Temperature units">
+          <label class="seg"><input type="radio" name="units_temperature" value="F"
+                 {% if config.units_temperature == 'F' %}checked{% endif %}><span>°F</span></label>
+          <label class="seg"><input type="radio" name="units_temperature" value="C"
+                 {% if config.units_temperature == 'C' %}checked{% endif %}><span>°C</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Speed units</label>
+        <div class="segmented" role="radiogroup" aria-label="Speed units">
+          <label class="seg"><input type="radio" name="units_speed" value="kts"
+                 {% if config.units_speed == 'kts' %}checked{% endif %}><span>Knots</span></label>
+          <label class="seg"><input type="radio" name="units_speed" value="mph"
+                 {% if config.units_speed == 'mph' %}checked{% endif %}><span>MPH</span></label>
+          <label class="seg"><input type="radio" name="units_speed" value="kmh"
+                 {% if config.units_speed == 'kmh' %}checked{% endif %}><span>km/h</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Time format</label>
+        <div class="segmented" role="radiogroup" aria-label="Time format">
+          <label class="seg"><input type="radio" name="clock_format" value="12h"
+                 {% if config.clock_format == '12h' %}checked{% endif %}><span>12 hour</span></label>
+          <label class="seg"><input type="radio" name="clock_format" value="24h"
+                 {% if config.clock_format == '24h' %}checked{% endif %}><span>24 hour</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Theme</label>
+        <div class="segmented" role="radiogroup" aria-label="Theme">
+          <label class="seg"><input type="radio" name="default_theme" value="light"
+                 {% if config.default_theme == 'light' %}checked{% endif %}><span>Light</span></label>
+          <label class="seg"><input type="radio" name="default_theme" value="dark"
+                 {% if config.default_theme == 'dark' %}checked{% endif %}><span>Dark</span></label>
+          <label class="seg"><input type="radio" name="default_theme" value="auto"
+                 {% if config.default_theme == 'auto' %}checked{% endif %}><span>Auto</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Default dashboard time filter</label>
+        <div class="segmented" role="radiogroup" aria-label="Default dashboard time filter">
+          {% for v, lbl in [('1h','1h'),('6h','6h'),('24h','24h'),('7d','7d')] %}
+          <label class="seg"><input type="radio" name="default_dashboard_time_filter" value="{{ v }}"
+                 {% if (config.default_dashboard_time_filter or '24h') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Device ID</span>
+          <code class="ro-value">{{ identity.device_id }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">App version</span>
+          <code class="ro-value">{{ app_version }}</code>
+        </div>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save General</button>
+      </footer>
+    </form>
+  </div>
+
+</section>

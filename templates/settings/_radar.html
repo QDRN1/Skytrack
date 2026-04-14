@@ -1,16 +1,40 @@
-<form class="form" id="form-radar" data-endpoint="/api/settings/radar">
-  <h2>Radar publishing</h2>
-  <p class="muted">In phase 1 the radar URL is display-only. Toggling this on will register the device with <code>radar.qdrn.io</code> in a future update.</p>
+{# Settings → Radar (display-only in phase 1) #}
+<section class="settings-section" data-section-pane="radar">
 
-  <div class="radar-url">
-    <span class="label">Your radar URL</span>
-    <a href="{{ radar_url }}" target="_blank">{{ radar_url }}</a>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Radar publishing</h2>
+      <p class="muted">In phase 1 the radar URL is display-only. Toggling publish on will register the device with <code>radar.qdrn.io</code> in a future update.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-radar"
+          data-endpoint="/api/settings/radar"
+          data-section="radar">
+
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Your radar URL</span>
+          <a class="ro-value" href="{{ radar_url }}" target="_blank" rel="noopener">{{ radar_url }}</a>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Publish this device to radar.qdrn.io</span>
+          <span class="switch">
+            <input type="checkbox" name="radar_publish_enabled"
+                   {% if config.radar_publish_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">No real publishing happens yet — this just stores your intent.</p>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Radar</button>
+      </footer>
+    </form>
   </div>
 
-  <label class="checkbox">
-    <input type="checkbox" name="radar_publish_enabled" {% if config.radar_publish_enabled %}checked{% endif %}>
-    Publish this device to radar.qdrn.io
-  </label>
-
-  <button type="submit" class="btn primary">Save radar</button>
-</form>
+</section>

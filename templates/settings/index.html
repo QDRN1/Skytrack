@@ -3,53 +3,88 @@
 {% block body_class %}settings{% endblock %}
 
 {% block content %}
-<section class="settings">
-  <header class="settings-header">
-    <h1>Settings</h1>
-    <span class="muted">{{ identity.device_id }} • Radar: <a href="{{ radar_url }}" target="_blank">{{ radar_url }}</a></span>
+<section class="settings-shell" id="settings-shell">
+
+  <header class="settings-topline">
+    <div>
+      <h1>Settings</h1>
+      <p class="muted">{{ identity.device_id }} • Touch-friendly device controls</p>
+    </div>
+    <div class="settings-toplinks">
+      <a href="{{ url_for('dashboard.index') }}" class="btn">← Dashboard</a>
+    </div>
   </header>
 
-  <nav class="tablist" id="settings-tablist" role="tablist">
-    <button class="tab active" data-tab="general">General</button>
-    <button class="tab" data-tab="access">Access</button>
-    <button class="tab" data-tab="network">Network</button>
-    <button class="tab" data-tab="integrations">Integrations</button>
-    <button class="tab" data-tab="feeders">Feeders</button>
-    <button class="tab" data-tab="radar">Radar</button>
-    <button class="tab" data-tab="hardware">Hardware</button>
-    <button class="tab" data-tab="updates">Updates</button>
-    <button class="tab" data-tab="logs">Logs</button>
-  </nav>
+  <div class="settings-layout">
 
-  <div class="tabpanels">
-    <section class="tabpanel active" data-tabpanel="general">
-      {% include 'settings/_general.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="access">
-      {% include 'settings/_access.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="network">
-      <p class="muted">Network is on its own page. <a href="{{ url_for('network.index') }}">Open Network →</a></p>
-    </section>
-    <section class="tabpanel" data-tabpanel="integrations">
-      {% include 'settings/_integrations.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="feeders">
-      {% include 'settings/_feeders.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="radar">
-      {% include 'settings/_radar.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="hardware">
-      {% include 'settings/_hardware.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="updates">
-      {% include 'settings/_updates.html' %}
-    </section>
-    <section class="tabpanel" data-tabpanel="logs">
-      <p class="muted">Logs are on their own page. <a href="{{ url_for('logs.index') }}">Open Logs →</a></p>
-    </section>
+    {# ---------- Left rail (touch-friendly section nav) ---------- #}
+    <nav class="settings-rail" id="settings-rail" aria-label="Settings sections">
+      <button class="rail-btn active" data-section="general">
+        <span class="rail-icon">⚙</span><span class="rail-label">General</span>
+      </button>
+      <button class="rail-btn" data-section="display">
+        <span class="rail-icon">🖥</span><span class="rail-label">Display</span>
+      </button>
+      <button class="rail-btn" data-section="access">
+        <span class="rail-icon">🔐</span><span class="rail-label">Access</span>
+      </button>
+      <button class="rail-btn" data-section="network">
+        <span class="rail-icon">📡</span><span class="rail-label">Network</span>
+      </button>
+      <button class="rail-btn" data-section="integrations">
+        <span class="rail-icon">🔗</span><span class="rail-label">Integrations</span>
+      </button>
+      <button class="rail-btn" data-section="feeders">
+        <span class="rail-icon">📥</span><span class="rail-label">Feeders</span>
+      </button>
+      <button class="rail-btn" data-section="data">
+        <span class="rail-icon">📊</span><span class="rail-label">Data</span>
+      </button>
+      <button class="rail-btn" data-section="alerts">
+        <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span>
+      </button>
+      <button class="rail-btn" data-section="updates">
+        <span class="rail-icon">⬆</span><span class="rail-label">Updates &amp; Backup</span>
+      </button>
+      <button class="rail-btn" data-section="diagnostics">
+        <span class="rail-icon">🩺</span><span class="rail-label">Diagnostics</span>
+      </button>
+      <button class="rail-btn" data-section="radar">
+        <span class="rail-icon">🛰</span><span class="rail-label">Radar</span>
+      </button>
+    </nav>
+
+    {# ---------- Right content area ---------- #}
+    <div class="settings-panes" id="settings-panes">
+
+      {% include 'settings/_general.html'      ignore missing %}
+      {% include 'settings/_display.html'      ignore missing %}
+      {% include 'settings/_access.html'       ignore missing %}
+      {% include 'settings/_network.html'      ignore missing %}
+      {% include 'settings/_integrations.html' ignore missing %}
+      {% include 'settings/_feeders.html'      ignore missing %}
+      {% include 'settings/_data.html'         ignore missing %}
+      {% include 'settings/_alerts.html'       ignore missing %}
+      {% include 'settings/_updates.html'      ignore missing %}
+      {% include 'settings/_diagnostics.html'  ignore missing %}
+      {% include 'settings/_radar.html'        ignore missing %}
+
+    </div>
   </div>
+
+  {# ---------- Confirm modal (large touch target, hard to trigger by mistake) ---------- #}
+  <div class="confirm-modal" id="confirm-modal" hidden role="dialog" aria-modal="true">
+    <div class="confirm-backdrop" data-confirm-cancel></div>
+    <div class="confirm-card">
+      <h2 id="confirm-title">Are you sure?</h2>
+      <p id="confirm-body" class="muted"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-lg" data-confirm-cancel>Cancel</button>
+        <button type="button" class="btn btn-lg btn-danger" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
 </section>
 {% endblock %}
 

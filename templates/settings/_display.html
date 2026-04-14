@@ -1,0 +1,73 @@
+{# Settings → Display #}
+<section class="settings-section" data-section-pane="display">
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Display</h2>
+      <p class="muted">Controls the on-device touchscreen + kiosk Chromium.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-display"
+          data-endpoint="/api/settings/display"
+          data-section="display">
+
+      <div class="field">
+        <label>Screen rotation <span class="apply-on-reboot">applies on reboot</span></label>
+        <div class="segmented seg-grid-2" role="radiogroup" aria-label="Screen rotation">
+          {% for v, lbl in [('0','Normal'),('90','Right'),('180','Upside Down'),('270','Left')] %}
+          <label class="seg"><input type="radio" name="display_rotation" value="{{ v }}"
+                 {% if (config.display_rotation or '0') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="d-bright">Brightness <output class="slider-out" id="d-bright-out">{{ config.display_brightness or 100 }}</output>%</label>
+        <input id="d-bright" name="display_brightness" type="range" class="touch-slider"
+               min="0" max="100" step="5" value="{{ config.display_brightness or 100 }}">
+        <p class="muted small">On official Pi 7" touchscreen this applies via sysfs at boot. <span class="apply-on-reboot">applies on reboot</span></p>
+      </div>
+
+      <div class="field">
+        <label for="d-sleep">Screen sleep timeout <output class="slider-out" id="d-sleep-out">{{ config.display_sleep_minutes or 0 }}</output> min</label>
+        <input id="d-sleep" name="display_sleep_minutes" type="range" class="touch-slider"
+               min="0" max="120" step="5" value="{{ config.display_sleep_minutes or 0 }}">
+        <p class="muted small">0 = never dim. The screen only dims, never fully sleeps — touch to wake.</p>
+      </div>
+
+      <div class="field">
+        <label>Animation level</label>
+        <div class="segmented" role="radiogroup" aria-label="Animation level">
+          {% for v, lbl in [('full','Full'),('reduced','Reduced'),('off','Off')] %}
+          <label class="seg"><input type="radio" name="display_animation_level" value="{{ v }}"
+                 {% if (config.display_animation_level or 'full') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="d-particles">Particle density <output class="slider-out" id="d-particles-out">{{ config.display_particle_density or 80 }}</output>%</label>
+        <input id="d-particles" name="display_particle_density" type="range" class="touch-slider"
+               min="0" max="100" step="5" value="{{ config.display_particle_density or 80 }}">
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Fullscreen on boot</span>
+          <span class="switch">
+            <input type="checkbox" name="display_fullscreen_on_boot"
+                   {% if config.display_fullscreen_on_boot %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">When off, the kiosk Chromium starts windowed (debug mode). <span class="apply-on-reboot">applies on reboot</span></p>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Display</button>
+      </footer>
+    </form>
+  </div>
+
+</section>
