@@ -4,7 +4,11 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Storage</h2>
-      <p class="muted">Where SkyTrack keeps history and how aggressively it prunes.</p>
+      <p class="muted">
+        SkyTrack records every aircraft it sees to a local SQLite database.
+        This card controls how much history is kept and how aggressively the
+        database is compacted.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-data"
@@ -13,11 +17,11 @@
 
       <div class="readonly-grid" id="data-usage-box">
         <div class="readonly-row">
-          <span class="ro-label">Database</span>
+          <span class="ro-label">Database file</span>
           <code class="ro-value" id="data-db-path">{{ config.db_path or '/var/lib/skytrack/skytrack.db' }}</code>
         </div>
         <div class="readonly-row">
-          <span class="ro-label">DB size</span>
+          <span class="ro-label">Size on disk</span>
           <code class="ro-value" id="data-db-size">…</code>
         </div>
         <div class="readonly-row">
@@ -27,28 +31,41 @@
       </div>
 
       <div class="field">
-        <label for="d-retention">Retention (days)</label>
+        <label for="d-retention">Keep history for how many days?</label>
         <input id="d-retention" name="data_retention_days" type="number"
                min="1" max="365" value="{{ config.data_retention_days or 30 }}">
-        <p class="muted small">Older flight history and enrichment rows are pruned nightly.</p>
+        <p class="muted small">
+          Every night the device deletes stored sightings older than this.
+          The dashboard "All time" view only goes back this far.
+        </p>
       </div>
 
       <div class="field">
-        <label for="d-maxrows">Max stored aircraft rows</label>
+        <label for="d-maxrows">Row cap (safety net)</label>
         <input id="d-maxrows" name="data_max_rows" type="number"
                min="1000" max="10000000" step="1000"
                value="{{ config.data_max_rows or 500000 }}">
+        <p class="muted small">
+          Hard limit on stored sightings, independent of age. The oldest rows
+          get dropped first when the cap is exceeded. Prevents runaway growth
+          on unusually busy days.
+        </p>
       </div>
 
       <div class="field">
         <label class="switch-row">
-          <span>Auto-vacuum nightly</span>
+          <span>Nightly compact (recommended)</span>
           <span class="switch">
             <input type="checkbox" name="data_autovacuum"
                    {% if config.data_autovacuum %}checked{% endif %}>
             <span class="switch-track"></span>
           </span>
         </label>
+        <p class="muted small">
+          After the nightly prune, SkyTrack rewrites the database file to
+          reclaim the disk space freed by deleted rows. Takes a few seconds;
+          leave on unless you have a reason not to.
+        </p>
       </div>
 
       <footer class="card-footer">
@@ -61,20 +78,28 @@
   <div class="settings-card subtle">
     <header class="card-header">
       <h2>Maintenance</h2>
-      <p class="muted">One-shot tasks. These touch the live database — confirm before running.</p>
+      <p class="muted">
+        One-shot tasks you can run manually instead of waiting for the nightly
+        job. All three touch the live database — you'll see a confirmation.
+      </p>
     </header>
     <div class="card-body">
       <div class="action-row">
-        <button type="button" class="btn btn-lg" id="btn-data-vacuum">Vacuum now</button>
+        <button type="button" class="btn btn-lg" id="btn-data-vacuum">
+          Compact database
+          <span class="muted small btn-sub">reclaim unused space</span>
+        </button>
         <button type="button" class="btn btn-lg" id="btn-data-prune"
                 data-confirm-title="Prune old rows?"
-                data-confirm-body="This permanently removes flight history older than your retention setting.">
-          Prune now
+                data-confirm-body="Deletes flight history older than your retention setting. Nothing else is touched.">
+          Delete old history
+          <span class="muted small btn-sub">older than retention setting</span>
         </button>
         <button type="button" class="btn btn-lg btn-danger" id="btn-data-wipe"
                 data-confirm-title="Wipe all flight history?"
-                data-confirm-body="This deletes every stored aircraft, flight, and enrichment row. Settings and credentials are kept.">
-          Wipe history
+                data-confirm-body="Deletes every stored aircraft, flight, and enrichment row. Settings and credentials are kept.">
+          Wipe all history
+          <span class="muted small btn-sub">keeps settings &amp; credentials</span>
         </button>
       </div>
     </div>

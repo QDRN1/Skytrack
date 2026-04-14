@@ -3,8 +3,13 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Alerts</h2>
-      <p class="muted">Trigger notifications for noteworthy aircraft. Notifications fire from the device — they don't depend on the cloud.</p>
+      <h2>Alerts — master switch</h2>
+      <p class="muted">
+        SkyTrack has two independent categories of alerts:
+        <b>Flight alerts</b> (noteworthy aircraft overhead) and
+        <b>Device alerts</b> (the Pi itself is in trouble). Turn the whole
+        system off here, or tune each category below.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-alerts"
@@ -20,7 +25,16 @@
             <span class="switch-track"></span>
           </span>
         </label>
+        <p class="muted small">When off, nothing below fires — not even device warnings.</p>
       </div>
+
+      <hr class="card-sep">
+
+      {# ---------------- Flight alerts ---------------- #}
+      <h3 class="alert-group-title">Flight alerts</h3>
+      <p class="muted small alert-group-intro">
+        Fire when a matching aircraft is seen within the radius below.
+      </p>
 
       <div class="field">
         <label class="switch-row">
@@ -35,7 +49,7 @@
 
       <div class="field">
         <label class="switch-row">
-          <span>Emergency squawks (7500/7600/7700)</span>
+          <span>Emergency squawks (7500 / 7600 / 7700)</span>
           <span class="switch">
             <input type="checkbox" name="alert_emergency"
                    {% if config.alert_emergency %}checked{% endif %}>
@@ -46,7 +60,7 @@
 
       <div class="field">
         <label class="switch-row">
-          <span>Heavy aircraft (B777/A380/etc.)</span>
+          <span>Heavy aircraft (B777 / A380 / etc.)</span>
           <span class="switch">
             <input type="checkbox" name="alert_heavy"
                    {% if config.alert_heavy %}checked{% endif %}>
@@ -64,27 +78,91 @@
             <span class="switch-track"></span>
           </span>
         </label>
+        <p class="muted small">Uses the ICAO/callsign list below.</p>
       </div>
 
       <div class="field">
         <label for="al-radius">Alert radius (nm)</label>
         <input id="al-radius" name="alert_radius_nm" type="number"
                min="1" max="250" value="{{ config.alert_radius_nm or 25 }}">
+        <p class="muted small">Only aircraft within this distance of your device location will trigger a flight alert.</p>
       </div>
 
       <div class="field">
         <label for="al-cooldown">Per-aircraft cooldown (minutes)</label>
         <input id="al-cooldown" name="alert_cooldown_minutes" type="number"
                min="1" max="1440" value="{{ config.alert_cooldown_minutes or 30 }}">
-        <p class="muted small">Same callsign won't re-alert until this much time has passed.</p>
+        <p class="muted small">The same callsign won't re-alert until this much time has passed.</p>
       </div>
 
       <hr class="card-sep">
 
+      {# ---------------- Device alerts ---------------- #}
+      <h3 class="alert-group-title">Device alerts</h3>
+      <p class="muted small alert-group-intro">
+        Warn when something is wrong with the SkyTrack hardware or its uplinks.
+      </p>
+
+      <div class="field">
+        <label for="al-noac">No aircraft for how long? (minutes)</label>
+        <input id="al-noac" name="alert_no_aircraft_minutes" type="number"
+               min="0" max="1440" value="{{ config.alert_no_aircraft_minutes or 30 }}">
+        <p class="muted small">
+          Fires if the receiver stops seeing any aircraft for this long.
+          0 disables. A good early warning for a dead antenna or a stuck
+          dump1090 service.
+        </p>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Cellular disconnect</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_cell_disconnect"
+                   {% if config.alert_cell_disconnect %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>WiFi disconnect</span>
+          <span class="switch">
+            <input type="checkbox" name="alert_wifi_disconnect"
+                   {% if config.alert_wifi_disconnect %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="al-apibud">AeroAPI budget warning (% of monthly cap)</label>
+        <input id="al-apibud" name="alert_api_budget_pct" type="number"
+               min="0" max="100" value="{{ config.alert_api_budget_pct or 80 }}">
+        <p class="muted small">Warn once this much of the AeroAPI monthly spend has been used.</p>
+      </div>
+
+      <div class="field">
+        <label for="al-storage">Low storage warning (% of disk used)</label>
+        <input id="al-storage" name="alert_low_storage_pct" type="number"
+               min="50" max="100" value="{{ config.alert_low_storage_pct or 90 }}">
+      </div>
+
+      <hr class="card-sep">
+
+      {# ---------------- Delivery ---------------- #}
+      <h3 class="alert-group-title">How to notify</h3>
+      <p class="muted small alert-group-intro">
+        Where alerts actually show up. <i>Sound</i> uses the on-board buzzer
+        (GPIO 18) — if your device doesn't have one wired, leave this on
+        <i>Toast</i>.
+      </p>
+
       <div class="field">
         <label>Delivery</label>
         <div class="segmented" role="radiogroup" aria-label="Alert delivery">
-          {% for v, lbl in [('toast','Toast'),('sound','Sound'),('both','Both'),('off','Off')] %}
+          {% for v, lbl in [('toast','On-screen toast'),('sound','Buzzer'),('both','Toast + buzzer'),('off','Off')] %}
           <label class="seg"><input type="radio" name="alert_delivery" value="{{ v }}"
                  {% if (config.alert_delivery or 'both') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
           {% endfor %}
@@ -92,9 +170,10 @@
       </div>
 
       <div class="field">
-        <label for="al-volume">Sound volume <output class="slider-out" id="al-volume-out">{{ config.alert_volume or 70 }}</output>%</label>
+        <label for="al-volume">Buzzer volume <output class="slider-out" id="al-volume-out">{{ config.alert_volume or 70 }}</output>%</label>
         <input id="al-volume" name="alert_volume" type="range" class="touch-slider"
                min="0" max="100" step="5" value="{{ config.alert_volume or 70 }}">
+        <p class="muted small">Ignored if your device has no buzzer, or if delivery is set to toast-only.</p>
       </div>
 
       <footer class="card-footer">
@@ -107,7 +186,7 @@
   <div class="settings-card subtle">
     <header class="card-header">
       <h2>Watchlist</h2>
-      <p class="muted">ICAO hexes or callsigns that always trigger an alert when seen.</p>
+      <p class="muted">ICAO hexes or callsigns that always trigger an alert when seen. Used by the "Watchlist hits" flight alert above.</p>
     </header>
 
     <div class="card-body">
