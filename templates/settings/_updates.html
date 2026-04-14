@@ -4,7 +4,14 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Software updates</h2>
-      <p class="muted">SkyTrack Portal updates over Git. Pulls from <code>{{ config.ota_remote }}/{{ config.ota_branch }}</code>.</p>
+      <p class="muted">
+        SkyTrack fetches new releases from
+        <code>{{ config.ota_repo_url or 'github.com/QDRN1/Skytrack' }}</code>
+        on the <code>{{ config.ota_branch or 'main' }}</code> branch. Checks
+        and applies run in an isolated workspace at
+        <code>{{ config.ota_workspace_dir or '/var/lib/skytrack/ota-workspace' }}</code>
+        — your <code>/opt/skytrack</code> install only gets updated on "Apply".
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-updates"
@@ -58,7 +65,7 @@
         <button type="button" class="btn btn-lg" id="btn-update-check">Check for updates</button>
         <button type="button" class="btn btn-lg btn-primary" id="btn-update-apply"
                 data-confirm-title="Apply updates?"
-                data-confirm-body="The app will git-pull, reinstall dependencies, and restart. Brief downtime expected.">
+                data-confirm-body="SkyTrack will pull the latest code into its workspace, copy it into /opt/skytrack, and restart the app. The page will reload automatically. ~10–30 seconds of downtime.">
           Apply updates
         </button>
       </div>

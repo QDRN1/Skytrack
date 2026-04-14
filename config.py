@@ -97,12 +97,18 @@ DEFAULT_CONFIG = {
     'lockout_window_seconds': 300,
 
     # --- Updates & backup -----------------------------------------------
+    # OTA runs against a dedicated workspace under /var/lib/skytrack — we
+    # never run git commands inside /opt/skytrack (the installer rsyncs the
+    # repo there without a .git directory). On apply we rsync the workspace
+    # into /opt/skytrack and restart skytrack-app.
     'ota_remote': 'origin',
     'ota_branch': 'main',
     'ota_enabled': True,
     'ota_auto_check': True,
     'ota_channel': 'stable',        # stable | beta
     'ota_last_check': None,
+    'ota_workspace_dir': '/var/lib/skytrack/ota-workspace',
+    'ota_repo_url': 'https://github.com/QDRN1/Skytrack.git',
     'update_check_enabled': True,
     'update_allow_cellular': False,
     'auto_backup_frequency': 'weekly',  # off | daily | weekly | monthly

@@ -222,11 +222,20 @@ if [[ "$DEV_INSTALL" != true ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 7. data + log directories
+# 7. data + log directories (+ OTA workspace home)
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
   log "step 7/13: $DATA_DIR / $LOG_DIR"
-  mkdir -p "$DATA_DIR" "$DATA_DIR/backups" "$LOG_DIR"
+  # OTA runs out of $DATA_DIR/ota-workspace. Pre-create the parent, the
+  # workspace dir itself, and a writable .ssh so git's HOME lookup for
+  # known_hosts never fails when the service user has no real home entry.
+  mkdir -p "$DATA_DIR" "$DATA_DIR/backups" "$DATA_DIR/ota-workspace" "$LOG_DIR"
+  install -d -m 0700 -o "$SKYTRACK_USER" -g "$SKYTRACK_USER" "$DATA_DIR/.ssh"
+  if [[ ! -f "$DATA_DIR/.ssh/known_hosts" ]]; then
+    : > "$DATA_DIR/.ssh/known_hosts"
+    chown "$SKYTRACK_USER:$SKYTRACK_USER" "$DATA_DIR/.ssh/known_hosts"
+    chmod 0600 "$DATA_DIR/.ssh/known_hosts"
+  fi
   chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$DATA_DIR" "$LOG_DIR"
 fi
 

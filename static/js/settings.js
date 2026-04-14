@@ -43,6 +43,19 @@
     toast._t = setTimeout(() => t.classList.remove('show'), 2400);
   }
 
+  // Poll /healthz until the backend answers (used by OTA apply, which
+  // drops the current socket when skytrack-app restarts).
+  async function waitForHealthz(attempts = 60, delayMs = 1000) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const r = await fetch('/healthz', { cache: 'no-store' });
+        if (r.ok) return true;
+      } catch (_) { /* still rebooting */ }
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+    return false;
+  }
+
   function fmtBytes(n) {
     if (n == null || isNaN(n)) return '—';
     const u = ['B','KB','MB','GB','TB'];
@@ -617,8 +630,23 @@
     const check = $('#btn-update-check');
     if (check) check.addEventListener('click', async () => {
       setOut('Checking…');
-      try { const r = await window.api.post('/api/settings/updates/check'); setOut(r.message || (r.ok ? 'Up to date' : 'Failed')); const lt = $('#upd-latest'); if (lt && r.latest) lt.textContent = r.latest; }
-      catch (_) { setOut('Check failed'); }
+      try {
+        const r = await window.api.post('/api/settings/updates/check');
+        let line;
+        if (!r.ok) {
+          line = r.message || 'Check failed';
+        } else if (typeof r.behind === 'number') {
+          line = r.behind === 0
+            ? 'Up to date.'
+            : `${r.behind} update${r.behind === 1 ? '' : 's'} available.`;
+        } else {
+          line = r.message || 'Check complete.';
+        }
+        if (r.checked_at) line += `  (checked ${new Date(r.checked_at).toLocaleTimeString()})`;
+        setOut(line);
+        const lt = $('#upd-latest');
+        if (lt && r.latest) lt.textContent = r.latest;
+      } catch (_) { setOut('Check failed'); }
     });
 
     const apply = $('#btn-update-apply');
@@ -626,8 +654,19 @@
       const ok = await confirmModal(apply.dataset.confirmTitle || 'Apply updates?', apply.dataset.confirmBody || '');
       if (!ok) return;
       setOut('Applying…');
-      try { const r = await window.api.post('/api/settings/updates/apply'); setOut(r.message || 'Done'); }
-      catch (_) { setOut('Apply failed'); }
+      try {
+        const r = await window.api.post('/api/settings/updates/apply');
+        setOut(r.message || (r.ok ? 'Update applied — service restarting.' : 'Apply failed'));
+        if (r.ok) {
+          // The restart will drop our socket; poll /healthz then reload.
+          setTimeout(() => waitForHealthz().then(() => location.reload()), 1500);
+        }
+      } catch (_) {
+        // A dropped connection is actually the expected success path when
+        // skytrack-app restarts itself while we're waiting on the response.
+        setOut('Service restarting — reloading page…');
+        setTimeout(() => waitForHealthz().then(() => location.reload()), 1500);
+      }
     });
 
     const bk = $('#btn-backup-now');

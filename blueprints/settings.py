@@ -160,10 +160,13 @@ def _err(msg: str, status: int = 400):
     return jsonify({'ok': False, 'error': msg}), status
 
 
-def _shell(args, timeout=10):
+def _shell(args, timeout=10, env=None, cwd=None):
     """Run a command and return (ok, message). Never raises."""
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout,
+            env=env, cwd=cwd,
+        )
         out = (r.stdout + r.stderr).strip()
         return r.returncode == 0, out
     except FileNotFoundError:
@@ -755,26 +758,219 @@ def api_updates():
     return _ok({'config': {k: cfg.get(k) for k in _UPDATE_KEYS}})
 
 
+# ---------------------------------------------------------------------------
+# OTA workspace helpers
+#
+# /opt/skytrack is a plain rsync target — the installer excludes .git, so we
+# cannot run git commands there. Instead, OTA clones the upstream repo once
+# into /var/lib/skytrack/ota-workspace/ (owned by the skytrack service user),
+# fetches/merges there, then rsyncs the workspace on top of /opt/skytrack and
+# restarts skytrack-app. This also gives git a writable HOME + known_hosts
+# outside the service user's real home, so SSH-based remotes no longer fail
+# on "Host key verification failed" or "could not create /.ssh".
+# ---------------------------------------------------------------------------
+
+
+def _ota_home() -> str:
+    """Directory git should treat as HOME — owns .ssh, .gitconfig, etc."""
+    cfg = current_app.skytrack_config
+    ws = os.path.abspath(
+        cfg.get('ota_workspace_dir', '/var/lib/skytrack/ota-workspace')
+    )
+    home = os.path.dirname(ws) or '/var/lib/skytrack'
+    try:
+        os.makedirs(home, mode=0o755, exist_ok=True)
+    except Exception:
+        pass
+    return home
+
+
+def _ota_workspace() -> str:
+    cfg = current_app.skytrack_config
+    return os.path.abspath(
+        cfg.get('ota_workspace_dir', '/var/lib/skytrack/ota-workspace')
+    )
+
+
+def _ota_repo_url() -> str:
+    cfg = current_app.skytrack_config
+    return (cfg.get('ota_repo_url')
+            or 'https://github.com/QDRN1/Skytrack.git').strip()
+
+
+def _ota_env() -> dict:
+    """Return a copy of os.environ tuned for non-interactive git.
+
+    - HOME points at a writable dir we control (so ~/.ssh/known_hosts exists)
+    - GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS=/bin/true — never prompt on stdin
+    - GIT_SSH_COMMAND uses BatchMode + accept-new + a known_hosts path we
+      can actually write to, so SSH-based remotes don't fail on first contact
+    """
+    home = _ota_home()
+    ssh_dir = os.path.join(home, '.ssh')
+    try:
+        os.makedirs(ssh_dir, mode=0o700, exist_ok=True)
+    except Exception:
+        pass
+    kh = os.path.join(ssh_dir, 'known_hosts')
+    if not os.path.exists(kh):
+        try:
+            with open(kh, 'a'):
+                pass
+            os.chmod(kh, 0o600)
+        except Exception:
+            pass
+    env = os.environ.copy()
+    env.update({
+        'HOME': home,
+        'GIT_TERMINAL_PROMPT': '0',
+        'GIT_ASKPASS': '/bin/true',
+        'GIT_SSH_COMMAND': (
+            'ssh -o BatchMode=yes '
+            '-o StrictHostKeyChecking=accept-new '
+            f'-o UserKnownHostsFile={kh} '
+            '-o ConnectTimeout=10'
+        ),
+    })
+    # Strip anything that could re-enable interactive prompting
+    for k in ('SSH_ASKPASS', 'DISPLAY', 'SSH_AUTH_SOCK'):
+        env.pop(k, None)
+    return env
+
+
+def _ensure_ota_workspace() -> tuple:
+    """Make sure the OTA workspace is a working git clone. Idempotent.
+
+    Returns (ok, message). On first call, clones the repo shallow; on
+    subsequent calls verifies the clone is intact. Never touches
+    /opt/skytrack itself.
+    """
+    ws = _ota_workspace()
+    parent = os.path.dirname(ws)
+    if parent:
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except Exception as e:
+            return False, f'cannot create {parent}: {e}'
+    git_dir = os.path.join(ws, '.git')
+    if os.path.isdir(git_dir):
+        return True, 'workspace ready'
+    url = _ota_repo_url()
+    if not url:
+        return False, 'no ota_repo_url configured'
+    env = _ota_env()
+    ok, msg = _shell(
+        ['git', 'clone', '--depth', '50', url, ws],
+        timeout=180, env=env,
+    )
+    if not ok:
+        return False, f'clone failed: {msg[-400:]}'
+    return True, 'cloned'
+
+
+def _git_in_workspace(args, timeout=60) -> tuple:
+    ws = _ota_workspace()
+    env = _ota_env()
+    return _shell(['git', '-C', ws] + list(args), timeout=timeout, env=env)
+
+
 @settings_bp.route('/api/settings/updates/check', methods=['POST'])
 @ADMIN
 def api_updates_check():
     cfg = current_app.skytrack_config
-    cwd = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + '/..')
-    ok, msg = _shell(['git', 'fetch', cfg.get('ota_remote', 'origin')],
-                     timeout=20)
-    return jsonify({'ok': ok, 'message': msg[-400:]})
+    ok, msg = _ensure_ota_workspace()
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_check',
+                            {'ok': False, 'phase': 'workspace', 'tail': msg[-200:]})
+        return jsonify({'ok': False, 'message': msg[-400:]})
+    remote = cfg.get('ota_remote', 'origin') or 'origin'
+    branch = cfg.get('ota_branch', 'main') or 'main'
+    ok, msg = _git_in_workspace(
+        ['fetch', '--depth', '50', remote, branch], timeout=90,
+    )
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_check',
+                            {'ok': False, 'phase': 'fetch', 'tail': msg[-200:]})
+        return jsonify({'ok': False, 'message': msg[-400:] or 'fetch failed'})
+    behind = None
+    ok2, ahead_msg = _git_in_workspace(
+        ['rev-list', '--count', f'HEAD..{remote}/{branch}'], timeout=15,
+    )
+    if ok2:
+        try:
+            behind = int(ahead_msg.strip())
+        except (TypeError, ValueError):
+            behind = None
+    stamp = datetime.utcnow().isoformat() + 'Z'
+    cfg['ota_last_check'] = stamp
+    _persist({'ota_last_check': stamp})
+    logs_svc.log_portal('admin', 'ota_check',
+                        {'ok': True, 'behind': behind})
+    return jsonify({
+        'ok': True,
+        'message': msg[-400:] or ('up to date' if behind == 0 else 'fetched'),
+        'behind': behind,
+        'checked_at': stamp,
+    })
 
 
 @settings_bp.route('/api/settings/updates/apply', methods=['POST'])
 @ADMIN
 def api_updates_apply():
     cfg = current_app.skytrack_config
-    ok, msg = _shell(
-        ['git', 'pull', cfg.get('ota_remote', 'origin'), cfg.get('ota_branch', 'main')],
-        timeout=60,
+    ok, msg = _ensure_ota_workspace()
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_apply',
+                            {'ok': False, 'phase': 'workspace', 'tail': msg[-200:]})
+        return jsonify({'ok': False, 'message': msg[-400:]})
+    remote = cfg.get('ota_remote', 'origin') or 'origin'
+    branch = cfg.get('ota_branch', 'main') or 'main'
+    # Fetch then hard-reset — never merge, never leave stray files behind
+    # from an aborted apply.
+    ok, msg = _git_in_workspace(
+        ['fetch', '--depth', '50', remote, branch], timeout=180,
     )
-    logs_svc.log_portal('admin', 'ota_apply', {'ok': ok, 'tail': msg[-200:]})
-    return jsonify({'ok': ok, 'message': msg[-400:]})
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_apply',
+                            {'ok': False, 'phase': 'fetch', 'tail': msg[-200:]})
+        return jsonify({'ok': False, 'message': msg[-400:] or 'fetch failed'})
+    ok, msg = _git_in_workspace(
+        ['reset', '--hard', f'{remote}/{branch}'], timeout=30,
+    )
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_apply',
+                            {'ok': False, 'phase': 'reset', 'tail': msg[-200:]})
+        return jsonify({'ok': False, 'message': msg[-400:] or 'reset failed'})
+    # Sync workspace → /opt/skytrack. Preserve the venv, user config, DB,
+    # and anything else that isn't part of the source tree.
+    repo_dir = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + '/..')
+    ws = _ota_workspace()
+    rsync_args = [
+        'rsync', '-a', '--delete',
+        '--exclude=.git/',
+        '--exclude=.venv/',
+        '--exclude=venv/',
+        '--exclude=__pycache__/',
+        '--exclude=*.pyc',
+        '--exclude=config.yaml',
+        '--exclude=static/vendor/',
+        '--exclude=legacy/',
+        f'{ws.rstrip("/")}/', f'{repo_dir.rstrip("/")}/',
+    ]
+    ok, rsync_msg = _shell(rsync_args, timeout=180)
+    if not ok:
+        logs_svc.log_portal('admin', 'ota_apply',
+                            {'ok': False, 'phase': 'rsync', 'tail': rsync_msg[-200:]})
+        return jsonify({'ok': False, 'message': rsync_msg[-400:] or 'rsync failed'})
+    # Best-effort restart. The client will lose this connection mid-response;
+    # the UI catches that and polls /healthz until the new version answers.
+    _shell(['systemctl', 'restart', 'skytrack-app.service'], timeout=20)
+    logs_svc.log_portal('admin', 'ota_apply', {'ok': True})
+    return jsonify({
+        'ok': True,
+        'message': 'Update applied. The service is restarting — the page '
+                   'will reload in a few seconds.',
+    })
 
 
 def _list_backups() -> list:
