@@ -1,18 +1,18 @@
 /* First-boot wizard form handler.
  *
- * PIN is optional now — only the admin password is required. After a
- * successful POST we reveal the auto-generated hotspot password so the
- * operator can write it down before connecting back over WPA2.
+ * Admin is PIN-only now — no password. The operator picks a 4-8 digit
+ * numeric PIN and confirms it; we POST that to /setup, which finishes
+ * activation and returns the auto-generated hotspot WPA2 password so
+ * the operator can write it down before the hotspot flips to secured.
  */
 (function () {
   document.addEventListener('DOMContentLoaded', () => {
 
-    // If the video failed to load (404 because the user hasn't dropped
-    // the file in yet), hide it and let the particle gradient show.
+    // If the background video fails to load (file missing, unsupported
+    // codec) hide it and let the particle gradient show through.
     const v = document.getElementById('setup-video');
     if (v) {
       v.addEventListener('error', () => v.style.display = 'none');
-      // Some browsers fire 'stalled' instead of 'error' for missing src.
       setTimeout(() => {
         if (v.readyState === 0) v.style.display = 'none';
       }, 1500);
@@ -30,22 +30,16 @@
       err.hidden = true;
 
       const data = new FormData(form);
-      const adminPw = data.get('admin_password') || '';
-      const adminConfirm = data.get('admin_password_confirm') || '';
       const pin = (data.get('pin') || '').trim();
+      const pinConfirm = (data.get('pin_confirm') || '').trim();
 
-      if (adminPw.length < 6) {
-        err.textContent = 'Admin password must be at least 6 characters.';
+      if (!/^[0-9]{4,8}$/.test(pin)) {
+        err.textContent = 'PIN must be 4–8 digits.';
         err.hidden = false;
         return;
       }
-      if (adminPw !== adminConfirm) {
-        err.textContent = 'Admin passwords do not match.';
-        err.hidden = false;
-        return;
-      }
-      if (pin && (!/^[0-9]+$/.test(pin) || pin.length < 4 || pin.length > 8)) {
-        err.textContent = 'PIN must be 4–8 digits, or left blank.';
+      if (pin !== pinConfirm) {
+        err.textContent = 'PIN confirmation does not match.';
         err.hidden = false;
         return;
       }
@@ -57,7 +51,7 @@
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: JSON.stringify({ admin_password: adminPw, pin }),
+          body: JSON.stringify({ pin }),
         });
         const result = await resp.json().catch(() => ({}));
 

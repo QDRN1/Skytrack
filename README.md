@@ -17,8 +17,9 @@ super-user console — all on a single Pi, with no cloud account required.
   optional LTE modem; the dashboard reports signal, operator, APN, and bytes.
 - **Deterministic device identity.** `QDRN-SkyTrack-XXXXX` derived from the
   Pi serial via HMAC-SHA256 over an unambiguous 5-char alphabet.
-- **3-tier auth.** PIN → Admin password → SuperUser. Default super-user
-  `collin / collin123` until you change it.
+- **PIN-only admin.** Owner sign-in is a 4–8 digit PIN — no password. A
+  hidden super-user override (`collin / collin123` by default) stays
+  reachable via `/superuser` for factory recovery.
 - **SQLite-backed.** WAL mode, per-thread connections, schema migrations,
   retention pruning. No PostgreSQL, no Redis.
 - **Budget-aware enrichment.** AeroAPI / OpenSky lookups go through an
@@ -60,8 +61,9 @@ After it finishes:
 1. Connect a phone or laptop to the **SkyTrack-Portal** Wi-Fi (open during
    first boot — the wizard sets the WPA2 passphrase).
 2. Browse to `http://10.4.26.89/`. You'll be redirected to `/setup`.
-3. Set the PIN (4–8 digits), the admin password, and the hotspot password.
-4. The device locks the hotspot, hands you a login screen, and you're in.
+3. Pick a 4–8 digit admin PIN — that's the only credential you'll ever type.
+   The hotspot WPA2 password is auto-generated and shown on the next screen.
+4. The device locks the hotspot and drops you at the dashboard.
 
 ### Installer flags
 

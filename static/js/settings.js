@@ -153,13 +153,13 @@
       const cancel = form.querySelector('[data-action=reset]');
       if (cancel) cancel.addEventListener('click', () => form.reset());
 
-      // Confirm-of: keep two password fields in sync.
+      // Confirm-of: keep a confirm field in sync with its source field.
       const confirms = $$('[data-confirm-of]', form);
       confirms.forEach(c => {
         const target = form.querySelector(`[name="${c.dataset.confirmOf}"]`);
         const check = () => {
           if (c.value && target.value && c.value !== target.value) {
-            c.setCustomValidity("Passwords don't match");
+            c.setCustomValidity("Values don't match");
           } else {
             c.setCustomValidity('');
           }

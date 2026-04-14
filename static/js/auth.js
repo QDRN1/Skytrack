@@ -34,7 +34,6 @@
     pending: null,         // { resolve, reject, retry } when modal is open
     modal: null,
     form: null,
-    pwInput: null,
     pinInput: null,
     errorEl: null,
     hintEl: null,
@@ -48,7 +47,6 @@
   function bindModal() {
     state.modal   = $('auth-modal');
     state.form    = $('auth-modal-form');
-    state.pwInput = $('auth-modal-password');
     state.pinInput = $('auth-modal-pin');
     state.errorEl = $('auth-modal-error');
     state.hintEl  = $('auth-modal-hint');
@@ -73,12 +71,11 @@
     opts = opts || {};
     if (!state.modal) return;
     showError('');
-    if (state.pwInput) state.pwInput.value = '';
     if (state.pinInput) state.pinInput.value = '';
     if (state.hintEl && opts.hint) state.hintEl.textContent = opts.hint;
     state.modal.hidden = false;
     document.body.classList.add('modal-open');
-    setTimeout(() => state.pwInput && state.pwInput.focus(), 50);
+    setTimeout(() => state.pinInput && state.pinInput.focus(), 50);
     state.pending = state.pending || { resolve: null, reject: null, retry: null };
     if (opts.next) state.pending.next = opts.next;
   }
@@ -132,7 +129,6 @@
   function applyStatusToTopbar() {
     const role = (state.status && state.status.role) || '';
     document.body.dataset.role = role;
-    document.body.dataset.hasPin = state.status && state.status.has_pin ? '1' : '0';
     // Note: full topbar repaint is left to a hard reload after sign-in,
     // because the topbar markup is server-rendered and may differ across
     // pages. For client-side we just toggle the visible signin/signout
@@ -157,10 +153,9 @@
   async function onModalSubmit(ev) {
     ev.preventDefault();
     showError('');
-    const password = (state.pwInput && state.pwInput.value) || '';
-    const pin = (state.pinInput && state.pinInput.value) || '';
-    if (!password && !pin) {
-      showError('Enter the admin password or PIN');
+    const pin = ((state.pinInput && state.pinInput.value) || '').trim();
+    if (!/^[0-9]{4,8}$/.test(pin)) {
+      showError('Enter your 4–8 digit admin PIN');
       return;
     }
     try {
@@ -171,7 +166,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ password, pin }),
+        body: JSON.stringify({ pin }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.ok) {

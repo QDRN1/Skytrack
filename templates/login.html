@@ -28,15 +28,9 @@
     <form id="login-form" autocomplete="off">
       <input type="hidden" name="next" value="{{ next or '/dashboard' }}">
 
-      <label for="login-password">Admin password</label>
-      <input id="login-password" name="password" type="password"
-             autocomplete="current-password">
-
-      {% if has_pin %}
-      <label for="login-pin">PIN <span class="muted">(or admin password above)</span></label>
+      <label for="login-pin">Admin PIN <span class="muted">(4–8 digits)</span></label>
       <input id="login-pin" name="pin" type="password" inputmode="numeric"
-             pattern="[0-9]{4,8}" maxlength="8" autocomplete="off">
-      {% endif %}
+             pattern="[0-9]{4,8}" maxlength="8" autocomplete="off" required>
 
       <button type="submit" class="btn primary">Sign in</button>
       <p class="login-error" id="login-error" hidden></p>

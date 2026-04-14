@@ -14,7 +14,7 @@ Endpoints
   GET  /setup             → first-boot wizard page
   POST /setup             → submit wizard form
   GET  /login             → fallback full-page login (modal is preferred)
-  POST /login             → admin login (password OR PIN)
+  POST /login             → admin login (PIN only)
   POST /api/auth/login    → JSON-only admin login (used by the modal)
   GET  /api/auth/status   → session snapshot for the front-end shell
   POST /logout            → clear session
@@ -148,24 +148,21 @@ def setup_submit():
         return jsonify({'ok': False, 'error': 'setup locked to another client'}), 423
 
     payload = request.get_json(silent=True) or request.form
-    admin_pw = payload.get('admin_password') or ''
-    pin = (payload.get('pin') or '').strip()  # optional
+    pin = (payload.get('pin') or '').strip()
 
     try:
-        rec = auth_lib.complete_setup(admin_pw, pin=pin or None)
+        rec = auth_lib.complete_setup(pin)
     except ValueError as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
 
     auth_lib.login_as(auth_lib.ROLE_ADMIN)
     logs_svc.log_portal('admin', 'first_boot_setup_complete', {
         'device': current_app.config.get('DEVICE_ID'),
-        'pin_set': bool(pin),
     })
     return jsonify({
         'ok': True,
         'next': url_for('dashboard.index'),
         'hotspot_password': rec.get('hotspot_password'),
-        'pin_set': bool(rec.get('pin_hash')),
     })
 
 
@@ -180,33 +177,31 @@ def login_page():
     if not auth_lib.is_configured():
         return redirect(url_for('auth.setup_page'))
     next_url = request.args.get('next') or url_for('dashboard.index')
-    return render_template('login.html', next=next_url, has_pin=auth_lib.has_pin())
+    return render_template('login.html', next=next_url)
 
 
 def _do_admin_login():
     """Shared login impl used by both /login and /api/auth/login."""
     payload = request.get_json(silent=True) or request.form
-    password = payload.get('password') or ''
     pin = (payload.get('pin') or '').strip()
     ip = request.remote_addr or 'unknown'
 
     if auth_lib.is_locked_out(ip, auth_lib.ROLE_ADMIN):
         return jsonify({'ok': False, 'error': 'temporary lockout — try again later'}), 429
 
-    ok = auth_lib.verify_admin_credential(password=password, pin=pin)
+    ok = auth_lib.verify_admin_credential(pin=pin)
     auth_lib.record_attempt(ip, auth_lib.ROLE_ADMIN, ok)
     if not ok:
-        return jsonify({'ok': False, 'error': 'invalid credentials'}), 401
+        return jsonify({'ok': False, 'error': 'invalid PIN'}), 401
 
     auth_lib.login_as(auth_lib.ROLE_ADMIN)
-    method = 'pin' if (pin and not password) else 'password'
-    logs_svc.log_portal('admin', 'login_success', {'ip': ip, 'method': method})
+    logs_svc.log_portal('admin', 'login_success', {'ip': ip, 'method': 'pin'})
     next_url = (payload.get('next') or '').strip() or url_for('dashboard.index')
     return jsonify({
         'ok': True,
         'next': next_url,
         'role': auth_lib.ROLE_ADMIN,
-        'method': method,
+        'method': 'pin',
     })
 
 

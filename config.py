@@ -2,9 +2,9 @@
 
 Priority: env vars > config.yaml > defaults.
 
-Credentials (PIN, admin password, API keys, hotspot password) are NOT in
-config.yaml — they live in /var/lib/skytrack/auth.json and are accessed via
-the auth module. Keep them out of git and out of the repo directory.
+Credentials (admin PIN, API keys, hotspot password, super-user override)
+are NOT in config.yaml — they live in /var/lib/skytrack/auth.json and are
+accessed via the auth module. Keep them out of git and out of the repo.
 """
 
 import os
@@ -93,7 +93,6 @@ DEFAULT_CONFIG = {
 
     # --- Auth / sessions ------------------------------------------------
     'session_timeout_hours': 2,    # sliding window
-    'admin_password_session_minutes': 15,
     'lockout_max_attempts': 5,
     'lockout_window_seconds': 300,
 

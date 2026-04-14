@@ -11,8 +11,7 @@
 </head>
 <body class="page page-{% block body_class %}default{% endblock %}"
       data-configured="{{ '1' if configured else '0' }}"
-      data-role="{{ current_role or '' }}"
-      data-has-pin="{{ '1' if has_pin else '0' }}">
+      data-role="{{ current_role or '' }}">
   <div id="particles-bg" class="particles-bg" aria-hidden="true"></div>
 
   {% block topbar %}
@@ -69,20 +68,12 @@
         <button type="button" class="iconbtn" data-auth-close aria-label="Close">×</button>
       </header>
       <p class="auth-modal-hint" id="auth-modal-hint">
-        This action is admin-only. Sign in with your admin password
-        {% if has_pin %}or PIN{% endif %} to continue.
+        This action is admin-only. Enter your admin PIN to continue.
       </p>
       <form id="auth-modal-form" autocomplete="off">
-        <label for="auth-modal-password">Admin password</label>
-        <input id="auth-modal-password" name="password" type="password" autocomplete="current-password">
-
-        <label for="auth-modal-pin" class="auth-modal-pin-label"
-               {% if not has_pin %}hidden{% endif %}>
-          PIN <span class="muted">(4–8 digits)</span>
-        </label>
+        <label for="auth-modal-pin">Admin PIN <span class="muted">(4–8 digits)</span></label>
         <input id="auth-modal-pin" name="pin" type="password" inputmode="numeric"
-               pattern="[0-9]{4,8}" maxlength="8" autocomplete="off"
-               {% if not has_pin %}hidden{% endif %}>
+               pattern="[0-9]{4,8}" maxlength="8" autocomplete="off" required>
 
         <p class="auth-modal-error" id="auth-modal-error" hidden></p>
         <div class="auth-modal-actions">

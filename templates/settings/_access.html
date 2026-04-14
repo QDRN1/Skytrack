@@ -3,48 +3,31 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Admin password</h2>
-      <p class="muted">Required for every sensitive action. Minimum 6 characters.</p>
-    </header>
-
-    <form class="card-body card-form" id="form-admin-password"
-          data-endpoint="/api/settings/access/admin"
-          data-section="access">
-      <div class="field">
-        <label for="ax-pw">New admin password</label>
-        <input id="ax-pw" name="password" type="password" minlength="6"
-               autocomplete="new-password" required>
-      </div>
-      <div class="field">
-        <label for="ax-pw2">Confirm new password</label>
-        <input id="ax-pw2" name="password_confirm" type="password" minlength="6"
-               autocomplete="new-password" required data-confirm-of="password">
-      </div>
-      <footer class="card-footer">
-        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Update password</button>
-      </footer>
-    </form>
-  </div>
-
-  <div class="settings-card">
-    <header class="card-header">
-      <h2>PIN <span class="muted small">optional</span></h2>
-      <p class="muted">Alternate sign-in for the admin role. Leave blank and submit to remove the PIN entirely.</p>
+      <h2>Admin PIN</h2>
+      <p class="muted">
+        Your PIN is the only credential for admin actions. Pick a 4–8 digit
+        number you'll remember. You can change it here any time.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-pin"
           data-endpoint="/api/settings/access/pin"
-          data-section="access"
-          data-allow-empty="pin">
+          data-section="access">
       <div class="field">
-        <label for="ax-pin">PIN <span class="muted small">(4–8 digits, blank to clear)</span></label>
+        <label for="ax-pin">New admin PIN <span class="muted small">(4–8 digits)</span></label>
         <input id="ax-pin" name="pin" type="password" inputmode="numeric"
-               pattern="[0-9]{4,8}" maxlength="8" autocomplete="off">
+               pattern="[0-9]{4,8}" minlength="4" maxlength="8"
+               autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="ax-pin2">Confirm new PIN</label>
+        <input id="ax-pin2" name="pin_confirm" type="password" inputmode="numeric"
+               pattern="[0-9]{4,8}" minlength="4" maxlength="8"
+               autocomplete="off" required data-confirm-of="pin">
       </div>
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save PIN</button>
+        <button type="submit" class="btn btn-lg btn-primary">Update PIN</button>
       </footer>
     </form>
   </div>

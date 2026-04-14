@@ -397,7 +397,6 @@ def _register_template_globals(app: Flask) -> None:
             'current_role': role,
             'is_admin': role in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER),
             'is_super': role == auth_lib.ROLE_SUPER,
-            'has_pin': auth_lib.has_pin(),
             'configured': auth_lib.is_configured(),
             'dev_mode': app.config.get('DEV_MODE', False),
             'app_version': '2.0.0',

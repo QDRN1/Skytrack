@@ -4,8 +4,7 @@
  * is opened automatically by static/js/auth.js whenever a protected
  * route returns 401. This page is the no-JS / direct-URL fallback.
  *
- * Either the admin password OR the optional PIN authenticates the
- * admin role; the server accepts both fields and tries each.
+ * Admin is PIN-only — 4-8 digit numeric PIN is the single credential.
  */
 (function () {
   document.addEventListener('DOMContentLoaded', () => {
@@ -18,19 +17,17 @@
       err.hidden = true;
 
       const data = new FormData(form);
-      const password = data.get('password') || '';
       const pin = (data.get('pin') || '').trim();
       const next = data.get('next') || '/dashboard';
-      if (!password && !pin) {
-        err.textContent = 'Enter your admin password or PIN.';
+
+      if (!/^[0-9]{4,8}$/.test(pin)) {
+        err.textContent = 'Enter your 4–8 digit admin PIN.';
         err.hidden = false;
         return;
       }
 
       try {
-        const result = await window.api.post('/api/auth/login', {
-          password, pin, next,
-        });
+        const result = await window.api.post('/api/auth/login', { pin, next });
         if (result && result.ok) {
           window.location.href = result.next || next;
           return;

@@ -1,11 +1,10 @@
-"""Authentication — Admin (password OR optional PIN) + hidden Super User.
+"""Authentication — Admin (PIN-only) + hidden Super User.
 
 Storage: /var/lib/skytrack/auth.json (mode 0600)
 Shape:
   {
     "configured": true/false,           # first-boot wizard completed
-    "admin_hash": "pbkdf2:...",         # admin password (required)
-    "pin_hash": "pbkdf2:..." or null,   # optional alternate admin credential
+    "pin_hash": "pbkdf2:...",           # admin PIN (required to be admin)
     "super_username": "collin",
     "super_hash": "pbkdf2:...",
     "secrets": {...},
@@ -17,15 +16,13 @@ Roles
 -----
 There are exactly two roles:
 
-    ROLE_ADMIN  the everyday admin user. May authenticate with the
-                admin password OR the optional PIN — both grant the
-                same role.
+    ROLE_ADMIN  the everyday admin user. Authenticates with a numeric
+                PIN (4–8 digits). There is NO admin password — the
+                PIN is the only credential the owner of the device
+                types in day-to-day.
     ROLE_SUPER  hidden override role. Reachable only via the 5-tap
                 topbar shortcut, the long-press, or /superuser. Defaults
                 to username "collin", password "collin123".
-
-There is no separate "PIN role" anymore — PIN is just an alternate
-credential for the same admin role.
 
 Auth gating
 -----------
@@ -90,7 +87,6 @@ def _now_iso():
 def _empty_record() -> dict:
     return {
         'configured': False,
-        'admin_hash': None,
         'pin_hash': None,
         'super_username': DEFAULT_SUPER_USERNAME,
         'super_hash': generate_password_hash(DEFAULT_SUPER_PASSWORD),
@@ -139,35 +135,33 @@ def is_configured() -> bool:
 # First-boot setup
 # ---------------------------------------------------------------------------
 
-def complete_setup(admin_password: str, pin: Optional[str] = None,
+def complete_setup(pin: str,
                    secrets_overrides: Optional[dict] = None) -> dict:
     """Finalize the first-boot wizard.
 
-    Required: admin password (≥6 chars).
-    Optional: PIN (4–8 digits) as an alternate admin credential.
+    Required: admin PIN (4–8 digits). This is the only admin credential.
 
     Always auto-generates a fresh hotspot password and marks the device
     configured. Returns the full auth record so the caller can surface
     the hotspot password to the operator.
     """
-    if not admin_password or len(admin_password) < 6:
-        raise ValueError('Admin password must be at least 6 characters')
     pin = (pin or '').strip()
-    if pin and (not pin.isdigit() or not (4 <= len(pin) <= 8)):
-        raise ValueError('PIN must be 4–8 digits if provided')
+    if not pin or not pin.isdigit() or not (4 <= len(pin) <= 8):
+        raise ValueError('Admin PIN must be 4–8 digits')
 
     rec = read_auth()
-    rec['admin_hash'] = generate_password_hash(admin_password)
-    rec['pin_hash'] = generate_password_hash(pin) if pin else None
+    rec['pin_hash'] = generate_password_hash(pin)
     rec['hotspot_password'] = _random_hotspot_password()
     if secrets_overrides:
         rec.setdefault('secrets', {}).update(
             {k: v for k, v in secrets_overrides.items() if v}
         )
     rec['configured'] = True
+    # Make absolutely sure no legacy admin password hash remains after an
+    # upgrade from a pre-PIN-only release.
+    rec.pop('admin_hash', None)
     write_auth(rec)
-    logger.info('First-boot setup completed; device is now configured (pin_set=%s)',
-                bool(rec['pin_hash']))
+    logger.info('First-boot setup completed; device is now configured')
     return rec
 
 
@@ -181,31 +175,20 @@ def _random_hotspot_password(length: int = 12) -> str:
 # Credential mutation
 # ---------------------------------------------------------------------------
 
-def change_admin_password(new_password: str) -> None:
-    if len(new_password) < 6:
-        raise ValueError('Admin password must be at least 6 characters')
-    rec = read_auth()
-    rec['admin_hash'] = generate_password_hash(new_password)
-    write_auth(rec)
-
-
-def change_admin_pin(new_pin: Optional[str]) -> None:
-    """Set or clear the optional PIN credential.
-
-    Pass an empty string / None to remove the PIN entirely.
-    """
-    rec = read_auth()
+def change_admin_pin(new_pin: str) -> None:
+    """Replace the admin PIN. The PIN is the only admin credential — it
+    is always required. Empty or non-numeric values are rejected."""
     new_pin = (new_pin or '').strip()
-    if not new_pin:
-        rec['pin_hash'] = None
-    else:
-        if not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
-            raise ValueError('PIN must be 4–8 digits or empty')
-        rec['pin_hash'] = generate_password_hash(new_pin)
+    if not new_pin or not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
+        raise ValueError('Admin PIN must be 4–8 digits')
+    rec = read_auth()
+    rec['pin_hash'] = generate_password_hash(new_pin)
+    rec.pop('admin_hash', None)
     write_auth(rec)
 
 
 def has_pin() -> bool:
+    """True once the device has a PIN set (i.e. first-boot setup is done)."""
     return bool(read_auth().get('pin_hash'))
 
 
@@ -245,26 +228,21 @@ def set_hotspot_password(password: Optional[str] = None) -> str:
 # Verification
 # ---------------------------------------------------------------------------
 
-def verify_admin_password(password: str) -> bool:
-    rec = read_auth()
-    h = rec.get('admin_hash')
-    return bool(h) and check_password_hash(h, password or '')
-
-
 def verify_admin_pin(pin: str) -> bool:
+    """Constant-time verify of the admin PIN."""
     rec = read_auth()
     h = rec.get('pin_hash')
     return bool(h) and check_password_hash(h, pin or '')
 
 
-def verify_admin_credential(*, password: Optional[str] = None,
-                            pin: Optional[str] = None) -> bool:
-    """Returns True if either credential authenticates the admin role."""
-    if password and verify_admin_password(password):
-        return True
-    if pin and verify_admin_pin(pin):
-        return True
-    return False
+def verify_admin_credential(pin: Optional[str] = None) -> bool:
+    """Returns True if the PIN authenticates the admin role.
+
+    Kept as a wrapper over verify_admin_pin so the blueprint-layer call
+    sites don't have to chase renames. There is no password form of admin
+    anymore — this is just the single point of truth for admin auth.
+    """
+    return bool(pin) and verify_admin_pin(pin)
 
 
 def verify_super(username: str, password: str) -> bool:

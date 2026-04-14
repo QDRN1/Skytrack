@@ -3,7 +3,7 @@
 Sections (URL-friendly slugs):
   general        timezone, units, theme, default time filter
   display        rotation, brightness, sleep, animations, fullscreen
-  access         admin password / PIN / session timeout / lockout
+  access         admin PIN / session timeout / lockout
   network        cellular / wifi client / hotspot / time sync
   integrations   AeroAPI, OpenSky, weather provider + budget controls
   feeders        FlightAware, FR24, feed-over-cellular toggle
@@ -221,34 +221,21 @@ _ACCESS_KEYS = (
 def api_access_status():
     cfg = current_app.skytrack_config
     return jsonify({
-        'has_pin': auth_lib.has_pin(),
         'config': {k: cfg.get(k) for k in _ACCESS_KEYS},
     })
-
-
-@settings_bp.route('/api/settings/access/admin', methods=['POST'])
-@ADMIN
-def api_change_admin_password():
-    payload = request.get_json(silent=True) or {}
-    try:
-        auth_lib.change_admin_password(payload.get('password') or '')
-    except ValueError as e:
-        return _err(str(e))
-    logs_svc.log_portal('admin', 'change_admin_password', {})
-    return _ok()
 
 
 @settings_bp.route('/api/settings/access/pin', methods=['POST'])
 @ADMIN
 def api_change_pin():
-    """Set/clear the optional PIN. Empty string removes the PIN."""
+    """Replace the admin PIN. PIN is required — empty values are rejected."""
     payload = request.get_json(silent=True) or {}
     try:
         auth_lib.change_admin_pin((payload.get('pin') or '').strip())
     except ValueError as e:
         return _err(str(e))
-    logs_svc.log_portal('admin', 'change_pin', {'has_pin': auth_lib.has_pin()})
-    return _ok({'has_pin': auth_lib.has_pin()})
+    logs_svc.log_portal('admin', 'change_pin', {})
+    return _ok()
 
 
 @settings_bp.route('/api/settings/access/session', methods=['POST'])

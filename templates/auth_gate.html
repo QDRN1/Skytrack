@@ -10,7 +10,7 @@
       <p class="muted">
         This SkyTrack hasn't completed its first-boot setup yet.
         Open <a href="{{ url_for('auth.setup_page') }}">the setup wizard</a>
-        to choose an admin password and secure the hotspot.
+        to choose an admin PIN and secure the hotspot.
       </p>
       <p>
         <a class="btn primary" href="{{ url_for('auth.setup_page') }}">
@@ -23,9 +23,8 @@
       <h1>Admin sign-in required</h1>
       <p class="muted">
         This page changes device configuration, so it's protected.
-        Sign in with the admin password
-        {% if has_pin %}or your PIN{% endif %} to continue. The
-        public dashboard is always available without signing in.
+        Enter your admin PIN to continue. The public dashboard is always
+        available without signing in.
       </p>
       <p>
         <button type="button" class="btn primary" id="auth-gate-open"
