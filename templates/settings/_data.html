@@ -1,0 +1,83 @@
+{# Settings → Data #}
+<section class="settings-section" data-section-pane="data">
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Storage</h2>
+      <p class="muted">Where SkyTrack keeps history and how aggressively it prunes.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-data"
+          data-endpoint="/api/settings/data"
+          data-section="data">
+
+      <div class="readonly-grid" id="data-usage-box">
+        <div class="readonly-row">
+          <span class="ro-label">Database</span>
+          <code class="ro-value" id="data-db-path">{{ config.db_path or '/var/lib/skytrack/skytrack.db' }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">DB size</span>
+          <code class="ro-value" id="data-db-size">…</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Disk free</span>
+          <code class="ro-value" id="data-disk-free">…</code>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="d-retention">Retention (days)</label>
+        <input id="d-retention" name="data_retention_days" type="number"
+               min="1" max="365" value="{{ config.data_retention_days or 30 }}">
+        <p class="muted small">Older flight history and enrichment rows are pruned nightly.</p>
+      </div>
+
+      <div class="field">
+        <label for="d-maxrows">Max stored aircraft rows</label>
+        <input id="d-maxrows" name="data_max_rows" type="number"
+               min="1000" max="10000000" step="1000"
+               value="{{ config.data_max_rows or 500000 }}">
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Auto-vacuum nightly</span>
+          <span class="switch">
+            <input type="checkbox" name="data_autovacuum"
+                   {% if config.data_autovacuum %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Data</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Maintenance</h2>
+      <p class="muted">One-shot tasks. These touch the live database — confirm before running.</p>
+    </header>
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-data-vacuum">Vacuum now</button>
+        <button type="button" class="btn btn-lg" id="btn-data-prune"
+                data-confirm-title="Prune old rows?"
+                data-confirm-body="This permanently removes flight history older than your retention setting.">
+          Prune now
+        </button>
+        <button type="button" class="btn btn-lg btn-danger" id="btn-data-wipe"
+                data-confirm-title="Wipe all flight history?"
+                data-confirm-body="This deletes every stored aircraft, flight, and enrichment row. Settings and credentials are kept.">
+          Wipe history
+        </button>
+      </div>
+    </div>
+  </div>
+
+</section>

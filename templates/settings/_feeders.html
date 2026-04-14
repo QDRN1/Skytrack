@@ -1,14 +1,109 @@
-<form class="form" id="form-feeders" data-endpoint="/api/settings/feeders">
-  <h2>ADS-B feeder credentials</h2>
-  <p class="muted">If you share data with FlightRadar24 or PiAware, store your IDs here. They are kept in <code>/var/lib/skytrack/auth.json</code> and never written to git.</p>
+{# Settings → Feeders #}
+<section class="settings-section" data-section-pane="feeders">
 
-  <label>FlightRadar24 sharing key
-    <input name="fr24_key" type="password" placeholder="(unset)">
-  </label>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Feeder status</h2>
+      <p class="muted">Live status of the local dump1090 receiver and any uplink feeders.</p>
+    </header>
 
-  <label>PiAware feeder ID
-    <input name="piaware_feeder_id" type="text" placeholder="(unset)">
-  </label>
+    <div class="card-body">
+      <div class="status-grid">
+        <div class="status-tile" id="feed-dump-tile">
+          <span class="st-label">dump1090</span>
+          <span class="st-value" id="feed-dump-value">…</span>
+          <span class="st-sub muted" id="feed-dump-sub">checking</span>
+        </div>
+        <div class="status-tile" id="feed-fr24-tile">
+          <span class="st-label">FlightRadar24</span>
+          <span class="st-value" id="feed-fr24-value">…</span>
+          <span class="st-sub muted" id="feed-fr24-sub">checking</span>
+        </div>
+        <div class="status-tile" id="feed-pia-tile">
+          <span class="st-label">PiAware</span>
+          <span class="st-value" id="feed-pia-value">…</span>
+          <span class="st-sub muted" id="feed-pia-sub">checking</span>
+        </div>
+      </div>
+    </div>
+  </div>
 
-  <button type="submit" class="btn primary">Save feeders</button>
-</form>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Uplink credentials</h2>
+      <p class="muted">If you share data with FlightRadar24, PiAware, or FlightAware, store your IDs here. They live in <code>/var/lib/skytrack/auth.json</code> and never get committed.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-feeders"
+          data-endpoint="/api/settings/feeders"
+          data-section="feeders">
+
+      <div class="field">
+        <label for="f-fr24">FlightRadar24 sharing key
+          {% if config.fr24_key %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="f-fr24" name="fr24_key" type="password" autocomplete="off"
+               placeholder="{% if config.fr24_key %}••• leave blank to keep •••{% else %}paste sharing key…{% endif %}">
+      </div>
+
+      <div class="field">
+        <label for="f-pia">PiAware feeder ID
+          {% if config.piaware_feeder_id %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="f-pia" name="piaware_feeder_id" type="password" autocomplete="off"
+               placeholder="{% if config.piaware_feeder_id %}••• leave blank to keep •••{% else %}paste feeder id…{% endif %}">
+      </div>
+
+      <div class="field">
+        <label for="f-fa">FlightAware site/feeder ID
+          {% if config.flightaware_id %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="f-fa" name="flightaware_id" type="password" autocomplete="off"
+               placeholder="{% if config.flightaware_id %}••• leave blank to keep •••{% else %}optional{% endif %}">
+      </div>
+
+      <hr class="card-sep">
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Allow feeding over cellular</span>
+          <span class="switch">
+            <input type="checkbox" name="feed_over_cellular"
+                   {% if config.feed_over_cellular %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">Off by default — feeders can chew through metered data fast.</p>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Only feed when on WiFi</span>
+          <span class="switch">
+            <input type="checkbox" name="feed_over_wifi_only"
+                   {% if config.feed_over_wifi_only %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Feeders</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Service controls</h2>
+      <p class="muted">Restart the local dump1090 service if the receiver gets stuck.</p>
+    </header>
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg btn-warn" id="btn-restart-dump1090">Restart dump1090</button>
+      </div>
+    </div>
+  </div>
+
+</section>

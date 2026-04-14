@@ -1,56 +1,116 @@
-<form class="form" id="form-integrations" data-endpoint="/api/settings/integrations">
-  <h2>AeroAPI (FlightAware)</h2>
-  <p class="muted">Used for richer flight enrichment. We never poll continuously — calls are made only when the dashboard explicitly asks for an aircraft, and are bounded by the budget below.</p>
+{# Settings → Integrations #}
+<section class="settings-section" data-section-pane="integrations">
 
-  <label class="checkbox">
-    <input type="checkbox" name="aeroapi_enabled" {% if config.aeroapi_enabled %}checked{% endif %}>
-    Enable AeroAPI
-  </label>
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Integrations</h2>
+      <p class="muted">Toggle outside services and store API keys. Keys are write-only — once saved they show as <code>•••</code>.</p>
+    </header>
 
-  <label>API key
-    <input name="aeroapi_key" type="password" placeholder="(stored in /var/lib/skytrack/auth.json)">
-  </label>
+    <form class="card-body card-form" id="form-integrations"
+          data-endpoint="/api/settings/integrations"
+          data-section="integrations">
 
-  <div class="form-row">
-    <label>Max calls / hour
-      <input name="aeroapi_calls_per_hour" type="number" min="0" value="{{ config.aeroapi_calls_per_hour }}">
-    </label>
-    <label>Max calls / day
-      <input name="aeroapi_calls_per_day" type="number" min="0" value="{{ config.aeroapi_calls_per_day }}">
-    </label>
-    <label>Cost per call (USD)
-      <input name="aeroapi_cost_per_call" type="number" step="0.0001" value="{{ config.aeroapi_cost_per_call }}">
-    </label>
+      <div class="field">
+        <label class="switch-row">
+          <span>FlightAware AeroAPI</span>
+          <span class="switch">
+            <input type="checkbox" name="aeroapi_enabled"
+                   {% if config.aeroapi_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">Enriches arriving/departing flights with route + operator data. Costs per query — watch the budget below.</p>
+      </div>
+
+      <div class="field">
+        <label for="i-aeroapi-key">AeroAPI key
+          {% if config.aeroapi_key %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="i-aeroapi-key" name="aeroapi_key" type="password"
+               autocomplete="off" placeholder="{% if config.aeroapi_key %}••• leave blank to keep •••{% else %}paste key…{% endif %}">
+      </div>
+
+      <div class="field">
+        <label for="i-aeroapi-budget">AeroAPI monthly budget (USD)</label>
+        <input id="i-aeroapi-budget" name="aeroapi_monthly_budget_usd" type="number"
+               min="0" max="500" step="1"
+               value="{{ config.aeroapi_monthly_budget_usd or 5 }}">
+      </div>
+
+      <div class="readonly-grid" id="aeroapi-usage-box">
+        <div class="readonly-row">
+          <span class="ro-label">This month</span>
+          <code class="ro-value">${{ '%.2f'|format(usage_aeroapi.cost_30d or 0) }}
+            <span class="muted small">({{ usage_aeroapi.calls_30d or 0 }} calls)</span>
+          </code>
+        </div>
+      </div>
+
+      <hr class="card-sep">
+
+      <div class="field">
+        <label class="switch-row">
+          <span>OpenSky Network</span>
+          <span class="switch">
+            <input type="checkbox" name="opensky_enabled"
+                   {% if config.opensky_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">Free fallback for callsign/operator lookups when AeroAPI is off or over budget.</p>
+      </div>
+
+      <div class="field">
+        <label for="i-os-user">OpenSky username <span class="muted small">optional</span></label>
+        <input id="i-os-user" name="opensky_username" type="text" autocomplete="off"
+               value="{{ config.opensky_username or '' }}">
+      </div>
+
+      <div class="field">
+        <label for="i-os-pw">OpenSky password
+          {% if config.opensky_password %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="i-os-pw" name="opensky_password" type="password" autocomplete="off"
+               placeholder="{% if config.opensky_password %}••• leave blank to keep •••{% else %}optional{% endif %}">
+      </div>
+
+      <hr class="card-sep">
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Weather provider</span>
+          <span class="switch">
+            <input type="checkbox" name="weather_enabled"
+                   {% if config.weather_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label>Provider</label>
+        <div class="segmented" role="radiogroup" aria-label="Weather provider">
+          {% for v, lbl in [('open-meteo','Open-Meteo (free)'),('openweather','OpenWeather'),('none','Off')] %}
+          <label class="seg"><input type="radio" name="weather_provider" value="{{ v }}"
+                 {% if (config.weather_provider or 'open-meteo') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="i-ow-key">OpenWeather API key
+          {% if config.openweather_api_key %}<span class="muted small">(stored)</span>{% endif %}
+        </label>
+        <input id="i-ow-key" name="openweather_api_key" type="password" autocomplete="off"
+               placeholder="{% if config.openweather_api_key %}••• leave blank to keep •••{% else %}only required for OpenWeather{% endif %}">
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Integrations</button>
+      </footer>
+    </form>
   </div>
 
-  <div class="usage-block">
-    <strong>Usage (last 30 days):</strong>
-    <span id="usage-aeroapi">{{ usage.month }} calls — ${{ '%.2f' % usage.cost_30d }}</span>
-    <button type="button" class="btn" id="btn-test-aeroapi">Test connection</button>
-  </div>
-
-  <hr>
-
-  <h2>OpenSky Network</h2>
-  <p class="muted">Free fallback. Anonymous works but is rate-limited.</p>
-  <label class="checkbox">
-    <input type="checkbox" name="opensky_enabled" {% if config.opensky_enabled %}checked{% endif %}>
-    Enable OpenSky
-  </label>
-  <label>OpenSky username (optional)
-    <input name="opensky_user" type="text">
-  </label>
-  <label>OpenSky password (optional)
-    <input name="opensky_pass" type="password">
-  </label>
-  <button type="button" class="btn" id="btn-test-opensky">Test OpenSky</button>
-
-  <hr>
-
-  <h2>Cache</h2>
-  <label>Enrichment TTL (hours)
-    <input name="enrichment_ttl_hours" type="number" min="1" max="168" value="{{ config.enrichment_ttl_hours }}">
-  </label>
-
-  <button type="submit" class="btn primary">Save integrations</button>
-</form>
+</section>

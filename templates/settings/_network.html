@@ -1,0 +1,155 @@
+{# Settings → Network #}
+<section class="settings-section" data-section-pane="network">
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Connectivity</h2>
+      <p class="muted">Cellular is the primary WAN. WiFi client and the SkyTrack-Portal hotspot share <code>wlan0</code>.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-network"
+          data-endpoint="/api/settings/network"
+          data-section="network">
+
+      <div class="status-grid">
+        <div class="status-tile" id="net-cell-tile">
+          <span class="st-label">Cellular</span>
+          <span class="st-value" id="net-cell-value">…</span>
+          <span class="st-sub muted" id="net-cell-sub">checking</span>
+        </div>
+        <div class="status-tile" id="net-wifi-tile">
+          <span class="st-label">WiFi client</span>
+          <span class="st-value" id="net-wifi-value">…</span>
+          <span class="st-sub muted" id="net-wifi-sub">checking</span>
+        </div>
+        <div class="status-tile" id="net-hot-tile">
+          <span class="st-label">Hotspot</span>
+          <span class="st-value" id="net-hot-value">…</span>
+          <span class="st-sub muted" id="net-hot-sub">checking</span>
+        </div>
+        <div class="status-tile" id="net-inet-tile">
+          <span class="st-label">Internet</span>
+          <span class="st-value" id="net-inet-value">…</span>
+          <span class="st-sub muted" id="net-inet-sub">probe</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Cellular enabled</span>
+          <span class="switch">
+            <input type="checkbox" name="cellular_enabled"
+                   {% if config.cellular_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Metered cellular (limit background traffic)</span>
+          <span class="switch">
+            <input type="checkbox" name="metered_connection"
+                   {% if config.metered_connection %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>WiFi client mode</span>
+          <span class="switch">
+            <input type="checkbox" name="wifi_client_enabled"
+                   {% if config.wifi_client_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">Disable to keep the radio free for the hotspot.</p>
+      </div>
+
+      <div class="field">
+        <label>Time sync source</label>
+        <div class="segmented" role="radiogroup" aria-label="Time sync source">
+          {% for v, lbl in [('ntp','NTP'),('cellular','Cellular'),('gps','GPS')] %}
+          <label class="seg"><input type="radio" name="time_sync_source" value="{{ v }}"
+                 {% if (config.time_sync_source or 'ntp') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Connectivity</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Hotspot</h2>
+      <p class="muted">SkyTrack hosts an admin hotspot for first-boot setup and offline access.</p>
+    </header>
+
+    <div class="card-body">
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">SSID</span>
+          <code class="ro-value" id="net-hot-ssid">{{ hotspot_default_ssid }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Gateway</span>
+          <code class="ro-value">http://{{ config.hotspot_gateway }}</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Password</span>
+          <code class="ro-value secret" id="net-hot-pw">••••••••••</code>
+          <button type="button" class="btn" id="btn-hot-show">Show</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Auto-start hotspot at boot</span>
+          <span class="switch">
+            <input type="checkbox" id="net-hot-autostart"
+                   data-network-flag="hotspot_auto_start"
+                   {% if config.hotspot_auto_start %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="action-row">
+        <button type="button" class="btn btn-lg" id="btn-hot-regen">Regenerate password</button>
+        <button type="button" class="btn btn-lg btn-warn" id="btn-hot-restart">Restart hotspot</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Saved WiFi networks</h2>
+      <p class="muted">Stored credentials for client-mode WiFi. Connecting requires WiFi client mode and disables the hotspot.</p>
+    </header>
+
+    <div class="card-body">
+      <ul class="saved-wifi-list" id="saved-wifi-list">
+        <li class="muted">No saved networks yet.</li>
+      </ul>
+
+      <form class="inline-form" id="form-wifi-add">
+        <div class="field">
+          <label for="wifi-ssid">SSID</label>
+          <input id="wifi-ssid" name="ssid" type="text" required>
+        </div>
+        <div class="field">
+          <label for="wifi-pw">Password</label>
+          <input id="wifi-pw" name="password" type="password" autocomplete="off">
+        </div>
+        <button type="submit" class="btn btn-lg btn-primary">Add network</button>
+      </form>
+    </div>
+  </div>
+
+</section>
