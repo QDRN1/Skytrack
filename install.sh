@@ -279,7 +279,7 @@ if [[ "$DEV_INSTALL" != true ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 11. systemd units
+# 11. systemd units + polkit rule
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
   log "step 11/13: systemd units"
@@ -299,6 +299,20 @@ if [[ "$DEV_INSTALL" != true ]]; then
                    >> "$LOG_FILE" 2>&1 || true
   if [[ "$SKIP_HOTSPOT" != true ]]; then
     systemctl enable skytrack-hotspot.service skytrack-hotspot-watchdog.timer >> "$LOG_FILE" 2>&1 || true
+  fi
+
+  # Polkit rule — lets the unprivileged skytrack service user bounce its
+  # own systemd units (Restart buttons in Settings, OTA self-restart,
+  # hotspot apply/rollback). Without this, every restart endpoint fails
+  # with "Interactive authentication required" on a real appliance.
+  if [[ -f "$REPO_DIR/config_templates/skytrack.polkit.rules" ]] && \
+     [[ -d /etc/polkit-1/rules.d ]]; then
+    install -m 0644 -o root -g root \
+      "$REPO_DIR/config_templates/skytrack.polkit.rules" \
+      /etc/polkit-1/rules.d/50-skytrack.rules
+    info "installed polkit rule → /etc/polkit-1/rules.d/50-skytrack.rules"
+  elif [[ ! -d /etc/polkit-1/rules.d ]]; then
+    warn "/etc/polkit-1/rules.d missing — restart buttons may fail until polkit is installed"
   fi
 fi
 

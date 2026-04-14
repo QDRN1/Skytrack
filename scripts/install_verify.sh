@@ -87,10 +87,10 @@ fi
 
 # ---------------------------------------------------------------------------
 hdr "config.yaml"
-if "$PY" -c "import sys; sys.path.insert(0,'$REPO_DIR'); import config; c=config.load(); assert isinstance(c,dict) and c" 2>/dev/null; then
-  ok "config.load() returns a dict"
+if "$PY" -c "import sys; sys.path.insert(0,'$REPO_DIR'); import config; c=config.load_config(); assert isinstance(c,dict) and c" 2>/dev/null; then
+  ok "config.load_config() returns a dict"
 else
-  fail "config.load() failed"
+  fail "config.load_config() failed"
 fi
 
 # ---------------------------------------------------------------------------
@@ -185,6 +185,44 @@ for f in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
       fail "$f missing appliance cmdline params"
     fi
     break
+  fi
+done
+
+# ---------------------------------------------------------------------------
+hdr "OTA workspace (slice 8)"
+OTA_WS="$DATA_DIR/ota-workspace"
+if [[ -d "$OTA_WS" ]]; then
+  ok "ota-workspace dir present"
+  if [[ -d "$OTA_WS/.git" ]]; then
+    ok "ota-workspace already cloned"
+  else
+    ok "ota-workspace empty (will clone on first check)"
+  fi
+else
+  fail "ota-workspace missing at $OTA_WS — run install.sh step 7"
+fi
+if [[ -f "$DATA_DIR/.ssh/known_hosts" ]]; then
+  ok "git known_hosts writable at $DATA_DIR/.ssh/known_hosts"
+else
+  fail "$DATA_DIR/.ssh/known_hosts missing — OTA SSH remotes will fail"
+fi
+
+# ---------------------------------------------------------------------------
+hdr "polkit (restart buttons)"
+if [[ -f /etc/polkit-1/rules.d/50-skytrack.rules ]]; then
+  ok "polkit rule 50-skytrack.rules installed"
+else
+  fail "polkit rule missing — Settings restart buttons will fail"
+fi
+
+# ---------------------------------------------------------------------------
+hdr "frontend assets (slice 9)"
+for f in static/js/particles.js static/js/dashboard.js static/js/settings.js \
+         static/css/portal.css templates/dashboard.html templates/base.html; do
+  if [[ -s "$REPO_DIR/$f" ]]; then
+    ok "$f"
+  else
+    fail "$f missing or empty"
   fi
 done
 

@@ -1,0 +1,54 @@
+// /etc/polkit-1/rules.d/50-skytrack.rules
+//
+// Lets the unprivileged `skytrack` service user drive the handful of
+// systemd units that the portal's Settings panel needs to bounce:
+//
+//   - skytrack-*.service         (Restart app / network / ingest / etc.)
+//   - hostapd, dnsmasq, dhcpcd   (hotspot bring-up / rollback)
+//   - dump1090-fa                (receiver restart from Feeders card)
+//
+// Without this rule, every "Restart" button in Settings, the OTA Apply
+// flow's self-restart, and scripts/hotspot_apply.sh all fail with
+// "Interactive authentication required." This is an appliance — there is
+// no interactive user session to consent, so we grant the specific verbs
+// statically, scoped to a whitelist of unit names.
+//
+// Installed by install.sh into /etc/polkit-1/rules.d/50-skytrack.rules.
+// Polkit reloads rules automatically on the next action evaluation.
+
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return;
+    }
+    if (subject.user !== "skytrack") {
+        return;
+    }
+    var unit = action.lookup("unit") || "";
+    var verb = action.lookup("verb") || "";
+
+    // Only allow the verbs the app actually needs.
+    var allowedVerbs = {
+        "start": true, "stop": true, "restart": true,
+        "try-restart": true, "reload": true, "reload-or-restart": true,
+    };
+    if (!allowedVerbs[verb]) {
+        return;
+    }
+
+    // Any unit whose name begins with "skytrack-" is fair game (we own
+    // the namespace). Third-party units are listed explicitly.
+    if (unit.indexOf("skytrack-") === 0) {
+        return polkit.Result.YES;
+    }
+    var thirdParty = {
+        "hostapd.service":     true,
+        "dnsmasq.service":     true,
+        "dhcpcd.service":      true,
+        "dump1090-fa.service": true,
+        "piaware.service":     true,
+        "fr24feed.service":    true,
+    };
+    if (thirdParty[unit]) {
+        return polkit.Result.YES;
+    }
+});
