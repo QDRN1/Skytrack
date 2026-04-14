@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="en" data-theme="{{ config.default_theme or 'light' }}">
+<html lang="en"
+      data-theme="{{ config.default_theme or 'light' }}"
+      data-anim="{{ config.display_animation_level or 'full' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -93,6 +95,7 @@
   <script src="{{ url_for('static', filename='js/auth.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/topbar.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/particles.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

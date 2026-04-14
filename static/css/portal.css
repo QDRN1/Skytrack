@@ -47,21 +47,42 @@ button { font: inherit; cursor: pointer; }
 
 .muted { color: var(--fg-muted); font-size: 0.9em; }
 
-/* -------- Particle background -------- */
+/* -------- Particle background --------
+ * A fixed full-viewport layer that sits behind every page. The gradient is
+ * the always-on base; the canvas injected by particles.js rides on top and
+ * draws the drifting dot field. Both are strictly decorative — pointer
+ * events never land here.
+ */
 .particles-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 20%, rgba(46, 108, 246, 0.12), transparent 60%),
     radial-gradient(circle at 80% 60%, rgba(242, 145, 53, 0.08), transparent 50%);
 }
 [data-theme="dark"] .particles-bg {
   background:
-    radial-gradient(circle at 20% 20%, rgba(77, 139, 255, 0.18), transparent 60%),
-    radial-gradient(circle at 80% 60%, rgba(255, 174, 89, 0.10), transparent 55%);
+    radial-gradient(circle at 20% 20%, rgba(77, 139, 255, 0.20), transparent 60%),
+    radial-gradient(circle at 80% 60%, rgba(255, 174, 89, 0.11), transparent 55%),
+    linear-gradient(180deg, #05071a 0%, #07091a 100%);
 }
+.particles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  opacity: 0.90;
+}
+[data-theme="light"] .particles-canvas { opacity: 0.55; }
+@media (prefers-reduced-motion: reduce) {
+  .particles-canvas { display: none; }
+}
+html[data-anim="off"] .particles-canvas { display: none; }
 
 /* -------- Topbar -------- */
 .topbar {
@@ -274,10 +295,62 @@ button { font: inherit; cursor: pointer; }
 .error-shell h1 { font-size: 4em; margin: 0; color: var(--accent); }
 
 /* -------- Weather -------- */
-.weather-now { display: flex; gap: 14px; align-items: baseline; }
-.weather-now #wx-temp { font-size: 2em; font-weight: 600; }
-.weather-forecast { display: flex; gap: 14px; margin-top: 12px; }
-.weather-forecast .day { background: var(--bg-elev); padding: 8px 12px; border-radius: 8px; font-size: 0.85em; }
+.wx-card { display: flex; flex-direction: column; gap: 12px; }
+.wx-hero {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 4px 4px;
+}
+.wx-temp {
+  font-size: 3.2em; font-weight: 700; line-height: 1;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.wx-meta { display: flex; flex-direction: column; gap: 4px; }
+.wx-cond {
+  font-size: 1.0em; color: var(--fg);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.wx-hilo { color: var(--fg-muted); font-size: 0.9em; }
+.wx-forecast {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 10px;
+}
+.wx-day {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.wx-day-name { font-weight: 600; font-size: 0.82em; letter-spacing: 0.4px; color: var(--fg-muted); text-transform: uppercase; }
+.wx-day-icon { font-size: 1.4em; line-height: 1; }
+.wx-day-hilo { font-size: 0.85em; color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-stamp { margin-top: 2px; font-size: 0.75em; }
+
+/* Dashboard polish — slightly lifted cards, smoother transitions */
+.card, .panel {
+  transition: transform 120ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.card-value { font-variant-numeric: tabular-nums; }
+.panel h3 {
+  display: flex; align-items: center; gap: 8px;
+}
+.panel h3::before {
+  content: '';
+  width: 3px; height: 14px; border-radius: 2px;
+  background: var(--accent);
+  display: inline-block;
+}
+.rank-list li span:last-child {
+  font-variant-numeric: tabular-nums; color: var(--fg-muted);
+}
+.data-table tbody tr:hover td { background: var(--bg-elev); }
 
 /* -------- Radar URL block -------- */
 .radar-url { background: var(--bg-elev); padding: 12px; border-radius: 10px; margin-bottom: 12px; }

@@ -110,14 +110,63 @@
       '<li class="muted">no data</li>';
   }
 
+  // Map a condition string to a small emoji so the card has a visual
+  // without pulling in an icon font. Keep the list short + case-insensitive.
+  function wxEmoji(cond) {
+    const c = (cond || '').toLowerCase();
+    if (!c) return '·';
+    if (c.includes('thunder')) return '⛈';
+    if (c.includes('snow') || c.includes('sleet') || c.includes('flurr')) return '❄';
+    if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧';
+    if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return '🌫';
+    if (c.includes('cloud') && c.includes('part')) return '⛅';
+    if (c.includes('cloud') || c.includes('overcast')) return '☁';
+    if (c.includes('clear') || c.includes('sun')) return '☀';
+    return '·';
+  }
+
   function renderWeather(w) {
-    if (!w || !w.current) return;
-    set('#wx-temp', `${Math.round(w.current.temp_f)}°F`);
-    set('#wx-cond', w.current.condition || '');
+    if (!w || !w.current) {
+      set('#wx-temp', '—');
+      set('#wx-cond', 'Weather unavailable');
+      const fc = document.getElementById('wx-forecast');
+      if (fc) fc.innerHTML = '';
+      return;
+    }
+    set('#wx-temp', `${Math.round(w.current.temp_f)}°`);
+    const cond = w.current.condition || '—';
+    set('#wx-cond', `${wxEmoji(cond)}  ${cond}`);
+    const hi = w.current.high_f, lo = w.current.low_f;
+    const hilo = document.getElementById('wx-hilo');
+    if (hilo) {
+      hilo.textContent = (hi != null && lo != null)
+        ? `Hi ${Math.round(hi)}°  ·  Lo ${Math.round(lo)}°`
+        : '';
+    }
     const fc = document.getElementById('wx-forecast');
-    if (fc) fc.innerHTML = (w.forecast || []).map(d =>
-      `<div class="day"><strong>${escape(d.day)}</strong><br>${Math.round(d.high_f)}/${Math.round(d.low_f)}°</div>`
-    ).join('');
+    if (fc) {
+      fc.innerHTML = (w.forecast || []).map(d => `
+        <div class="wx-day" title="${escape(d.condition || '')}">
+          <div class="wx-day-name">${escape(d.day)}</div>
+          <div class="wx-day-icon">${wxEmoji(d.condition)}</div>
+          <div class="wx-day-hilo">${Math.round(d.high_f)}° / ${Math.round(d.low_f)}°</div>
+        </div>
+      `).join('');
+    }
+    const stamp = document.getElementById('wx-stamp');
+    if (stamp) {
+      const parts = [];
+      if (w.cached) parts.push('cached');
+      if (w.offline) parts.push('offline');
+      if (w.mock) parts.push('mock data');
+      if (w.last_update) {
+        try {
+          parts.push('updated ' + new Date(w.last_update).toLocaleTimeString([],
+            { hour: '2-digit', minute: '2-digit' }));
+        } catch (_) { /* leave off */ }
+      }
+      stamp.textContent = parts.join(' · ');
+    }
   }
 
   function renderTrend(data) {

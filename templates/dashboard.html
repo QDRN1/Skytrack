@@ -53,12 +53,16 @@
 
     <section class="panel panel-weather">
       <h3>Weather</h3>
-      <div id="weather-card">
-        <div class="weather-now">
-          <span id="wx-temp">—</span>
-          <span id="wx-cond">—</span>
+      <div id="weather-card" class="wx-card">
+        <div class="wx-hero">
+          <div class="wx-temp" id="wx-temp">—</div>
+          <div class="wx-meta">
+            <div class="wx-cond" id="wx-cond">Loading…</div>
+            <div class="wx-hilo" id="wx-hilo"></div>
+          </div>
         </div>
-        <div class="weather-forecast" id="wx-forecast"></div>
+        <div class="wx-forecast" id="wx-forecast"></div>
+        <div class="wx-stamp muted small" id="wx-stamp"></div>
       </div>
     </section>
 
