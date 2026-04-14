@@ -4,6 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
   <title>SkyTrack</title>
+  <!--
+    SkyTrack appliance splash.
+
+    This page is loaded by Chromium from file:// BEFORE skytrack-app is
+    listening. It has two visual states and must NEVER go black:
+
+      1. state-loading      — "boot" video + "Starting services…" overlay
+                              Shown on cold boot while /healthz is polled.
+
+      2. state-unavailable  — "service unavailable" video fullscreen,
+                              overlay is ONLY the device-ID pill at the top.
+                              Shown after 60s of /healthz failure, and also
+                              reached instantly if the kiosk page fell back
+                              here because of a runtime app crash.
+
+    Both states keep polling /healthz in the background. When the backend
+    responds healthy, we redirect to /kiosk. The page never shows a default
+    Chromium error, never scrolls, never shows browser chrome, and never
+    exposes a raw X root. If either video fails to decode, a dark branded
+    gradient stands in.
+
+    The device-ID pill is populated by device_id.js which is written next
+    to this file by firstboot.sh (or install.sh step 8). If that file is
+    missing we leave the placeholder dash in place — we never render an
+    empty pill.
+  -->
   <style>
     html, body {
       margin: 0;
@@ -12,7 +38,8 @@
       width: 100%;
       background: #05070b;
       color: #e6ecf2;
-      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
       overflow: hidden;
       -webkit-user-select: none;
       user-select: none;
@@ -21,38 +48,103 @@
     }
     body { cursor: none; }
 
-    #bg-video {
+    /* Fullscreen background video layer. Two <video> elements are stacked;
+       we only make one visible at a time. object-fit:cover gives true
+       fullscreen without letterboxing regardless of the source aspect. */
+    .bg-video {
       position: fixed;
-      top: 50%; left: 50%;
-      min-width: 100%; min-height: 100%;
-      width: auto; height: auto;
-      transform: translate(-50%, -50%);
-      z-index: 0;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
-      opacity: 0.85;
+      background: #05070b;
+      z-index: 0;
       pointer-events: none;
+      opacity: 0;
+      transition: opacity 400ms ease;
     }
-    #scrim {
-      position: fixed; inset: 0;
-      background: radial-gradient(ellipse at center, rgba(5,7,11,0.35) 0%, rgba(5,7,11,0.85) 70%, #05070b 100%);
-      z-index: 1;
+    .bg-video.visible { opacity: 1; }
+
+    /* Fallback gradient painted underneath both videos — if neither video
+       decodes (missing file, codec fault) the operator still sees a dark
+       branded background rather than black. */
+    #bg-fallback {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(46,108,246,0.28), transparent 60%),
+        radial-gradient(ellipse at 78% 80%, rgba(242,145,53,0.18), transparent 60%),
+        linear-gradient(180deg, #05070b 0%, #02040e 100%);
     }
 
-    .panel {
+    /* Loading-state scrim over the boot video so the center text is
+       readable. The unavailable state uses NO scrim — the video is the
+       whole message. */
+    #scrim-loading {
       position: fixed;
-      top: 50%; left: 50%;
+      inset: 0;
+      z-index: 1;
+      background: radial-gradient(ellipse at center,
+                    rgba(5,7,11,0.30) 0%,
+                    rgba(5,7,11,0.80) 70%,
+                    #05070b 100%);
+      opacity: 0;
+      transition: opacity 400ms ease;
+      pointer-events: none;
+    }
+    #scrim-loading.visible { opacity: 1; }
+
+    /* ---- Device-ID pill (top overlay) -------------------------------
+       Matches the .kiosk-device-id-pill from templates/kiosk.html so the
+       visual identity is consistent between splash and kiosk. */
+    .device-overlay {
+      position: fixed;
+      top: 6vh;
+      left: 0;
+      right: 0;
+      text-align: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .device-pill {
+      display: inline-block;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 12px 28px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(1.1em, 2.4vh, 1.7em);
+      letter-spacing: 1.5px;
+      color: #ffffff;
+      text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
+    }
+
+    /* ---- Loading-state center panel ---------------------------------
+       Only shown while state === "loading". */
+    .loading-panel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 2;
+      z-index: 10;
       text-align: center;
       max-width: 720px;
       padding: 0 32px;
+      opacity: 0;
+      transition: opacity 400ms ease;
+      pointer-events: none;
     }
+    .loading-panel.visible { opacity: 1; }
     .brand {
       font-size: 54px;
       font-weight: 300;
       letter-spacing: 0.22em;
       margin: 0 0 12px 0;
       text-transform: uppercase;
+      color: #e6ecf2;
     }
     .brand strong {
       font-weight: 600;
@@ -65,10 +157,6 @@
       text-transform: uppercase;
       margin: 0 0 40px 0;
     }
-
-    .state { display: none; }
-    .state.active { display: block; }
-
     .spinner {
       display: inline-block;
       width: 56px; height: 56px;
@@ -79,7 +167,6 @@
       margin: 12px 0 24px 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .msg {
       font-size: 20px;
       color: #c2cedb;
@@ -92,130 +179,217 @@
       margin-top: 12px;
       letter-spacing: 0.04em;
     }
-
-    #state-unavailable .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      color: #f3a94a;
-      font-weight: 300;
-    }
-    #state-unavailable .msg strong {
-      color: #f3a94a;
-      font-weight: 600;
-    }
-    .hint {
-      margin-top: 28px;
-      padding: 14px 22px;
-      display: inline-block;
-      border: 1px solid rgba(126, 200, 255, 0.25);
-      border-radius: 8px;
-      color: #8aa0b8;
-      font-size: 14px;
-      letter-spacing: 0.04em;
-      background: rgba(10, 18, 28, 0.55);
-    }
-    .hint code {
-      color: #7ec8ff;
-      font-family: "SF Mono", Menlo, Consolas, monospace;
-    }
   </style>
 </head>
 <body>
-  <video id="bg-video" autoplay muted loop playsinline>
+  <!-- Last-resort branded background, never animated, behind everything -->
+  <div id="bg-fallback"></div>
+
+  <!-- Boot video — shown in loading state -->
+  <video id="video-loading" class="bg-video"
+         autoplay muted loop playsinline preload="auto">
     <source src="file:///opt/skytrack/static/video/SkyTrack%20Boot%20Screen-V1.mp4" type="video/mp4">
   </video>
-  <div id="scrim"></div>
 
-  <div class="panel">
+  <!-- Service-unavailable video — shown when backend is down -->
+  <video id="video-unavailable" class="bg-video"
+         autoplay muted loop playsinline preload="auto">
+    <source src="file:///opt/skytrack/static/video/SkyTrack%20Service%20Unavail.mp4" type="video/mp4">
+  </video>
+
+  <div id="scrim-loading"></div>
+
+  <!-- Device-ID pill — always visible, populated by device_id.js -->
+  <div class="device-overlay">
+    <span class="device-pill" id="device-pill">
+      <span id="device-pill-text">SkyTrack</span>
+    </span>
+  </div>
+
+  <!-- Loading-state center card (hidden when state === "unavailable") -->
+  <div class="loading-panel" id="loading-panel">
     <h1 class="brand">Sky<strong>Track</strong></h1>
     <p class="tag">ADS-B Tracker · QDRN</p>
-
-    <div id="state-loading" class="state active">
-      <div class="spinner" aria-hidden="true"></div>
-      <p class="msg">Starting services…</p>
-      <p class="msg small" id="loading-detail">Initializing</p>
-    </div>
-
-    <div id="state-unavailable" class="state">
-      <div class="icon">&#9888;</div>
-      <p class="msg"><strong>Service not ready</strong></p>
-      <p class="msg small">SkyTrack is waiting for the core service to start.</p>
-      <p class="msg small">This screen will update automatically when it's available.</p>
-      <div class="hint">
-        Connect to <code>SkyTrack-Portal</code> Wi-Fi to complete setup
-      </div>
-    </div>
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="msg">Starting services…</p>
+    <p class="msg small" id="loading-detail">Initializing</p>
   </div>
+
+  <!-- device_id.js is written by firstboot.sh and install.sh step 8.
+       It assigns window.SKYTRACK_DEVICE_ID. Missing-file is tolerated
+       (the pill keeps its placeholder). -->
+  <script src="device_id.js" onerror="void 0"></script>
 
   <script>
     (function () {
       "use strict";
 
-      var HEALTH_URL = "http://127.0.0.1:8080/healthz";
-      var KIOSK_URL  = "http://127.0.0.1:8080/kiosk";
+      // ------------------------------------------------------------------
+      // Configuration
+      // ------------------------------------------------------------------
+      var HEALTH_URL      = "http://127.0.0.1:8080/healthz";
+      var KIOSK_URL       = "http://127.0.0.1:8080/kiosk";
+      var POLL_MS         = 750;     // /healthz cadence
+      var HTTP_TIMEOUT_MS = 1500;    // per-request timeout
+      var UNAVAILABLE_MS  = 60000;   // cold-boot grace before switching video
 
-      // Poll cadence + unavailable-state threshold
-      var POLL_MS          = 750;
-      var UNAVAILABLE_MS   = 60000;   // 60s of failure = show unavailable
-      var startedAt        = Date.now();
-      var pollCount        = 0;
+      // ------------------------------------------------------------------
+      // URL params — kiosk.js redirects here with ?from=kiosk when it
+      // loses the backend, and we want to jump straight to the unavailable
+      // state instead of sitting on the "Starting services…" card.
+      // ------------------------------------------------------------------
+      var queryStart = window.location.href.indexOf("?");
+      var params = queryStart >= 0 ? window.location.href.substring(queryStart + 1) : "";
+      var startedFromKiosk = /(^|&)from=kiosk(&|$)/.test(params);
 
-      var loading     = document.getElementById("state-loading");
-      var unavailable = document.getElementById("state-unavailable");
-      var detail      = document.getElementById("loading-detail");
-
-      function showLoading() {
-        loading.classList.add("active");
-        unavailable.classList.remove("active");
+      // ------------------------------------------------------------------
+      // Device-ID pill population
+      // ------------------------------------------------------------------
+      var pillText = document.getElementById("device-pill-text");
+      if (pillText && typeof window.SKYTRACK_DEVICE_ID === "string" && window.SKYTRACK_DEVICE_ID.length) {
+        pillText.textContent = window.SKYTRACK_DEVICE_ID;
       }
-      function showUnavailable() {
-        loading.classList.remove("active");
-        unavailable.classList.add("active");
+
+      // ------------------------------------------------------------------
+      // DOM refs
+      // ------------------------------------------------------------------
+      var videoLoading     = document.getElementById("video-loading");
+      var videoUnavailable = document.getElementById("video-unavailable");
+      var scrimLoading     = document.getElementById("scrim-loading");
+      var loadingPanel     = document.getElementById("loading-panel");
+      var detail           = document.getElementById("loading-detail");
+
+      // ------------------------------------------------------------------
+      // State machine
+      // ------------------------------------------------------------------
+      var STATE_LOADING     = "loading";
+      var STATE_UNAVAILABLE = "unavailable";
+      var state             = startedFromKiosk ? STATE_UNAVAILABLE : STATE_LOADING;
+      var startedAt         = Date.now();
+      var pollCount         = 0;
+      var redirecting       = false;
+
+      function setVisible(el, visible) {
+        if (!el) return;
+        if (visible) el.classList.add("visible");
+        else el.classList.remove("visible");
       }
 
+      function tryPlay(video) {
+        if (!video) return;
+        try {
+          var p = video.play();
+          if (p && typeof p.catch === "function") {
+            p.catch(function () { /* ignored — object-fit cover + fallback bg */ });
+          }
+        } catch (_e) { /* same */ }
+      }
+
+      function pauseVideo(video) {
+        if (!video) return;
+        try { video.pause(); } catch (_e) {}
+      }
+
+      function applyState() {
+        if (state === STATE_LOADING) {
+          setVisible(videoLoading, true);
+          setVisible(videoUnavailable, false);
+          setVisible(scrimLoading, true);
+          setVisible(loadingPanel, true);
+          tryPlay(videoLoading);
+          pauseVideo(videoUnavailable);
+        } else {
+          // unavailable
+          setVisible(videoLoading, false);
+          setVisible(videoUnavailable, true);
+          setVisible(scrimLoading, false);
+          setVisible(loadingPanel, false);
+          pauseVideo(videoLoading);
+          tryPlay(videoUnavailable);
+        }
+      }
+
+      function gotoLoading() {
+        if (state === STATE_LOADING) return;
+        state = STATE_LOADING;
+        applyState();
+      }
+      function gotoUnavailable() {
+        if (state === STATE_UNAVAILABLE) return;
+        state = STATE_UNAVAILABLE;
+        applyState();
+      }
+
+      // ------------------------------------------------------------------
+      // /healthz polling (runs in both states, forever, until we redirect)
+      // ------------------------------------------------------------------
       function poll() {
+        if (redirecting) return;
         pollCount += 1;
-        detail.textContent = "Attempt " + pollCount;
+        if (detail) detail.textContent = "Attempt " + pollCount;
 
         var elapsed = Date.now() - startedAt;
-        if (elapsed >= UNAVAILABLE_MS) showUnavailable();
 
-        // AbortController to avoid piling up pending requests
-        var controller = new AbortController();
-        var t = setTimeout(function () { controller.abort(); }, 1500);
+        // Cold-boot grace: after UNAVAILABLE_MS of failure, switch to the
+        // service-unavailable video. A reload from a crashed /kiosk skips
+        // the grace entirely (startedFromKiosk).
+        if (state === STATE_LOADING && elapsed >= UNAVAILABLE_MS) {
+          gotoUnavailable();
+        }
 
-        fetch(HEALTH_URL, { cache: "no-store", signal: controller.signal })
+        var controller = null;
+        var timeoutId  = null;
+        if (typeof AbortController === "function") {
+          controller = new AbortController();
+          timeoutId  = setTimeout(function () { controller.abort(); }, HTTP_TIMEOUT_MS);
+        }
+
+        var opts = { cache: "no-store" };
+        if (controller) opts.signal = controller.signal;
+
+        fetch(HEALTH_URL, opts)
           .then(function (r) {
-            clearTimeout(t);
-            if (!r.ok) throw new Error("http " + r.status);
+            if (timeoutId) clearTimeout(timeoutId);
+            if (!r || !r.ok) throw new Error("http " + (r ? r.status : "?"));
             return r.json().catch(function () { return {}; });
           })
           .then(function () {
             // Healthy — hand off to the real kiosk route.
+            redirecting = true;
             window.location.replace(KIOSK_URL);
           })
           .catch(function () {
-            clearTimeout(t);
-            // Still unhealthy — stay on splash, poll again.
-            // If we recover after showing unavailable, bounce back to loading.
-            if (elapsed < UNAVAILABLE_MS) showLoading();
+            if (timeoutId) clearTimeout(timeoutId);
+            // Still unhealthy — keep polling. Don't switch back to the
+            // loading state from unavailable; only the grace-period check
+            // above controls the forward direction.
             setTimeout(poll, POLL_MS);
           });
       }
 
-      // Suppress context menu, drag, text selection, pinch/zoom
+      // ------------------------------------------------------------------
+      // Input lockdown — no right-click, no selection, no keyboard escape.
+      // Chromium --kiosk blocks most of this already; belt-and-braces.
+      // ------------------------------------------------------------------
       ["contextmenu", "dragstart", "selectstart", "gesturestart"].forEach(function (ev) {
         document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
       });
       document.addEventListener("keydown", function (e) {
-        // Block F5/Ctrl-R/Ctrl-W/etc. — kiosk mode blocks most but belt-and-braces
         var k = e.key;
-        if (k === "F5" || (e.ctrlKey && (k === "r" || k === "R" || k === "w" || k === "W" || k === "t" || k === "T" || k === "n" || k === "N" || k === "l" || k === "L"))) {
+        if (
+          k === "F5" ||
+          (e.ctrlKey && (k === "r" || k === "R" || k === "w" || k === "W" ||
+                         k === "t" || k === "T" || k === "n" || k === "N" ||
+                         k === "l" || k === "L"))
+        ) {
           e.preventDefault();
         }
       });
 
-      // Kick off polling immediately
+      // ------------------------------------------------------------------
+      // Boot
+      // ------------------------------------------------------------------
+      applyState();
       poll();
     })();
   </script>

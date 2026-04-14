@@ -2,7 +2,12 @@
 Description=SkyTrack Portal v2 — appliance kiosk display (owns tty1)
 Documentation=https://github.com/qdrnow/skytrack
 After=skytrack-app.service systemd-user-sessions.service
-Requires=skytrack-app.service
+# IMPORTANT: Wants= (not Requires=) — the display must come up independently
+# of the backend. If skytrack-app has failed or is still starting, xinit must
+# still launch and show the branded splash page. The splash polls /healthz
+# itself and transitions to /kiosk the moment the backend becomes available.
+# Coupling display to app with Requires= was the previous black-screen bug.
+Wants=skytrack-app.service
 Conflicts=getty@tty1.service
 ConditionPathExists=!/boot/firmware/skytrack-safe-mode
 
@@ -29,6 +34,8 @@ WorkingDirectory=/home/skytrack-kiosk
 ExecStart=/usr/bin/xinit /opt/skytrack/kiosk/xinitrc -- /usr/bin/X :0 vt1 -nolisten tcp -nocursor
 Restart=always
 RestartSec=2
+# Don't let a hard crash-loop wedge the unit permanently — always come back.
+StartLimitIntervalSec=0
 SyslogIdentifier=skytrack-display
 
 [Install]

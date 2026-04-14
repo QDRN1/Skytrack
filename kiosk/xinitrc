@@ -4,6 +4,15 @@
 # Runs inside xinit as skytrack-kiosk on tty1/vt1. Starts openbox, disables
 # screen blanking, hides the cursor, then loops Chromium in kiosk mode so a
 # crash never exposes the X root or a Linux desktop.
+#
+# This script has a strict no-black-screen contract. At every step where
+# something could fail, we fall back to a still-branded state rather than
+# showing an empty root window or a Chromium default error page:
+#
+#   * Splash file missing          → fall back to /usr/share/skytrack/splash-fallback.html
+#   * Splash fallback missing      → write a minimal inline HTML to /tmp
+#   * Chromium binary missing      → xsetroot paints dark branded, retries
+#   * Chromium crashes             → while-true relaunches, same splash URL
 # =============================================================================
 
 set -u
@@ -17,18 +26,84 @@ xset -dpms      || true
 xset s off      || true
 xset s noblank  || true
 
+# Paint the X root a dark brand color immediately. If anything downstream
+# (splash, chromium) takes a beat to appear, we're not on a black or
+# default-gray X root while the user waits.
+xsetroot -solid "#05070b" 2>/dev/null || true
+
 # Hide mouse cursor immediately and whenever idle
 unclutter -idle 0 -root >/dev/null 2>&1 &
 
-# Local branded splash — polls /healthz, redirects to /kiosk when ready,
-# switches to "service unavailable" after a timeout. Served via file:// so it
-# works even before skytrack-app is listening.
-SPLASH_URL="file:///opt/skytrack/static/splash/index.html"
+# ---------------------------------------------------------------------------
+# Resolve the splash URL. We have three layers of fallback so Chromium
+# NEVER loads a "file not found" chrome error page.
+#
+#   1. /opt/skytrack/static/splash/index.html   (the branded splash)
+#   2. /usr/share/skytrack/splash-fallback.html (written by installer)
+#   3. /tmp/skytrack-emergency-splash.html      (inline, generated here)
+# ---------------------------------------------------------------------------
+PRIMARY_SPLASH="/opt/skytrack/static/splash/index.html"
+SYSTEM_FALLBACK="/usr/share/skytrack/splash-fallback.html"
+EMERGENCY_FALLBACK="/tmp/skytrack-emergency-splash.html"
 
+if [ -r "$PRIMARY_SPLASH" ]; then
+  SPLASH_URL="file://$PRIMARY_SPLASH"
+elif [ -r "$SYSTEM_FALLBACK" ]; then
+  SPLASH_URL="file://$SYSTEM_FALLBACK"
+else
+  # Generate a minimal self-contained branded HTML on the fly. Polls
+  # /healthz and redirects to /kiosk when the backend is alive, otherwise
+  # shows a dark branded card. No external resources — everything inline.
+  cat >"$EMERGENCY_FALLBACK" <<'EMERGENCY_EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SkyTrack</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;width:100%;
+    background:radial-gradient(ellipse at 30% 20%,rgba(46,108,246,.28),transparent 60%),
+               radial-gradient(ellipse at 78% 80%,rgba(242,145,53,.18),transparent 60%),
+               linear-gradient(180deg,#05070b 0%,#02040e 100%);
+    color:#e6ecf2;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    overflow:hidden;cursor:none;user-select:none;-webkit-user-select:none;}
+  .card{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+  h1{font-size:54px;font-weight:300;letter-spacing:.22em;margin:0 0 10px;text-transform:uppercase;}
+  h1 strong{font-weight:600;color:#7ec8ff;}
+  .tag{font-size:16px;letter-spacing:.16em;color:#8aa0b8;text-transform:uppercase;margin:0 0 28px;}
+  .msg{font-size:18px;color:#c2cedb;margin:12px 0 0;}
+  .pill{position:fixed;top:6vh;left:0;right:0;text-align:center;}
+  .pill span{display:inline-block;background:rgba(0,0,0,.55);
+    border:1px solid rgba(255,255,255,.18);border-radius:999px;
+    padding:12px 28px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:1.4em;letter-spacing:1.5px;color:#fff;
+    text-shadow:0 1px 12px rgba(0,0,0,.85);}
+</style></head><body>
+<div class="pill"><span id="pill">SkyTrack</span></div>
+<div class="card">
+  <h1>Sky<strong>Track</strong></h1>
+  <p class="tag">ADS-B Tracker · QDRN</p>
+  <p class="msg">Starting services&hellip;</p>
+</div>
+<script>
+(function(){
+  function poll(){
+    fetch("http://127.0.0.1:8080/healthz",{cache:"no-store"})
+      .then(function(r){if(r&&r.ok)window.location.replace("http://127.0.0.1:8080/kiosk");
+                        else setTimeout(poll,1000);})
+      .catch(function(){setTimeout(poll,1000);});
+  }
+  poll();
+})();
+</script></body></html>
+EMERGENCY_EOF
+  SPLASH_URL="file://$EMERGENCY_FALLBACK"
+fi
+
+# ---------------------------------------------------------------------------
 # Resolve the Chromium binary — Raspberry Pi OS Bookworm installs it as
 # /usr/bin/chromium on recent builds but older packages ship
 # /usr/bin/chromium-browser. Try both in order so the appliance works across
 # OS revisions without a rebuild.
+# ---------------------------------------------------------------------------
 CHROMIUM=""
 for candidate in /usr/bin/chromium /usr/bin/chromium-browser chromium chromium-browser; do
   if command -v "$candidate" >/dev/null 2>&1; then
@@ -38,11 +113,9 @@ for candidate in /usr/bin/chromium /usr/bin/chromium-browser chromium chromium-b
 done
 
 if [ -z "$CHROMIUM" ]; then
-  # No Chromium at all — fall back to a minimal X client that paints the
-  # screen dark so the operator at least sees an intentional state instead
-  # of an uninitialized X root. The display service will Restart=always,
-  # so this loop still runs and will pick up chromium once it's installed.
-  xsetroot -solid "#05070b" 2>/dev/null || true
+  # No Chromium at all — keep the dark branded root (already painted above)
+  # and recheck every 10s so the operator eventually gets a kiosk once
+  # apt is fixed. The display service Restart=always keeps the loop alive.
   while true; do
     sleep 10
     for candidate in /usr/bin/chromium /usr/bin/chromium-browser chromium chromium-browser; do

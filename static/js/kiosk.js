@@ -2,7 +2,8 @@
  *
  * Drives /kiosk — the fullscreen Chromium target running on the Pi's HDMI
  * output. This is the ENTIRE operator experience on the appliance; it never
- * navigates to another page, never scrolls, never shows browser chrome.
+ * navigates to another page (except to fall back to the file:// splash if
+ * the backend dies at runtime), never scrolls, never shows browser chrome.
  *
  * Three visual stages only:
  *
@@ -23,6 +24,14 @@
  *
  * Status polling checks /api/auth/status on a short interval so a fresh
  * setup finish on the admin's phone transitions the kiosk automatically.
+ *
+ * RUNTIME WATCHDOG:
+ * In parallel with everything else we poll /healthz every 5s. If the
+ * backend stops answering for HEALTH_FALLBACK_MS we navigate back to the
+ * file:// splash (with ?from=kiosk so it jumps straight to the "service
+ * unavailable" video state). The splash continues polling and will bounce
+ * back to /kiosk the moment the backend recovers. Without this, a runtime
+ * app crash would leave the kiosk rendering stale data forever.
  */
 (function () {
   'use strict';
@@ -31,14 +40,20 @@
   const CARDS_URL   = '/api/dashboard/cards';
   const WEATHER_URL = '/api/weather';
   const DEVICE_URL  = '/api/device';
+  const HEALTH_URL  = '/healthz';
+  const SPLASH_URL  = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
 
-  const STATUS_POLL_MS        = 1500;  // only runs in setup-video stage
+  const STATUS_POLL_MS        = 1500;   // only runs in setup-video stage
   const OP_CARDS_POLL_MS      = 5000;
   const OP_WEATHER_POLL_MS    = 5 * 60 * 1000;
   const OP_DEVICE_POLL_MS     = 60 * 1000;
   const SETUP_VIDEO_FAIL_MS   = 2500;
   const BOOT_VIDEO_FAIL_MS    = 3000;
   const BOOT_VIDEO_HARD_MS    = 30000;
+
+  // Runtime watchdog — fall back to splash if /healthz is down > this long.
+  const HEALTH_POLL_MS        = 5000;
+  const HEALTH_FALLBACK_MS    = 30000;
 
   // ------------------------------------------------------------------
   // State
@@ -51,7 +66,13 @@
   let opWxTimer     = null;
   let opDevTimer    = null;
   let opClockTimer  = null;
+  let healthTimer   = null;
   let particles     = null;
+
+  // Watchdog — timestamp of last successful /healthz response.
+  // Seeded to now() so a slow first response doesn't trigger a bounce.
+  let lastHealthyAt = Date.now();
+  let fellBack      = false;
 
   // ------------------------------------------------------------------
   // DOM helpers
@@ -381,6 +402,48 @@
   }
 
   // ------------------------------------------------------------------
+  // Runtime healthz watchdog — fall back to splash if the backend dies.
+  // ------------------------------------------------------------------
+  async function checkHealth() {
+    if (fellBack) return;
+    let ok = false;
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const to  = ctl ? setTimeout(() => ctl.abort(), 2500) : null;
+      const r = await fetch(HEALTH_URL, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: ctl ? ctl.signal : undefined,
+      });
+      if (to) clearTimeout(to);
+      if (r && r.ok) ok = true;
+    } catch (_e) { /* treated as failure */ }
+
+    if (ok) {
+      lastHealthyAt = Date.now();
+      return;
+    }
+    const down = Date.now() - lastHealthyAt;
+    if (down >= HEALTH_FALLBACK_MS) {
+      fellBack = true;
+      // Clean up before we navigate away, otherwise the splash inherits
+      // leftover timers via back/forward cache.
+      stopStatusPolling();
+      stopOperationalTimers();
+      stopParticles();
+      if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
+      try { window.location.replace(SPLASH_URL); }
+      catch (_e) { window.location.href = SPLASH_URL; }
+    }
+  }
+
+  function startHealthWatchdog() {
+    if (healthTimer) return;
+    lastHealthyAt = Date.now();
+    healthTimer = setInterval(checkHealth, HEALTH_POLL_MS);
+  }
+
+  // ------------------------------------------------------------------
   // Canvas particles (only used as a setup-state fallback)
   // ------------------------------------------------------------------
   function startParticles() {
@@ -476,7 +539,8 @@
     const initiallyConfigured = document.body.dataset.configured === '1';
     if (initiallyConfigured) {
       // Already configured — play the boot video once, then settle into the
-      // operational stage. Never redirect anywhere.
+      // operational stage. Never redirect anywhere (unless the runtime
+      // watchdog trips).
       showBootVideo();
     } else {
       // First-boot — loop the setup video and poll for completion.
@@ -485,6 +549,8 @@
       // Immediate check so a fast wizard finish doesn't linger for a tick.
       checkStatus();
     }
+    // Runtime watchdog runs in every stage.
+    startHealthWatchdog();
   });
 
   // If Chromium is hard-reloaded mid-session, clean up any timers first.
@@ -492,5 +558,6 @@
     stopStatusPolling();
     stopOperationalTimers();
     stopParticles();
+    if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   });
 })();

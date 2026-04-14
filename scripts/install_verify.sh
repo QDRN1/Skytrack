@@ -12,10 +12,20 @@
 #   • config.yaml renderable
 #   • systemd units enabled (or at least loaded) for app/network/ingest/hardware/firstboot
 #   • app responds to /healthz on 127.0.0.1:8080
+#   • /kiosk responds with HTML
 #   • hostapd / dnsmasq / dhcpcd installed (we don't require them active here)
 #   • vendor JS present in static/vendor/
+#   • appliance lockdown (plymouth, cmdline, ttys, safe-mode marker, chromium)
+#   • splash integrity — primary + fallback + device_id.js + videos
+#   • RUNTIME: skytrack-display.service active, Xorg running, Chromium running
+#   • OTA workspace + SSH known_hosts set up for skytrack service user
+#   • polkit rule installed
 #
-# This script is read-only — it never modifies state.
+# This script is read-only — it never modifies persistent state. It WILL
+# start skytrack-display.service if it's not active (so that the runtime
+# checks can actually observe X and Chromium), which takes over tty1.
+# Pass --no-runtime to skip that (e.g. when running over SSH in a dev shell
+# where grabbing tty1 is undesired).
 
 set -uo pipefail
 
@@ -25,6 +35,13 @@ LOG_DIR="${SKYTRACK_LOG_DIR:-/var/log/skytrack}"
 DB_PATH="${SKYTRACK_DB_PATH:-$DATA_DIR/skytrack.db}"
 VENV_DIR="${SKYTRACK_VENV:-$REPO_DIR/.venv}"
 SKYTRACK_USER="${SKYTRACK_USER:-skytrack}"
+
+RUN_RUNTIME=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-runtime) RUN_RUNTIME=0 ;;
+  esac
+done
 
 PASS=0
 FAIL=0
@@ -95,13 +112,29 @@ fi
 
 # ---------------------------------------------------------------------------
 hdr "systemd units"
-for unit in skytrack-app.service skytrack-network.service skytrack-ingest.service skytrack-hardware.service skytrack-firstboot.service; do
+for unit in skytrack-app.service skytrack-network.service skytrack-ingest.service skytrack-hardware.service skytrack-firstboot.service skytrack-display.service; do
   if systemctl list-unit-files 2>/dev/null | grep -q "^$unit"; then
     ok "$unit installed"
   else
     fail "$unit not installed"
   fi
 done
+
+# The display service MUST use Wants=skytrack-app.service (not Requires=),
+# otherwise a backend failure takes the whole display offline → black screen.
+DISPLAY_UNIT_FILE=/etc/systemd/system/skytrack-display.service
+if [[ -f "$DISPLAY_UNIT_FILE" ]]; then
+  if grep -qE '^Requires=skytrack-app\.service' "$DISPLAY_UNIT_FILE"; then
+    fail "skytrack-display.service uses Requires=skytrack-app.service (should be Wants=)"
+  else
+    ok "skytrack-display.service does not hard-require skytrack-app"
+  fi
+  if grep -qE '^Wants=skytrack-app\.service' "$DISPLAY_UNIT_FILE"; then
+    ok "skytrack-display.service Wants=skytrack-app.service"
+  else
+    fail "skytrack-display.service missing Wants=skytrack-app.service"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 hdr "app health"
@@ -157,11 +190,33 @@ else
   fail "no chromium binary found (neither 'chromium' nor 'chromium-browser')"
 fi
 
+# ---- Splash integrity — primary + fallback + device_id + videos ------------
 if [[ -f "$REPO_DIR/static/splash/index.html" ]]; then
   ok "branded splash page present"
 else
   fail "missing $REPO_DIR/static/splash/index.html"
 fi
+if [[ -f /usr/share/skytrack/splash-fallback.html ]]; then
+  ok "system fallback splash present (/usr/share/skytrack/splash-fallback.html)"
+else
+  fail "missing /usr/share/skytrack/splash-fallback.html (run configure_appliance.sh)"
+fi
+if [[ -f "$REPO_DIR/static/splash/device_id.js" ]]; then
+  if grep -q 'SKYTRACK_DEVICE_ID' "$REPO_DIR/static/splash/device_id.js"; then
+    ok "splash device_id.js present"
+  else
+    fail "splash device_id.js exists but is malformed"
+  fi
+else
+  fail "missing $REPO_DIR/static/splash/device_id.js"
+fi
+for video in "SkyTrack Boot Screen-V1.mp4" "SkyTrack Service Unavail.mp4"; do
+  if [[ -s "$REPO_DIR/static/video/$video" ]]; then
+    ok "video: $video"
+  else
+    fail "missing $REPO_DIR/static/video/$video"
+  fi
+done
 
 if [[ -f "$REPO_DIR/kiosk/xinitrc" ]]; then
   ok "kiosk xinitrc present"
@@ -189,7 +244,7 @@ for f in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
 done
 
 # ---------------------------------------------------------------------------
-hdr "OTA workspace (slice 8)"
+hdr "OTA workspace"
 OTA_WS="$DATA_DIR/ota-workspace"
 if [[ -d "$OTA_WS" ]]; then
   ok "ota-workspace dir present"
@@ -203,8 +258,26 @@ else
 fi
 if [[ -f "$DATA_DIR/.ssh/known_hosts" ]]; then
   ok "git known_hosts writable at $DATA_DIR/.ssh/known_hosts"
+  kh_owner="$(stat -c '%U' "$DATA_DIR/.ssh/known_hosts" 2>/dev/null || echo '')"
+  if [[ "$kh_owner" == "$SKYTRACK_USER" ]]; then
+    ok "known_hosts owned by $SKYTRACK_USER"
+  else
+    fail "known_hosts owned by '$kh_owner' (expected $SKYTRACK_USER)"
+  fi
+  kh_mode="$(stat -c '%a' "$DATA_DIR/.ssh/known_hosts" 2>/dev/null || echo '')"
+  if [[ "$kh_mode" == "600" ]]; then
+    ok "known_hosts mode 600"
+  else
+    fail "known_hosts mode is '$kh_mode' (expected 600)"
+  fi
 else
   fail "$DATA_DIR/.ssh/known_hosts missing — OTA SSH remotes will fail"
+fi
+ssh_dir_owner="$(stat -c '%U' "$DATA_DIR/.ssh" 2>/dev/null || echo '')"
+if [[ "$ssh_dir_owner" == "$SKYTRACK_USER" ]]; then
+  ok ".ssh dir owned by $SKYTRACK_USER"
+else
+  fail ".ssh dir owned by '$ssh_dir_owner' (expected $SKYTRACK_USER)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -216,15 +289,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-hdr "frontend assets (slice 9)"
+hdr "frontend assets"
 for f in static/js/particles.js static/js/dashboard.js static/js/settings.js \
-         static/css/portal.css templates/dashboard.html templates/base.html; do
+         static/js/kiosk.js static/css/portal.css templates/dashboard.html \
+         templates/base.html templates/kiosk.html; do
   if [[ -s "$REPO_DIR/$f" ]]; then
     ok "$f"
   else
     fail "$f missing or empty"
   fi
 done
+
+# Runtime watchdog must be wired into kiosk.js or a crashed backend never
+# unsticks the display.
+if grep -q 'HEALTH_FALLBACK_MS' "$REPO_DIR/static/js/kiosk.js" 2>/dev/null; then
+  ok "kiosk.js has runtime healthz watchdog"
+else
+  fail "kiosk.js missing runtime healthz watchdog"
+fi
 
 if command -v plymouth-set-default-theme >/dev/null 2>&1; then
   if plymouth-set-default-theme 2>/dev/null | grep -q '^skytrack$'; then
@@ -258,6 +340,80 @@ for f in socket.io.min.js chart.min.js leaflet.js leaflet.css; do
     fail "vendor/$f missing or empty (run scripts/fetch_vendor.sh)"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# RUNTIME validation — X, Chromium, splash render path.
+#
+# Starts skytrack-display.service if it isn't already active, waits up to
+# 20s for it to come up, and then asserts Xorg + Chromium are running. This
+# is the real integration test: if any of the previous static checks is
+# wrong in a way that breaks the appliance on reboot, these runtime checks
+# catch it NOW at install time, not when the operator plugs in the HDMI.
+# ---------------------------------------------------------------------------
+if [[ "$RUN_RUNTIME" -eq 1 ]]; then
+  hdr "runtime (X + Chromium + splash render)"
+
+  if ! systemctl is-active --quiet skytrack-display.service; then
+    echo "  [..] starting skytrack-display.service"
+    systemctl start skytrack-display.service >/dev/null 2>&1 || true
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      systemctl is-active --quiet skytrack-display.service && break
+      sleep 1
+    done
+  fi
+
+  if systemctl is-active --quiet skytrack-display.service; then
+    ok "skytrack-display.service active"
+  else
+    fail "skytrack-display.service failed to start"
+  fi
+
+  # Give xinit + openbox + chromium a moment to come up after the unit
+  # reaches 'active'. Chromium cold-starts in a couple of seconds.
+  sleep 4
+
+  if pgrep -x Xorg >/dev/null 2>&1 || pgrep -x X >/dev/null 2>&1; then
+    ok "X server running"
+  else
+    fail "no X server process found (expected Xorg or X)"
+  fi
+
+  if pgrep -f 'chromium' >/dev/null 2>&1 || pgrep -f 'chromium-browser' >/dev/null 2>&1; then
+    ok "Chromium running"
+  else
+    fail "no chromium process found"
+  fi
+
+  # /healthz must answer — this is what the splash polls to hand off.
+  if command -v curl >/dev/null 2>&1; then
+    hz_status=""
+    for _i in 1 2 3 4 5; do
+      hz_status="$(curl -o /dev/null -s -w '%{http_code}' --max-time 3 http://127.0.0.1:8080/healthz || true)"
+      [[ "$hz_status" == "200" ]] && break
+      sleep 1
+    done
+    if [[ "$hz_status" == "200" ]]; then
+      ok "/healthz -> 200"
+    else
+      fail "/healthz did not respond 200 (got '$hz_status')"
+    fi
+  fi
+
+  # Splash must reference device_id.js and the unavailable video by name.
+  if grep -q 'device_id\.js' "$REPO_DIR/static/splash/index.html" 2>/dev/null; then
+    ok "splash references device_id.js"
+  else
+    fail "splash missing device_id.js reference"
+  fi
+  if grep -q 'SkyTrack%20Service%20Unavail\.mp4' "$REPO_DIR/static/splash/index.html" 2>/dev/null; then
+    ok "splash references service-unavailable video"
+  else
+    fail "splash missing service-unavailable video reference"
+  fi
+else
+  hdr "runtime"
+  ok "skipped (--no-runtime)"
+fi
 
 # ---------------------------------------------------------------------------
 hdr "summary"
