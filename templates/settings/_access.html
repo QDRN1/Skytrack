@@ -5,8 +5,9 @@
     <header class="card-header">
       <h2>Admin PIN</h2>
       <p class="muted">
-        Your PIN is the only credential for admin actions. Pick a 4–8 digit
-        number you'll remember. You can change it here any time.
+        The Admin PIN is the <strong>only</strong> credential needed to unlock Settings,
+        Network, Integrations, Updates, and Logs. There is no username, no
+        password — just 4 to 8 digits you'll remember. Change it here any time.
       </p>
     </header>
 
@@ -14,13 +15,13 @@
           data-endpoint="/api/settings/access/pin"
           data-section="access">
       <div class="field">
-        <label for="ax-pin">New admin PIN <span class="muted small">(4–8 digits)</span></label>
+        <label for="ax-pin">New Admin PIN <span class="muted small">(4 to 8 digits, numbers only)</span></label>
         <input id="ax-pin" name="pin" type="password" inputmode="numeric"
                pattern="[0-9]{4,8}" minlength="4" maxlength="8"
-               autocomplete="off" required>
+               autocomplete="off" required placeholder="e.g. 1234">
       </div>
       <div class="field">
-        <label for="ax-pin2">Confirm new PIN</label>
+        <label for="ax-pin2">Re-enter the same PIN</label>
         <input id="ax-pin2" name="pin_confirm" type="password" inputmode="numeric"
                pattern="[0-9]{4,8}" minlength="4" maxlength="8"
                autocomplete="off" required data-confirm-of="pin">
@@ -34,40 +35,50 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Session &amp; lockout</h2>
-      <p class="muted">How long admin stays signed in and how many failed attempts trigger a temporary lockout.</p>
+      <h2>Sign-in session &amp; lockout</h2>
+      <p class="muted">
+        Controls how long you stay signed in after entering your PIN, and how
+        many wrong PIN attempts trigger a short automatic lockout (to slow
+        down anyone trying to guess the PIN).
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-session"
           data-endpoint="/api/settings/access/session"
           data-section="access">
       <div class="field">
-        <label for="ax-timeout">Session timeout (hours, sliding)</label>
+        <label for="ax-timeout">Keep me signed in for (hours)</label>
         <input id="ax-timeout" name="session_timeout_hours" type="number"
                min="1" max="72" value="{{ config.session_timeout_hours or 2 }}">
+        <p class="muted small">Sliding window — each admin action resets the timer.</p>
       </div>
       <div class="field">
-        <label for="ax-attempts">Failed-login attempt limit</label>
+        <label for="ax-attempts">Lock out after this many wrong PINs</label>
         <input id="ax-attempts" name="lockout_max_attempts" type="number"
                min="1" max="50" value="{{ config.lockout_max_attempts or 5 }}">
       </div>
       <div class="field">
-        <label for="ax-window">Lockout duration (seconds)</label>
+        <label for="ax-window">Lockout length (seconds)</label>
         <input id="ax-window" name="lockout_window_seconds" type="number"
                min="30" max="86400" step="30"
                value="{{ config.lockout_window_seconds or 300 }}">
+        <p class="muted small">How long admin sign-in is blocked after hitting the attempt limit.</p>
       </div>
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save Session Policy</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save sign-in policy</button>
       </footer>
     </form>
   </div>
 
   <div class="settings-card subtle">
     <header class="card-header">
-      <h2>Hotspot password</h2>
-      <p class="muted">Manage the WPA2 password from the Network section so you can see and regenerate it together with the SSID.</p>
+      <h2>SkyTrack-Portal hotspot password</h2>
+      <p class="muted">
+        The Wi-Fi password operators use to connect to the SkyTrack-Portal
+        network is managed in <em>Network → Hotspot</em> so you can see and
+        regenerate it together with the SSID.
+      </p>
     </header>
     <div class="card-body">
       <button type="button" class="btn btn-lg" data-jump-section="network">Open Network →</button>

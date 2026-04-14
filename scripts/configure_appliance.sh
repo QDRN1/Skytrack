@@ -381,7 +381,31 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# 7. Announce safe-mode availability (we never create the marker ourselves).
+# 7. Seed /etc/skytrack/display.env so xinitrc can apply the default
+#    rotation on first boot. SkyTrack ships in portrait mode (rotate right
+#    = 90°) unless the operator changes it in Settings → Display.
+# ---------------------------------------------------------------------------
+seed_display_env() {
+  local etc_dir="/etc/skytrack"
+  local etc_env="${etc_dir}/display.env"
+  mkdir -p "$etc_dir"
+  if [[ ! -f "$etc_env" ]]; then
+    log "seeding $etc_env (default rotation: 90 / right)"
+    cat >"$etc_env" <<'EOF'
+# Default SkyTrack display settings — install-time seed.
+# xinitrc prefers /var/lib/skytrack/display.env if present (written by
+# Settings → Display). This file is the fallback on a fresh install.
+SKYTRACK_DISPLAY_ROTATION=90
+SKYTRACK_DISPLAY_OUTPUT=HDMI-1
+EOF
+    chmod 0644 "$etc_env"
+  else
+    log "$etc_env already present — leaving operator-set value"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 8. Announce safe-mode availability (we never create the marker ourselves).
 # ---------------------------------------------------------------------------
 announce_safe_mode() {
   local dir="/boot/firmware"
@@ -396,6 +420,7 @@ mask_extra_gettys
 relax_xwrapper
 write_openbox_config
 write_fallback_splash
+seed_display_env
 announce_safe_mode
 
 log "appliance configuration complete"

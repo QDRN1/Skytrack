@@ -133,7 +133,8 @@
       if (fc) fc.innerHTML = '';
       return;
     }
-    set('#wx-temp', `${Math.round(w.current.temp_f)}°`);
+    const temp = w.current.temp_f;
+    set('#wx-temp', temp != null ? `${Math.round(temp)}°` : '—');
     const cond = w.current.condition || '—';
     set('#wx-cond', `${wxEmoji(cond)}  ${cond}`);
     const hi = w.current.high_f, lo = w.current.low_f;
@@ -145,20 +146,26 @@
     }
     const fc = document.getElementById('wx-forecast');
     if (fc) {
-      fc.innerHTML = (w.forecast || []).map(d => `
-        <div class="wx-day" title="${escape(d.condition || '')}">
-          <div class="wx-day-name">${escape(d.day)}</div>
-          <div class="wx-day-icon">${wxEmoji(d.condition)}</div>
-          <div class="wx-day-hilo">${Math.round(d.high_f)}° / ${Math.round(d.low_f)}°</div>
-        </div>
-      `).join('');
+      fc.innerHTML = (w.forecast || []).map(d => {
+        const dh = (d.high_f != null) ? `${Math.round(d.high_f)}°` : '—';
+        const dl = (d.low_f  != null) ? `${Math.round(d.low_f)}°`  : '—';
+        return `
+          <div class="wx-day" title="${escape(d.condition || '')}">
+            <div class="wx-day-name">${escape(d.day)}</div>
+            <div class="wx-day-icon">${wxEmoji(d.condition)}</div>
+            <div class="wx-day-hilo">${dh} / ${dl}</div>
+          </div>
+        `;
+      }).join('');
     }
     const stamp = document.getElementById('wx-stamp');
     if (stamp) {
       const parts = [];
+      if (w.provider && w.provider !== 'mock' && w.provider !== 'off') parts.push(w.provider);
       if (w.cached) parts.push('cached');
       if (w.offline) parts.push('offline');
-      if (w.mock) parts.push('mock data');
+      if (w.mock) parts.push('sample data');
+      if (w.provider === 'off') parts.push('disabled');
       if (w.last_update) {
         try {
           parts.push('updated ' + new Date(w.last_update).toLocaleTimeString([],
@@ -194,7 +201,17 @@
           tension: 0.3,
         }],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        resizeDelay: 150,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+        },
+      },
     });
   }
 

@@ -160,6 +160,31 @@ def _err(msg: str, status: int = 400):
     return jsonify({'ok': False, 'error': msg}), status
 
 
+def _write_display_env(cfg: dict) -> None:
+    """Write <data_dir>/display.env so xinitrc can pick up rotation/output
+    on the next display-service restart (or reboot). Lives in /var/lib so
+    the skytrack service user can write it without root or polkit.
+    """
+    try:
+        rotation = str(cfg.get('display_rotation') or '0')
+        output   = str(cfg.get('display_output') or 'HDMI-1')
+        data_dir = cfg.get('data_dir') or '/var/lib/skytrack'
+        path = os.path.join(data_dir, 'display.env')
+        os.makedirs(data_dir, exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            f.write('# Written by skytrack settings — do not edit by hand.\n')
+            f.write(f'SKYTRACK_DISPLAY_ROTATION={rotation}\n')
+            f.write(f'SKYTRACK_DISPLAY_OUTPUT={output}\n')
+        os.replace(tmp, path)
+        try:
+            os.chmod(path, 0o644)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.debug('display.env write skipped: %s', e)
+
+
 def _shell(args, timeout=10, env=None, cwd=None):
     """Run a command and return (ok, message). Never raises."""
     try:
@@ -265,10 +290,14 @@ def api_display():
 
     cfg.update(updates)
     _persist(updates)
+    # Mirror rotation/output to /etc/skytrack/display.env so xinitrc picks
+    # it up on the next display-service restart or reboot.
+    if 'display_rotation' in updates:
+        _write_display_env(cfg)
     logs_svc.log_portal('admin', 'settings_display_update', updates)
     return _ok({
         'config': {k: cfg.get(k) for k in _DISPLAY_KEYS},
-        'note': 'Some display settings apply on next reboot.',
+        'note': 'Rotation applies on next reboot.',
     })
 
 
@@ -1129,21 +1158,47 @@ def api_restart_network():
 @settings_bp.route('/api/settings/diagnostics/reboot', methods=['POST'])
 @ADMIN
 def api_reboot():
+    """Immediate reboot — schedules 3s delay so the HTTP response can flush.
+
+    We deliberately do NOT use `shutdown -r +1` here (which schedules a full
+    60-second delay and makes operators think the button "doesn't work").
+    Instead we spawn a detached background reboot after 3 seconds and
+    return 200 immediately so the UI can show its "rebooting…" state.
+    """
+    import subprocess
     logs_svc.log_portal('admin', 'reboot_requested', {})
-    ok, msg = _shell(['/sbin/shutdown', '-r', '+1'], timeout=5)
-    if not ok:
-        ok, msg = _shell(['shutdown', '-r', '+1'], timeout=5)
-    return jsonify({'ok': ok, 'message': msg or 'reboot scheduled in 1 minute'})
+    try:
+        subprocess.Popen(
+            ['/bin/sh', '-c', 'sleep 3; systemctl reboot || /sbin/reboot || shutdown -r now'],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return jsonify({'ok': True, 'message': 'rebooting in 3 seconds'})
+    except Exception as e:
+        logger.error('reboot spawn failed: %s', e)
+        return jsonify({'ok': False, 'message': f'reboot failed: {e}'}), 500
 
 
 @settings_bp.route('/api/settings/diagnostics/shutdown', methods=['POST'])
 @ADMIN
 def api_shutdown():
+    """Immediate power-off — same pattern as api_reboot."""
+    import subprocess
     logs_svc.log_portal('admin', 'shutdown_requested', {})
-    ok, msg = _shell(['/sbin/shutdown', '-h', '+1'], timeout=5)
-    if not ok:
-        ok, msg = _shell(['shutdown', '-h', '+1'], timeout=5)
-    return jsonify({'ok': ok, 'message': msg or 'shutdown scheduled in 1 minute'})
+    try:
+        subprocess.Popen(
+            ['/bin/sh', '-c', 'sleep 3; systemctl poweroff || /sbin/poweroff || shutdown -h now'],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return jsonify({'ok': True, 'message': 'shutting down in 3 seconds'})
+    except Exception as e:
+        logger.error('shutdown spawn failed: %s', e)
+        return jsonify({'ok': False, 'message': f'shutdown failed: {e}'}), 500
 
 
 # ===========================================================================

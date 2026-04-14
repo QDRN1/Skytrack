@@ -5,12 +5,13 @@
     <header class="card-header">
       <h2>Software updates</h2>
       <p class="muted">
-        SkyTrack fetches new releases from
+        SkyTrack keeps itself up to date from
         <code>{{ config.ota_repo_url or 'github.com/QDRN1/Skytrack' }}</code>
-        on the <code>{{ config.ota_branch or 'main' }}</code> branch. Checks
-        and applies run in an isolated workspace at
-        <code>{{ config.ota_workspace_dir or '/var/lib/skytrack/ota-workspace' }}</code>
-        — your <code>/opt/skytrack</code> install only gets updated on "Apply".
+        (branch <code>{{ config.ota_branch or 'main' }}</code>). <em>Check for
+        updates</em> is always safe and non-destructive. <em>Apply updates</em>
+        copies the new code into <code>/opt/skytrack</code> and restarts the
+        app — expect about 10–30 seconds of downtime, then the page reloads
+        automatically. Your config, PIN, database, and backups are preserved.
       </p>
     </header>
 
@@ -118,30 +119,34 @@
 
   <div class="settings-card subtle">
     <header class="card-header">
-      <h2>Power</h2>
-      <p class="muted">Restart the app, the network stack, or the whole device.</p>
+      <h2>Power &amp; restart</h2>
+      <p class="muted">
+        Restart the SkyTrack app, restart the network stack, or reboot /
+        power off the whole device. Reboot and Shut down take effect about
+        3 seconds after you confirm.
+      </p>
     </header>
     <div class="card-body">
       <div class="action-row">
         <button type="button" class="btn btn-lg" id="btn-restart-app"
-                data-confirm-title="Restart SkyTrack app?"
-                data-confirm-body="The web UI will be unavailable for ~10 seconds.">
+                data-confirm-title="Restart the SkyTrack app?"
+                data-confirm-body="Only the Flask app restarts — the device stays up. The web UI is unavailable for about 10 seconds, then the page reloads.">
           Restart app
         </button>
         <button type="button" class="btn btn-lg" id="btn-restart-network"
-                data-confirm-title="Restart network stack?"
-                data-confirm-body="WiFi, hotspot, and cellular interfaces will bounce. You may briefly lose this session.">
+                data-confirm-title="Restart the network stack?"
+                data-confirm-body="Wi-Fi, hotspot, and cellular interfaces will briefly drop and come back up. You may lose this session if you're connected over the hotspot.">
           Restart network
         </button>
         <button type="button" class="btn btn-lg btn-warn" id="btn-reboot"
-                data-confirm-title="Reboot the device?"
-                data-confirm-body="The Raspberry Pi will reboot. This usually takes about a minute.">
-          Reboot
+                data-confirm-title="Reboot this SkyTrack?"
+                data-confirm-body="The Raspberry Pi will reboot immediately. Expect about one minute of downtime before the dashboard is available again.">
+          Reboot now
         </button>
         <button type="button" class="btn btn-lg btn-danger" id="btn-shutdown"
-                data-confirm-title="Shut down the device?"
-                data-confirm-body="The Pi will power off. You'll need physical access to power it back on.">
-          Shut down
+                data-confirm-title="Power off this SkyTrack?"
+                data-confirm-body="The Raspberry Pi will power itself off. You will need physical access to turn it back on.">
+          Power off
         </button>
       </div>
     </div>

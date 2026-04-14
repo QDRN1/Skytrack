@@ -5,11 +5,12 @@
     <header class="card-header">
       <h2>Connectivity</h2>
       <p class="muted">
-        Three independent roles share this Pi: a <b>Cellular</b> modem (if
-        installed) carries outbound traffic; the <b>WiFi client</b> can join a
-        nearby network on <code>wlan0</code>; and the <b>SkyTrack-Portal
-        hotspot</b> uses <code>wlan0</code> as an access point for operators.
-        WiFi client and hotspot can't both run at once — they share the radio.
+        How this SkyTrack reaches the internet and how operators reach it. Three
+        independent roles share the same Pi: <b>Cellular</b> (optional modem,
+        outbound only), <b>Wi-Fi client</b> (join a nearby network), and the
+        built-in <b>SkyTrack-Portal hotspot</b> (operators connect directly to
+        the device). Wi-Fi client and hotspot share one radio, so only one of
+        them can be active at a time.
       </p>
     </header>
 
@@ -21,17 +22,17 @@
 
       <div class="status-grid">
         <div class="status-tile" id="net-cell-tile" title="Cellular modem (wwan/ppp)">
-          <span class="st-label">Cellular</span>
+          <span class="st-label">Cellular modem</span>
           <span class="st-value" id="net-cell-value">…</span>
           <span class="st-sub muted" id="net-cell-sub">checking</span>
         </div>
-        <div class="status-tile" id="net-wifi-tile" title="WiFi client mode on wlan0">
-          <span class="st-label">WiFi client</span>
+        <div class="status-tile" id="net-wifi-tile" title="Wi-Fi client — the network this SkyTrack joined">
+          <span class="st-label">Wi-Fi (joined)</span>
           <span class="st-value" id="net-wifi-value">…</span>
           <span class="st-sub muted" id="net-wifi-sub">checking</span>
         </div>
-        <div class="status-tile" id="net-hot-tile" title="SkyTrack-Portal access point on wlan0">
-          <span class="st-label">Hotspot</span>
+        <div class="status-tile" id="net-hot-tile" title="SkyTrack-Portal access point that operators connect to">
+          <span class="st-label">Hotspot (serving)</span>
           <span class="st-value" id="net-hot-value">…</span>
           <span class="st-sub muted" id="net-hot-sub">checking</span>
         </div>
@@ -44,46 +45,52 @@
 
       <div class="field">
         <label class="switch-row">
-          <span>Cellular enabled</span>
+          <span>Use cellular modem</span>
           <span class="switch">
             <input type="checkbox" name="cellular_enabled"
                    {% if config.cellular_enabled %}checked{% endif %}>
             <span class="switch-track"></span>
           </span>
         </label>
+        <p class="muted small">Power on the cellular modem and use it as an uplink when a SIM is installed.</p>
       </div>
 
       <div class="field">
         <label class="switch-row">
-          <span>Metered cellular (limit background traffic)</span>
+          <span>Treat cellular as metered</span>
           <span class="switch">
             <input type="checkbox" name="metered_connection"
                    {% if config.metered_connection %}checked{% endif %}>
             <span class="switch-track"></span>
           </span>
         </label>
+        <p class="muted small">Limits background traffic (OTA updates, feeders) to avoid burning through cellular data.</p>
       </div>
 
       <div class="field">
         <label class="switch-row">
-          <span>WiFi client mode</span>
+          <span>Join nearby Wi-Fi (client mode)</span>
           <span class="switch">
             <input type="checkbox" name="wifi_client_enabled"
                    {% if config.wifi_client_enabled %}checked{% endif %}>
             <span class="switch-track"></span>
           </span>
         </label>
-        <p class="muted small">Disable to keep the radio free for the hotspot.</p>
+        <p class="muted small">
+          Allows the Pi to join a nearby Wi-Fi network using the saved credentials below.
+          Turn off to keep the radio free for the SkyTrack-Portal hotspot.
+        </p>
       </div>
 
       <div class="field">
-        <label>Time sync source</label>
-        <div class="segmented" role="radiogroup" aria-label="Time sync source">
-          {% for v, lbl in [('ntp','NTP'),('cellular','Cellular'),('gps','GPS')] %}
+        <label>Clock synchronization source</label>
+        <div class="segmented" role="radiogroup" aria-label="Clock sync source">
+          {% for v, lbl in [('ntp','Internet (NTP)'),('cellular','Cellular'),('gps','GPS')] %}
           <label class="seg"><input type="radio" name="time_sync_source" value="{{ v }}"
                  {% if (config.time_sync_source or 'ntp') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
           {% endfor %}
         </div>
+        <p class="muted small">Where the SkyTrack clock gets its time from. <em>Internet (NTP)</em> is the safe default.</p>
       </div>
 
       <footer class="card-footer">
@@ -95,30 +102,39 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Hotspot</h2>
-      <p class="muted">SkyTrack hosts an admin hotspot for first-boot setup and offline access.</p>
+      <h2>SkyTrack-Portal hotspot</h2>
+      <p class="muted">
+        The private Wi-Fi that operators connect to for first-boot setup, admin
+        access, and offline use. Give this SSID and password to anyone who
+        needs to reach the device without going through your office Wi-Fi.
+      </p>
     </header>
 
     <div class="card-body">
       <div class="readonly-grid">
         <div class="readonly-row">
-          <span class="ro-label">SSID</span>
+          <span class="ro-label">Network name (SSID)</span>
           <code class="ro-value" id="net-hot-ssid">{{ hotspot_default_ssid }}</code>
         </div>
         <div class="readonly-row">
-          <span class="ro-label">Gateway</span>
+          <span class="ro-label">Setup URL</span>
           <code class="ro-value">http://{{ config.hotspot_gateway }}</code>
         </div>
         <div class="readonly-row">
-          <span class="ro-label">Password</span>
+          <span class="ro-label">Wi-Fi password</span>
           <code class="ro-value secret" id="net-hot-pw">••••••••••</code>
           <button type="button" class="btn" id="btn-hot-show">Show</button>
         </div>
       </div>
+      <p class="muted small">
+        Passwords are automatically generated in the easy-to-type form
+        <em>Word-Word-NN</em> (for example <code>Alpha-Bravo-47</code>) so they're
+        easy to read aloud and hard to mistype.
+      </p>
 
       <div class="field">
         <label class="switch-row">
-          <span>Auto-start hotspot at boot</span>
+          <span>Turn the hotspot on automatically at boot</span>
           <span class="switch">
             <input type="checkbox" id="net-hot-autostart"
                    data-network-flag="hotspot_auto_start"
@@ -129,7 +145,7 @@
       </div>
 
       <div class="action-row">
-        <button type="button" class="btn btn-lg" id="btn-hot-regen">Regenerate password</button>
+        <button type="button" class="btn btn-lg" id="btn-hot-regen">Generate new password</button>
         <button type="button" class="btn btn-lg btn-warn" id="btn-hot-restart">Restart hotspot</button>
       </div>
     </div>
@@ -137,8 +153,13 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Saved WiFi networks</h2>
-      <p class="muted">Stored credentials for client-mode WiFi. Connecting requires WiFi client mode and disables the hotspot.</p>
+      <h2>Saved Wi-Fi networks</h2>
+      <p class="muted">
+        Nearby Wi-Fi networks this SkyTrack can join as a client. Requires
+        <em>Join nearby Wi-Fi (client mode)</em> above. When the Pi joins a
+        client network, the SkyTrack-Portal hotspot is turned off
+        automatically (they share the same radio).
+      </p>
     </header>
 
     <div class="card-body">

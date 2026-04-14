@@ -26,6 +26,47 @@ xset -dpms      || true
 xset s off      || true
 xset s noblank  || true
 
+# ---------------------------------------------------------------------------
+# Display rotation. Read /etc/skytrack/display.env if present (written by
+# the Settings → Display POST handler). Fall back to SKYTRACK_DISPLAY_* env
+# from systemd, then to sensible defaults (portrait / HDMI-1).
+#
+# Rotation values: "0" | "90" | "180" | "270" — mapped to xrandr's
+# normal / right / inverted / left.
+# ---------------------------------------------------------------------------
+# Prefer the runtime-writable copy in /var/lib/skytrack (updated by the
+# app on Settings → Display save). Fall back to the install-time seed in
+# /etc/skytrack for brand-new systems that haven't saved settings yet.
+for _env in /var/lib/skytrack/display.env /etc/skytrack/display.env; do
+  if [ -r "$_env" ]; then
+    . "$_env" 2>/dev/null || true
+    break
+  fi
+done
+SKYTRACK_DISPLAY_ROTATION="${SKYTRACK_DISPLAY_ROTATION:-90}"
+SKYTRACK_DISPLAY_OUTPUT="${SKYTRACK_DISPLAY_OUTPUT:-HDMI-1}"
+
+case "$SKYTRACK_DISPLAY_ROTATION" in
+  0|normal)    XRANDR_ROT="normal"   ;;
+  90|right)    XRANDR_ROT="right"    ;;
+  180|inverted|upside-down) XRANDR_ROT="inverted" ;;
+  270|left)    XRANDR_ROT="left"     ;;
+  *)           XRANDR_ROT="right"    ;;
+esac
+
+# Discover the first connected output if the configured one isn't attached
+# (e.g. Pi reboots with HDMI-1 ↔ HDMI-2 swap, or OS reports "HDMI-A-1").
+if command -v xrandr >/dev/null 2>&1; then
+  if ! xrandr --query 2>/dev/null | grep -q "^${SKYTRACK_DISPLAY_OUTPUT} connected"; then
+    auto_output="$(xrandr --query 2>/dev/null | awk '/ connected/ {print $1; exit}')"
+    if [ -n "$auto_output" ]; then
+      SKYTRACK_DISPLAY_OUTPUT="$auto_output"
+    fi
+  fi
+  xrandr --output "$SKYTRACK_DISPLAY_OUTPUT" --rotate "$XRANDR_ROT" 2>/dev/null || \
+    xrandr --output "$SKYTRACK_DISPLAY_OUTPUT" --rotate "$XRANDR_ROT" >/dev/null 2>&1 || true
+fi
+
 # Paint the X root a dark brand color immediately. If anything downstream
 # (splash, chromium) takes a beat to appear, we're not on a black or
 # default-gray X root while the user waits.

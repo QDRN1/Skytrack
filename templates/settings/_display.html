@@ -4,7 +4,7 @@
   <div class="settings-card">
     <header class="card-header">
       <h2>Display</h2>
-      <p class="muted">Controls the on-device touchscreen + kiosk Chromium.</p>
+      <p class="muted">Settings for the on-device kiosk screen (HDMI / touchscreen).</p>
     </header>
 
     <form class="card-body card-form" id="form-display"
@@ -12,55 +12,73 @@
           data-section="display">
 
       <div class="field" data-reboot-field="display_rotation">
-        <label>Screen rotation <span class="apply-on-reboot">applies on reboot</span></label>
-        <div class="segmented seg-grid-2" role="radiogroup" aria-label="Screen rotation">
-          {% for v, lbl in [('0','Normal'),('90','Right'),('180','Upside Down'),('270','Left')] %}
+        <label>Screen orientation <span class="apply-on-reboot">applies on reboot</span></label>
+        <div class="segmented seg-grid-2" role="radiogroup" aria-label="Screen orientation">
+          {% for v, lbl in [('0','Normal (landscape)'),('90','Rotate Right (portrait)'),('180','Upside Down'),('270','Rotate Left (portrait)')] %}
           <label class="seg"><input type="radio" name="display_rotation" value="{{ v }}"
-                 {% if (config.display_rotation or '0') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+                 {% if (config.display_rotation or '90') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
           {% endfor %}
         </div>
+        <p class="muted small">
+          SkyTrack ships in portrait (<em>Rotate Right</em>). Pick whichever matches how the
+          screen is physically mounted. Takes effect at the next reboot.
+        </p>
       </div>
 
       <div class="field" data-reboot-field="display_brightness">
-        <label for="d-bright">Brightness <output class="slider-out" id="d-bright-out">{{ config.display_brightness or 100 }}</output>%</label>
+        <label for="d-bright">Screen brightness <output class="slider-out" id="d-bright-out">{{ config.display_brightness or 100 }}</output>%</label>
         <input id="d-bright" name="display_brightness" type="range" class="touch-slider"
                min="0" max="100" step="5" value="{{ config.display_brightness or 100 }}">
-        <p class="muted small">On official Pi 7" touchscreen this applies via sysfs at boot. <span class="apply-on-reboot">applies on reboot</span></p>
+        <p class="muted small">
+          Only affects the official Raspberry Pi 7" touchscreen (backlight via sysfs).
+          HDMI monitors ignore this — use the monitor's own buttons.
+          <span class="apply-on-reboot">applies on reboot</span>
+        </p>
       </div>
 
       <div class="field">
-        <label for="d-sleep">Screen sleep timeout <output class="slider-out" id="d-sleep-out">{{ config.display_sleep_minutes or 0 }}</output> min</label>
+        <label for="d-sleep">Screen dim after idle <output class="slider-out" id="d-sleep-out">{{ config.display_sleep_minutes or 0 }}</output> min</label>
         <input id="d-sleep" name="display_sleep_minutes" type="range" class="touch-slider"
                min="0" max="120" step="5" value="{{ config.display_sleep_minutes or 0 }}">
-        <p class="muted small">0 = never dim. The screen only dims, never fully sleeps — touch to wake.</p>
+        <p class="muted small">
+          <strong>0 = always on.</strong> The kiosk dims but never fully sleeps —
+          touch or move the mouse to wake.
+        </p>
       </div>
 
       <div class="field">
-        <label>Animation level</label>
+        <label>Background animations</label>
         <div class="segmented" role="radiogroup" aria-label="Animation level">
           {% for v, lbl in [('full','Full'),('reduced','Reduced'),('off','Off')] %}
           <label class="seg"><input type="radio" name="display_animation_level" value="{{ v }}"
                  {% if (config.display_animation_level or 'full') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
           {% endfor %}
         </div>
+        <p class="muted small">Controls the floating particle background on the dashboard.
+          Set to <em>Reduced</em> or <em>Off</em> if the Pi feels sluggish.</p>
       </div>
 
       <div class="field">
         <label for="d-particles">Particle density <output class="slider-out" id="d-particles-out">{{ config.display_particle_density or 80 }}</output>%</label>
         <input id="d-particles" name="display_particle_density" type="range" class="touch-slider"
                min="0" max="100" step="5" value="{{ config.display_particle_density or 80 }}">
+        <p class="muted small">How many background particles to draw. Lower = less CPU on a Pi.</p>
       </div>
 
       <div class="field" data-reboot-field="display_fullscreen_on_boot">
         <label class="switch-row">
-          <span>Fullscreen on boot</span>
+          <span>Start kiosk in fullscreen</span>
           <span class="switch">
             <input type="checkbox" name="display_fullscreen_on_boot"
                    {% if config.display_fullscreen_on_boot %}checked{% endif %}>
             <span class="switch-track"></span>
           </span>
         </label>
-        <p class="muted small">When off, the kiosk Chromium starts windowed (debug mode). <span class="apply-on-reboot">applies on reboot</span></p>
+        <p class="muted small">
+          Leave this on for normal appliance operation. Turn off only for debugging —
+          when disabled, Chromium starts in a regular window.
+          <span class="apply-on-reboot">applies on reboot</span>
+        </p>
       </div>
 
       <footer class="card-footer">

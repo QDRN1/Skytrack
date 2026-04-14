@@ -192,6 +192,26 @@ html[data-anim="off"] .particles-canvas { display: none; }
 .panel-map { grid-column: span 8; }
 #aircraft-map { height: 380px; border-radius: 10px; }
 
+/* Fixed-height wrapper for the Activity Trend canvas.
+   Chart.js with responsive:true + maintainAspectRatio:false requires a
+   parent with a bounded height — otherwise the canvas grows on every
+   resize event and pushes the rest of the page off-screen (the
+   "runaway Activity Trend" bug). Lock the wrapper to a stable box. */
+.trend-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  min-height: 220px;
+  max-height: 260px;
+}
+.trend-chart-wrap > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
 @media (max-width: 1100px) {
   .panel-trend, .panel-recent, .panel-map { grid-column: span 12; }
   .panel-weather, .panel-airlines, .panel-routes { grid-column: span 6; }
@@ -270,8 +290,13 @@ html[data-anim="off"] .particles-canvas { display: none; }
 .setup-info-block .label { display: block; color: var(--fg-muted); font-size: 0.8em; text-transform: uppercase; }
 .setup-info-block .value { display: block; font-family: ui-monospace, monospace; font-size: 1.05em; }
 .setup-form input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px 12px; color: var(--fg); width: 100%; }
+.setup-form input::placeholder { color: rgba(255,255,255,0.30); }
+.setup-form input:invalid { border-color: rgba(242,145,53,0.55); }
 .setup-form label { display: block; margin: 12px 0 4px; color: var(--fg-muted); font-size: 0.85em; }
-.setup-error { color: var(--accent-warn); margin-top: 12px; }
+.setup-rules { margin: 4px 0 18px; padding: 10px 14px 10px 30px; background: rgba(126,200,255,0.06); border: 1px solid rgba(126,200,255,0.18); border-radius: 8px; font-size: 0.9em; line-height: 1.7; }
+.setup-rules li { margin: 0; }
+.setup-rules strong { color: var(--fg); }
+.setup-error { color: var(--accent-warn); margin-top: 12px; font-weight: 500; }
 .setup-footer { margin-top: 24px; text-align: center; font-size: 0.85em; }
 .setup-locked h1 { color: var(--accent-warm); }
 

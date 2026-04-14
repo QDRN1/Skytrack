@@ -40,21 +40,28 @@
     </section>
 
     <form class="setup-form" id="setup-form" autocomplete="off">
-      <h2>Create your admin PIN</h2>
+      <h2>Create your Admin PIN</h2>
       <p class="muted">
-        Your PIN is the only credential you need for admin actions — settings,
-        network, integrations, updates, diagnostics, and logs. The dashboard
-        stays public: anyone on the SkyTrack-Portal Wi-Fi can view live aircraft
-        without signing in. Pick a number you'll remember.
+        Your Admin PIN is the only credential needed to unlock Settings — network,
+        integrations, updates, diagnostics, and logs. The dashboard stays public:
+        anyone on the SkyTrack-Portal Wi-Fi can view live aircraft without signing
+        in. Choose a number you'll remember.
       </p>
+      <ul class="setup-rules muted">
+        <li><strong>4 to 8 digits</strong> long</li>
+        <li><strong>Numbers only</strong> (0–9, no letters or symbols)</li>
+        <li>Used every time you open <em>Settings</em></li>
+      </ul>
 
-      <label for="setup-pin">Admin PIN <span class="muted">(4–8 digits, required)</span></label>
+      <label for="setup-pin">Admin PIN</label>
       <input id="setup-pin" name="pin" type="password" inputmode="numeric"
-             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required autocomplete="off">
+             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required autocomplete="off"
+             placeholder="e.g. 1234">
 
-      <label for="setup-pin-confirm">Confirm admin PIN</label>
+      <label for="setup-pin-confirm">Confirm Admin PIN</label>
       <input id="setup-pin-confirm" name="pin_confirm" type="password" inputmode="numeric"
-             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required autocomplete="off">
+             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required autocomplete="off"
+             placeholder="re-enter the same digits">
 
       <button type="submit" class="btn primary">Activate device</button>
       <p class="setup-error" id="setup-error" hidden></p>

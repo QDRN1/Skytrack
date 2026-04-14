@@ -43,8 +43,12 @@ DEFAULT_CONFIG = {
     'sensor_interval': 15,      # seconds between reads
 
     # --- ADS-B ingestion -----------------------------------------------
+    # dump1090-fa writes its live snapshot to dump1090_json_path on a tmpfs.
+    # dump1090_url is an OPTIONAL HTTP fallback for remote feeders — it MUST
+    # NOT point at SkyTrack itself (port 8080) or we'll self-loop and spam
+    # 404s. Default is empty so the ingester only reads the local file.
     'dump1090_json_path': '/run/dump1090-fa/aircraft.json',
-    'dump1090_url': 'http://localhost:8080/data/aircraft.json',
+    'dump1090_url': '',
     'ingest_interval': 5,       # seconds
     'sightings_retention_days': 7,
     'logs_retention_days': 30,
@@ -79,7 +83,7 @@ DEFAULT_CONFIG = {
     'opensky_poll_minutes': 10,
     'enrichment_ttl_hours': 24,
     'weather_enabled': True,
-    'weather_provider': 'open-meteo',  # open-meteo | openweather | none
+    'weather_provider': 'open-meteo',  # open-meteo (free, keyless) | openweather (key req'd) | none
 
     # --- Weather --------------------------------------------------------
     'weather_interval': 1800,     # 30 min
@@ -127,7 +131,8 @@ DEFAULT_CONFIG = {
     # --- Display / kiosk ------------------------------------------------
     # display_rotation accepts: 0 | 90 | 180 | 270
     # (UI labels these "Normal", "Right", "Upside Down", "Left")
-    'display_rotation': '0',
+    # Default is 90 (right) — the SkyTrack appliance ships in portrait mode.
+    'display_rotation': '90',
     'display_output': 'HDMI-1',
     'display_brightness': 100,           # 0-100
     'display_sleep_minutes': 0,          # 0 = never dim

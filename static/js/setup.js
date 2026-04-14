@@ -33,13 +33,23 @@
       const pin = (data.get('pin') || '').trim();
       const pinConfirm = (data.get('pin_confirm') || '').trim();
 
-      if (!/^[0-9]{4,8}$/.test(pin)) {
-        err.textContent = 'PIN must be 4–8 digits.';
+      if (!pin) {
+        err.textContent = 'Please enter an Admin PIN (4 to 8 digits, numbers only).';
+        err.hidden = false;
+        return;
+      }
+      if (!/^\d+$/.test(pin)) {
+        err.textContent = 'Admin PIN must contain digits only (0–9). No letters or symbols.';
+        err.hidden = false;
+        return;
+      }
+      if (pin.length < 4 || pin.length > 8) {
+        err.textContent = `Admin PIN must be 4 to 8 digits long (you entered ${pin.length}).`;
         err.hidden = false;
         return;
       }
       if (pin !== pinConfirm) {
-        err.textContent = 'PIN confirmation does not match.';
+        err.textContent = 'The two PINs do not match. Please re-enter the same digits in both boxes.';
         err.hidden = false;
         return;
       }

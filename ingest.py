@@ -28,8 +28,10 @@ class SightingsIngest:
         self.config = config
         self.dump1090_json = config.get(
             'dump1090_json_path', '/run/dump1090-fa/aircraft.json')
-        self.dump1090_url = config.get(
-            'dump1090_url', 'http://localhost:8080/data/aircraft.json')
+        # HTTP fallback is OPTIONAL. Leave empty by default — we must NOT
+        # point it at SkyTrack itself (port 8080) or we'll self-loop and
+        # log a 404 every ingest_interval seconds.
+        self.dump1090_url = (config.get('dump1090_url') or '').strip()
         self.interval = max(2, int(config.get('ingest_interval', 5)))
         self.center_lat = config.get('latitude', 44.602016)
         self.center_lon = config.get('longitude', -92.494604)
@@ -111,13 +113,19 @@ class SightingsIngest:
                     return json.load(f)
             except Exception as e:
                 logger.debug('dump1090 JSON read error: %s', e)
-        try:
-            import requests
-            resp = requests.get(self.dump1090_url, timeout=3)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            logger.debug('dump1090 HTTP error: %s', e)
+        # Only attempt HTTP fallback if an explicit URL is configured.
+        # An empty string means "local file only, no remote probe" — this
+        # prevents the historical self-loop bug where a default
+        # http://localhost:8080/data/aircraft.json hit SkyTrack's own Flask
+        # server every tick and spammed 404s.
+        if self.dump1090_url:
+            try:
+                import requests
+                resp = requests.get(self.dump1090_url, timeout=3)
+                resp.raise_for_status()
+                return resp.json()
+            except Exception as e:
+                logger.debug('dump1090 HTTP error: %s', e)
         return None
 
     @staticmethod
@@ -188,12 +196,18 @@ class SightingsIngest:
             return {'ok': True, 'message': 'Mock mode active'}
         if os.path.exists(self.dump1090_json):
             return {'ok': True, 'message': f'dump1090 JSON found at {self.dump1090_json}'}
-        try:
-            import requests
-            resp = requests.get(self.dump1090_url, timeout=3)
-            return {
-                'ok': resp.status_code == 200,
-                'message': f'dump1090 HTTP {resp.status_code}',
-            }
-        except Exception as e:
-            return {'ok': False, 'message': f'dump1090 unreachable: {e}'}
+        if self.dump1090_url:
+            try:
+                import requests
+                resp = requests.get(self.dump1090_url, timeout=3)
+                return {
+                    'ok': resp.status_code == 200,
+                    'message': f'dump1090 HTTP {resp.status_code}',
+                }
+            except Exception as e:
+                return {'ok': False, 'message': f'dump1090 unreachable: {e}'}
+        return {
+            'ok': False,
+            'message': f'dump1090 JSON not found at {self.dump1090_json} '
+                       '(install dump1090-fa or set dump1090_url to a remote feed)',
+        }

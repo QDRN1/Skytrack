@@ -3,11 +3,13 @@
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Feeder status</h2>
+      <h2>Receiver &amp; feeders</h2>
       <p class="muted">
-        Feeders are optional — they share your receiver's ADS-B data with third
-        parties in exchange for services. A tile reading <i>not installed</i>
-        just means it wasn't selected at install time, not that something is broken.
+        Feeders are <strong>optional</strong>. They share this SkyTrack's ADS-B
+        data with third parties (FlightRadar24, FlightAware) in exchange for
+        their services. A tile reading <em>not installed</em> just means the
+        corresponding package isn't on this Pi yet — it is not an error.
+        SkyTrack itself works whether or not any feeder is installed.
       </p>
     </header>
 
@@ -31,16 +33,27 @@
       </div>
 
       <p class="muted small">
-        To add a feeder that isn't installed, run the installer again on this
-        device without <code>--skip-piaware</code> or <code>--skip-fr24</code>.
+        <strong>Honest status:</strong> SkyTrack reads local dump1090 data from
+        <code>/run/dump1090-fa/aircraft.json</code>. If that file doesn't exist,
+        the dump1090 tile reads <em>not installed</em> and the map falls back
+        to sample data. To enable live ADS-B, install the
+        <code>dump1090-fa</code> package on this Pi. FR24 and PiAware uplinks
+        still need their own packages — the credentials below only matter once
+        those services are installed.
       </p>
     </div>
   </div>
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Uplink credentials</h2>
-      <p class="muted">If you share data with FlightRadar24, PiAware, or FlightAware, store your IDs here. They live in <code>/var/lib/skytrack/auth.json</code> and never get committed.</p>
+      <h2>Feeder uplink credentials</h2>
+      <p class="muted">
+        If you share ADS-B data with FlightRadar24, PiAware, or FlightAware,
+        paste your IDs here. These are stored encrypted in
+        <code>/var/lib/skytrack/auth.json</code> and never committed to git.
+        Saving a value here does <em>not</em> install the feeder package —
+        the credentials just sit idle until you install it on the Pi.
+      </p>
     </header>
 
     <form class="card-body card-form" id="form-feeders"
