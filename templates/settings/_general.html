@@ -13,9 +13,21 @@
 
       <div class="field">
         <label for="g-tz">Timezone</label>
-        <input id="g-tz" name="timezone" type="text"
-               value="{{ config.timezone }}" placeholder="auto">
-        <p class="muted small">Use <code>auto</code> for system tz, or an IANA name like <code>America/Chicago</code>.</p>
+        {% set current_tz = (config.timezone or 'auto') %}
+        <select id="g-tz" name="timezone" class="tz-select">
+          <option value="auto" {% if current_tz == 'auto' %}selected{% endif %}>System default (auto-detect)</option>
+          <optgroup label="Common">
+            {% for label, zone in (timezone_groups.common or []) %}
+              <option value="{{ zone }}" {% if current_tz == zone %}selected{% endif %}>{{ label }} — {{ zone }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="All IANA timezones">
+            {% for zone in (timezone_groups.all or []) %}
+              <option value="{{ zone }}" {% if current_tz == zone %}selected{% endif %}>{{ zone }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+        <p class="muted small">Affects dashboard clock, log timestamps, and scheduled tasks.</p>
       </div>
 
       <div class="field">

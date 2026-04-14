@@ -11,7 +11,7 @@
           data-endpoint="/api/settings/display"
           data-section="display">
 
-      <div class="field">
+      <div class="field" data-reboot-field="display_rotation">
         <label>Screen rotation <span class="apply-on-reboot">applies on reboot</span></label>
         <div class="segmented seg-grid-2" role="radiogroup" aria-label="Screen rotation">
           {% for v, lbl in [('0','Normal'),('90','Right'),('180','Upside Down'),('270','Left')] %}
@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-reboot-field="display_brightness">
         <label for="d-bright">Brightness <output class="slider-out" id="d-bright-out">{{ config.display_brightness or 100 }}</output>%</label>
         <input id="d-bright" name="display_brightness" type="range" class="touch-slider"
                min="0" max="100" step="5" value="{{ config.display_brightness or 100 }}">
@@ -51,7 +51,7 @@
                min="0" max="100" step="5" value="{{ config.display_particle_density or 80 }}">
       </div>
 
-      <div class="field">
+      <div class="field" data-reboot-field="display_fullscreen_on_boot">
         <label class="switch-row">
           <span>Fullscreen on boot</span>
           <span class="switch">

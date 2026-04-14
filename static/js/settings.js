@@ -147,8 +147,65 @@
     return Object.keys(secrets).length ? { ...body, secrets } : body;
   }
 
+  // Track the server-side value of every reboot-sensitive field per-form so
+  // we can diff it against whatever the user ends up submitting.
+  const _rebootBaseline = new WeakMap();
+
+  function currentRebootValue(form, key) {
+    const input = form.querySelector(`[name="${key}"]`);
+    if (!input) return '';
+    if (input.type === 'checkbox') return input.checked ? '1' : '0';
+    if (input.type === 'radio') {
+      const checked = form.querySelector(`[name="${key}"]:checked`);
+      return checked ? checked.value : '';
+    }
+    return String(input.value);
+  }
+
+  function snapshotRebootFields(form) {
+    const snap = {};
+    $$('[data-reboot-field]', form).forEach(el => {
+      snap[el.dataset.rebootField] = currentRebootValue(form, el.dataset.rebootField);
+    });
+    return snap;
+  }
+
+  async function maybeOfferReboot(form) {
+    const before = _rebootBaseline.get(form) || {};
+    const changed = [];
+    Object.keys(before).forEach(k => {
+      if (currentRebootValue(form, k) !== before[k]) changed.push(k);
+    });
+    // Refresh the baseline so a second save only prompts on the next change.
+    _rebootBaseline.set(form, snapshotRebootFields(form));
+    if (!changed.length) return;
+    const pretty = {
+      display_rotation:           'Screen rotation',
+      display_brightness:         'Brightness',
+      display_fullscreen_on_boot: 'Fullscreen on boot',
+    };
+    const names = changed.map(k => pretty[k] || k).join(', ');
+    const ok = await confirmModal(
+      'Reboot to apply?',
+      `${names} — these settings take effect on the next boot. Reboot now?`
+    );
+    if (!ok) {
+      toast('Saved — will apply on next reboot');
+      return;
+    }
+    try {
+      await window.api.post('/api/settings/updates/reboot');
+      toast('Rebooting…');
+    } catch (_) {
+      toast('Reboot failed — reboot manually later', true);
+    }
+  }
+
   function bindForms() {
     $$('form[data-endpoint]').forEach(form => {
+      // Capture the server-side initial value of any apply-on-reboot fields.
+      _rebootBaseline.set(form, snapshotRebootFields(form));
+
       // Cancel button → reset the form to its initial markup state.
       const cancel = form.querySelector('[data-action=reset]');
       if (cancel) cancel.addEventListener('click', () => form.reset());
@@ -185,6 +242,9 @@
           const sec = form.dataset.section;
           if (sec === 'network')     refreshNetworkStatus();
           if (sec === 'diagnostics') refreshDiagnostics();
+          // Offer a reboot if the user touched anything flagged as
+          // apply-on-reboot in this form.
+          await maybeOfferReboot(form);
         } catch (err) {
           const msg = (err.data && err.data.error) || err.message || 'Save failed';
           flash(form, msg, true);

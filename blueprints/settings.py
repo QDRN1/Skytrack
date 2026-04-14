@@ -64,7 +64,46 @@ def index():
         usage_aeroapi=aeroapi_usage,
         usage_opensky=enrich.usage_summary('opensky'),
         hotspot_default_ssid=_default_hotspot_ssid(cfg, identity),
+        timezone_groups=_timezone_groups(),
     )
+
+
+# Common IANA zones surfaced at the top of the dropdown. Everything else lives
+# under "All timezones" alphabetically. Operators rarely need more than this.
+_TIMEZONE_COMMON = (
+    ('US / Eastern',     'America/New_York'),
+    ('US / Central',     'America/Chicago'),
+    ('US / Mountain',    'America/Denver'),
+    ('US / Arizona',     'America/Phoenix'),
+    ('US / Pacific',     'America/Los_Angeles'),
+    ('US / Alaska',      'America/Anchorage'),
+    ('US / Hawaii',      'Pacific/Honolulu'),
+    ('Canada / Toronto', 'America/Toronto'),
+    ('Canada / Winnipeg','America/Winnipeg'),
+    ('Canada / Edmonton','America/Edmonton'),
+    ('Canada / Vancouver','America/Vancouver'),
+    ('UK / London',      'Europe/London'),
+    ('Ireland / Dublin', 'Europe/Dublin'),
+    ('Central Europe',   'Europe/Berlin'),
+    ('UTC',              'UTC'),
+)
+
+
+def _timezone_groups():
+    """Return (common, all) zone lists for the Settings → General dropdown.
+
+    `common` is a short, labeled list for the top of the menu. `all` is
+    every IANA zone available on the OS, alphabetized.
+    """
+    try:
+        from zoneinfo import available_timezones  # py 3.9+
+        all_zones = sorted(available_timezones())
+    except Exception:
+        all_zones = [z for _, z in _TIMEZONE_COMMON]
+    return {
+        'common': list(_TIMEZONE_COMMON),
+        'all':    all_zones,
+    }
 
 
 def _default_hotspot_ssid(cfg, identity) -> str:
@@ -146,6 +185,17 @@ def api_general():
         })
     payload = request.get_json(silent=True) or {}
     updates = _take(payload, _GENERAL_KEYS)
+
+    if 'timezone' in updates:
+        tz = str(updates['timezone'] or '').strip() or 'auto'
+        if tz != 'auto':
+            try:
+                from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+                ZoneInfo(tz)
+            except Exception:
+                return _err('Unknown timezone. Use "auto" or an IANA name like America/Chicago.')
+        updates['timezone'] = tz
+
     cfg.update(updates)
     _persist(updates)
     logs_svc.log_portal('admin', 'settings_general_update', updates)
