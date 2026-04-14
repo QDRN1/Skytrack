@@ -23,7 +23,7 @@ REPO_DIR="${SKYTRACK_REPO_DIR:-/opt/skytrack}"
 DATA_DIR="${SKYTRACK_DATA_DIR:-/var/lib/skytrack}"
 LOG_DIR="${SKYTRACK_LOG_DIR:-/var/log/skytrack}"
 DB_PATH="${SKYTRACK_DB_PATH:-$DATA_DIR/skytrack.db}"
-VENV_DIR="${SKYTRACK_VENV:-$REPO_DIR/venv}"
+VENV_DIR="${SKYTRACK_VENV:-$REPO_DIR/.venv}"
 SKYTRACK_USER="${SKYTRACK_USER:-skytrack}"
 
 PASS=0
@@ -124,6 +124,89 @@ for bin in hostapd dnsmasq dhcpcd iw; do
     fail "$bin not installed"
   fi
 done
+
+# ---------------------------------------------------------------------------
+hdr "appliance kiosk"
+if id skytrack-kiosk >/dev/null 2>&1; then
+  ok "user skytrack-kiosk exists"
+else
+  fail "user skytrack-kiosk missing (run install.sh)"
+fi
+
+if systemctl list-unit-files 2>/dev/null | grep -q '^skytrack-display.service'; then
+  if systemctl is-enabled skytrack-display.service 2>/dev/null | grep -q '^enabled$'; then
+    ok "skytrack-display.service enabled"
+  else
+    fail "skytrack-display.service not enabled"
+  fi
+else
+  fail "skytrack-display.service not installed"
+fi
+
+if [[ -f /boot/firmware/skytrack-safe-mode ]] || [[ -f /boot/skytrack-safe-mode ]]; then
+  ok "safe-mode marker present (kiosk takeover will be skipped)"
+else
+  ok "safe-mode marker absent (normal appliance boot)"
+fi
+
+if command -v chromium-browser >/dev/null 2>&1; then
+  ok "chromium-browser in PATH"
+else
+  fail "chromium-browser not installed"
+fi
+
+if [[ -f "$REPO_DIR/static/splash/index.html" ]]; then
+  ok "branded splash page present"
+else
+  fail "missing $REPO_DIR/static/splash/index.html"
+fi
+
+if [[ -f "$REPO_DIR/kiosk/xinitrc" ]]; then
+  ok "kiosk xinitrc present"
+else
+  fail "missing $REPO_DIR/kiosk/xinitrc"
+fi
+
+for n in 2 3 4 5 6; do
+  if systemctl is-enabled "getty@tty${n}.service" 2>/dev/null | grep -q '^masked$'; then
+    ok "getty@tty${n} masked"
+  else
+    fail "getty@tty${n} not masked"
+  fi
+done
+
+for f in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+  if [[ -f "$f" ]]; then
+    if grep -q 'quiet splash' "$f" && grep -q 'console=tty3' "$f"; then
+      ok "$f locked down (quiet splash, console=tty3)"
+    else
+      fail "$f missing appliance cmdline params"
+    fi
+    break
+  fi
+done
+
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  if plymouth-set-default-theme 2>/dev/null | grep -q '^skytrack$'; then
+    ok "plymouth theme = skytrack"
+  else
+    fail "plymouth theme is not skytrack"
+  fi
+fi
+
+if dpkg -s raspberrypi-ui-mods >/dev/null 2>&1; then
+  fail "raspberrypi-ui-mods still installed (run install.sh without --keep-desktop)"
+else
+  ok "raspberrypi-ui-mods not installed"
+fi
+
+if command -v curl >/dev/null 2>&1; then
+  if curl -fsS --max-time 3 http://127.0.0.1:8080/kiosk 2>/dev/null | grep -qi '<html'; then
+    ok "/kiosk returns HTML"
+  else
+    fail "/kiosk not reachable or not HTML (is skytrack-app running?)"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 hdr "vendor JS"

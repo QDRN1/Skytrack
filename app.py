@@ -464,7 +464,7 @@ def main():
         sys.exit(0 if ok else 1)
 
     host = cfg.get('host', '0.0.0.0')
-    port = int(cfg.get('port', 80))
+    port = int(cfg.get('port', 8080))
     debug = bool(cfg.get('debug', False))
 
     import auth as auth_lib

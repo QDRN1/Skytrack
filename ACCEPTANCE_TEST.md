@@ -68,7 +68,7 @@ sudo systemctl restart skytrack-kiosk
 Cause: Bad config.yaml syntax or missing Python dependency.
 ```bash
 journalctl -u skytrack -n 50 --no-pager
-sudo /opt/skytrack/venv/bin/python /opt/skytrack/app.py --selfcheck
+sudo /opt/skytrack/.venv/bin/python /opt/skytrack/app.py --selfcheck
 sudo systemctl restart skytrack
 ```
 

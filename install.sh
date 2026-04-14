@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# SkyTrack Portal v2 — installer
+# SkyTrack Portal v2 — appliance installer
 #
 #   sudo ./install.sh [OPTIONS]
 #
@@ -8,24 +8,35 @@
 #   --skip-piaware     Don't install dump1090-fa / piaware
 #   --skip-fr24        Don't install fr24feed
 #   --skip-hotspot     Don't bring up the SkyTrack-Portal hotspot
-#   --dev              Local-dev install: no systemd, no hotspot, no feeders
+#   --keep-desktop     Do NOT purge raspberrypi-ui-mods / libreoffice*
+#   --dev              Local-dev install: no systemd, no hotspot, no feeders,
+#                      no appliance lockdown
 #   --non-interactive  Never prompt
 #
 # What it does (in order):
-#   1. apt installs (Pi packages, hotspot stack, build tools, optional feeders)
-#   2. Creates the `skytrack` user and home directory
-#   3. Syncs the repo to /opt/skytrack
-#   4. Creates the venv and installs requirements.txt
-#   5. Renders /etc/skytrack/skytrack.env
-#   6. Creates /var/lib/skytrack and /var/log/skytrack with sane perms
-#   7. Generates the device ID + initializes the SQLite database
-#   8. Fetches vendor JS into static/vendor/
-#   9. Installs the systemd units and enables them
-#  10. Applies the wlan0 hotspot (unless --skip-hotspot or --dev)
-#  11. Runs scripts/install_verify.sh
+#   1. apt installs (base + plymouth + kiosk stack + feeders)
+#   2. Purges desktop packages that would leak Linux UI (unless --keep-desktop)
+#   3. Creates the `skytrack` service user and the `skytrack-kiosk` kiosk user
+#   4. Syncs the repo to /opt/skytrack
+#   5. Creates the venv at /opt/skytrack/.venv and installs requirements.txt
+#   6. Renders /etc/skytrack/skytrack.env (idempotent)
+#   7. Creates /var/lib/skytrack and /var/log/skytrack with sane perms
+#   8. Generates the device ID + initializes the SQLite database
+#   9. Fetches vendor JS into static/vendor/
+#  10. Runs scripts/configure_appliance.sh (plymouth, cmdline, ttys, openbox)
+#  11. Installs the systemd units (including skytrack-display.service) and
+#      enables them
+#  12. Applies the wlan0 hotspot (unless --skip-hotspot or --dev)
+#  13. Runs scripts/install_verify.sh
 #
-# Idempotent: safe to re-run. Will not overwrite an existing config.yaml or
-# auth.json, will not regenerate the device ID, will not wipe the db.
+# Idempotent: safe to re-run. Will not overwrite an existing config.yaml,
+# auth.json, or /etc/skytrack/skytrack.env, will not regenerate the device ID,
+# will not wipe the db. Never touches ssh.service.
+#
+# Recovery: if the appliance boots into a broken state, drop a file named
+# `skytrack-safe-mode` into /boot/firmware/ (mount the SD card on another
+# machine). On next boot, skytrack-display.service will be skipped and
+# getty@tty1 will come up normally for console service work.
 # =============================================================================
 
 set -uo pipefail
@@ -34,14 +45,17 @@ REPO_DIR="${SKYTRACK_REPO_DIR:-/opt/skytrack}"
 DATA_DIR="${SKYTRACK_DATA_DIR:-/var/lib/skytrack}"
 LOG_DIR="${SKYTRACK_LOG_DIR:-/var/log/skytrack}"
 ETC_DIR="/etc/skytrack"
-VENV_DIR="$REPO_DIR/venv"
+VENV_DIR="$REPO_DIR/.venv"
 SKYTRACK_USER="${SKYTRACK_USER:-skytrack}"
+KIOSK_USER="skytrack-kiosk"
+KIOSK_HOME="/home/${KIOSK_USER}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/var/log/skytrack-install.log"
 
 SKIP_PIAWARE=false
 SKIP_FR24=false
 SKIP_HOTSPOT=false
+KEEP_DESKTOP=false
 DEV_INSTALL=false
 NON_INTERACTIVE=false
 
@@ -50,9 +64,10 @@ while [[ $# -gt 0 ]]; do
     --skip-piaware)    SKIP_PIAWARE=true; shift ;;
     --skip-fr24)       SKIP_FR24=true; shift ;;
     --skip-hotspot)    SKIP_HOTSPOT=true; shift ;;
-    --dev)             DEV_INSTALL=true; SKIP_HOTSPOT=true; SKIP_PIAWARE=true; SKIP_FR24=true; shift ;;
+    --keep-desktop)    KEEP_DESKTOP=true; shift ;;
+    --dev)             DEV_INSTALL=true; SKIP_HOTSPOT=true; SKIP_PIAWARE=true; SKIP_FR24=true; KEEP_DESKTOP=true; shift ;;
     --non-interactive) NON_INTERACTIVE=true; shift ;;
-    -h|--help)         sed -n '1,40p' "$0"; exit 0 ;;
+    -h|--help)         sed -n '1,50p' "$0"; exit 0 ;;
     *)                 echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -75,7 +90,7 @@ err()  { echo -e "${RED}[err]${NC} $*"       | tee -a "$LOG_FILE" 2>/dev/null ||
 # 1. apt packages
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 1/11: apt packages"
+  log "step 1/13: apt packages"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >> "$LOG_FILE" 2>&1 || warn "apt-get update failed"
 
@@ -92,45 +107,85 @@ if [[ "$DEV_INSTALL" != true ]]; then
     gpsd gpsd-clients
     # GPIO / sensors
     libgpiod2 python3-libgpiod
-    # Optional kiosk
-    chromium-browser xserver-xorg xinit openbox unclutter
+    # Appliance kiosk stack (X11 only, no display manager)
+    chromium-browser
+    xserver-xorg xserver-xorg-legacy xinit
+    openbox unclutter
+    # Branded boot splash
+    plymouth plymouth-themes
   )
   apt-get install -y -qq "${PKGS[@]}" >> "$LOG_FILE" 2>&1 || warn "some packages failed (continuing)"
 fi
 
 # ---------------------------------------------------------------------------
-# 2. user
+# 2. purge desktop leaks
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 2/11: user $SKYTRACK_USER"
+  if [[ "$KEEP_DESKTOP" == true ]]; then
+    info "step 2/13: --keep-desktop — not purging raspberrypi-ui-mods / libreoffice*"
+  else
+    log "step 2/13: purging desktop packages that would leak Linux UI"
+    # raspberrypi-ui-mods pulls the PIXEL desktop; libreoffice* is ~1GB of
+    # office app we don't want on an appliance.
+    apt-get purge -y \
+      raspberrypi-ui-mods \
+      'libreoffice*' \
+      lightdm lightdm-gtk-greeter \
+      2>>"$LOG_FILE" || true
+    apt-get autoremove -y >> "$LOG_FILE" 2>&1 || true
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. users — hardened service user + dedicated kiosk session user
+# ---------------------------------------------------------------------------
+if [[ "$DEV_INSTALL" != true ]]; then
+  log "step 3/13: users ($SKYTRACK_USER, $KIOSK_USER)"
+  # Service user — runs the backend, no GUI
   if ! id "$SKYTRACK_USER" &>/dev/null; then
     useradd -m -s /bin/bash "$SKYTRACK_USER"
   fi
   for grp in dialout plugdev netdev gpio i2c spi video; do
     usermod -aG "$grp" "$SKYTRACK_USER" 2>/dev/null || true
   done
+
+  # Kiosk session user — runs X+Chromium, password locked (only systemd/PAM
+  # can log it in, never a human via a terminal).
+  if ! id "$KIOSK_USER" &>/dev/null; then
+    useradd -m -s /bin/bash "$KIOSK_USER"
+    passwd -l "$KIOSK_USER" >/dev/null 2>&1 || true
+  fi
+  for grp in tty video input audio plugdev dialout; do
+    usermod -aG "$grp" "$KIOSK_USER" 2>/dev/null || true
+  done
+  mkdir -p "$KIOSK_HOME/.config"
+  chown -R "$KIOSK_USER:$KIOSK_USER" "$KIOSK_HOME"
 fi
 
 # ---------------------------------------------------------------------------
-# 3. sync repo to /opt/skytrack
+# 4. sync repo to /opt/skytrack
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 3/11: sync repo → $REPO_DIR"
+  log "step 4/13: sync repo → $REPO_DIR"
   mkdir -p "$REPO_DIR"
-  rsync -a --exclude='.git' --exclude='venv' --exclude='__pycache__' \
-    --exclude='*.pyc' --exclude='legacy/' \
+  rsync -a \
+    --exclude='.git' --exclude='venv' --exclude='.venv' \
+    --exclude='__pycache__' --exclude='*.pyc' --exclude='legacy/' \
     "$SCRIPT_DIR/" "$REPO_DIR/" >> "$LOG_FILE" 2>&1
   chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$REPO_DIR"
 else
   REPO_DIR="$SCRIPT_DIR"
+  VENV_DIR="$REPO_DIR/.venv"
   info "dev install: using $REPO_DIR in place"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. venv + python deps
+# 5. venv + python deps
 # ---------------------------------------------------------------------------
-log "step 4/11: python venv"
-VENV_DIR="$REPO_DIR/venv"
+log "step 5/13: python venv at $VENV_DIR"
+if [[ -d "$REPO_DIR/venv" && ! -L "$REPO_DIR/venv" ]]; then
+  warn "legacy $REPO_DIR/venv exists alongside new .venv — leaving in place (safe to rm)"
+fi
 if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
   python3 -m venv "$VENV_DIR" >> "$LOG_FILE" 2>&1
 fi
@@ -138,10 +193,10 @@ fi
 "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt" >> "$LOG_FILE" 2>&1 || warn "pip install had errors"
 
 # ---------------------------------------------------------------------------
-# 5. /etc/skytrack/skytrack.env
+# 6. /etc/skytrack/skytrack.env
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 5/11: /etc/skytrack/skytrack.env"
+  log "step 6/13: /etc/skytrack/skytrack.env"
   mkdir -p "$ETC_DIR"
   if [[ ! -f "$ETC_DIR/skytrack.env" ]]; then
     cp "$REPO_DIR/config_templates/skytrack.env.tmpl" "$ETC_DIR/skytrack.env"
@@ -149,22 +204,25 @@ if [[ "$DEV_INSTALL" != true ]]; then
     chmod 644 "$ETC_DIR/skytrack.env"
   else
     info "$ETC_DIR/skytrack.env exists — not overwriting"
+    if ! grep -q '^SKYTRACK_PORT=8080' "$ETC_DIR/skytrack.env"; then
+      warn "$ETC_DIR/skytrack.env does not set SKYTRACK_PORT=8080 — consider updating"
+    fi
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# 6. data + log directories
+# 7. data + log directories
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 6/11: $DATA_DIR / $LOG_DIR"
+  log "step 7/13: $DATA_DIR / $LOG_DIR"
   mkdir -p "$DATA_DIR" "$DATA_DIR/backups" "$LOG_DIR"
   chown -R "$SKYTRACK_USER:$SKYTRACK_USER" "$DATA_DIR" "$LOG_DIR"
 fi
 
 # ---------------------------------------------------------------------------
-# 7. device ID + DB
+# 8. device ID + DB
 # ---------------------------------------------------------------------------
-log "step 7/11: device ID + database migrate"
+log "step 8/13: device ID + database migrate"
 SUDO_AS=""
 if [[ "$DEV_INSTALL" != true ]]; then
   SUDO_AS="sudo -u $SKYTRACK_USER -H"
@@ -182,16 +240,29 @@ print('device_id:', ident['device_id'])
 " >> "$LOG_FILE" 2>&1 || warn "device_id init failed"
 
 # ---------------------------------------------------------------------------
-# 8. vendor JS
+# 9. vendor JS
 # ---------------------------------------------------------------------------
-log "step 8/11: vendor JS"
+log "step 9/13: vendor JS"
 "$REPO_DIR/scripts/fetch_vendor.sh" >> "$LOG_FILE" 2>&1 || warn "vendor fetch had errors"
 
 # ---------------------------------------------------------------------------
-# 9. systemd units
+# 10. appliance provisioning (plymouth + cmdline + ttys + openbox + Xwrapper)
 # ---------------------------------------------------------------------------
 if [[ "$DEV_INSTALL" != true ]]; then
-  log "step 9/11: systemd units"
+  log "step 10/13: appliance provisioning"
+  if [[ -x "$REPO_DIR/scripts/configure_appliance.sh" ]]; then
+    SKYTRACK_REPO_DIR="$REPO_DIR" "$REPO_DIR/scripts/configure_appliance.sh" \
+      >> "$LOG_FILE" 2>&1 || warn "configure_appliance had errors"
+  else
+    warn "scripts/configure_appliance.sh not executable — skipping"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 11. systemd units
+# ---------------------------------------------------------------------------
+if [[ "$DEV_INSTALL" != true ]]; then
+  log "step 11/13: systemd units"
   for unit in skytrack-firstboot.service skytrack-app.service skytrack-network.service \
               skytrack-ingest.service skytrack-hardware.service skytrack-display.service \
               skytrack-hotspot.service skytrack-hotspot-watchdog.service \
@@ -204,17 +275,18 @@ if [[ "$DEV_INSTALL" != true ]]; then
   systemctl daemon-reload
   systemctl enable skytrack-firstboot.service skytrack-app.service \
                    skytrack-network.service skytrack-ingest.service \
-                   skytrack-hardware.service >> "$LOG_FILE" 2>&1 || true
+                   skytrack-hardware.service skytrack-display.service \
+                   >> "$LOG_FILE" 2>&1 || true
   if [[ "$SKIP_HOTSPOT" != true ]]; then
     systemctl enable skytrack-hotspot.service skytrack-hotspot-watchdog.timer >> "$LOG_FILE" 2>&1 || true
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# 10. hotspot bring-up
+# 12. hotspot bring-up
 # ---------------------------------------------------------------------------
 if [[ "$SKIP_HOTSPOT" != true && "$DEV_INSTALL" != true ]]; then
-  log "step 10/11: applying wlan0 hotspot"
+  log "step 12/13: applying wlan0 hotspot"
   # If we're on SSH over wlan0, hotspot_apply.sh will refuse — that's intentional.
   if [[ -n "${SSH_CONNECTION:-}" ]]; then
     warn "SSH session detected — hotspot will be applied on next boot via skytrack-hotspot.service"
@@ -224,9 +296,9 @@ if [[ "$SKIP_HOTSPOT" != true && "$DEV_INSTALL" != true ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 11. start app + verify
+# 13. start app + verify
 # ---------------------------------------------------------------------------
-log "step 11/11: starting services and running verify"
+log "step 13/13: starting services and running verify"
 if [[ "$DEV_INSTALL" != true ]]; then
   systemctl restart skytrack-app.service 2>>"$LOG_FILE" || warn "skytrack-app failed to start"
   sleep 2
@@ -247,14 +319,21 @@ if [[ "$DEV_INSTALL" == true ]]; then
   echo
   echo "Then open http://127.0.0.1:8080/"
 else
-  echo "Production install complete."
+  echo "Appliance install complete."
   echo
-  echo "Next steps:"
-  echo "  • Connect a phone/laptop to the SkyTrack-Portal Wi-Fi"
-  echo "  • Browse to http://10.4.26.89/ and complete the setup wizard"
-  echo "  • Logs:        journalctl -u skytrack-app -f"
-  echo "  • Verify:      sudo $REPO_DIR/scripts/install_verify.sh"
-  echo "  • Reapply hot: sudo $REPO_DIR/scripts/hotspot_apply.sh --reapply"
+  echo -e "${YELLOW}Reboot now to enter appliance mode.${NC}"
+  echo
+  echo "On next boot the device will:"
+  echo "  • Show the SkyTrack Plymouth splash"
+  echo "  • Drop into Chromium kiosk on /kiosk (setup wizard or dashboard)"
+  echo "  • Never expose the Linux desktop, terminal, or login screen"
+  echo
+  echo "Operator access:"
+  echo "  • SSH stays enabled"
+  echo "  • Safe-mode: touch /boot/firmware/skytrack-safe-mode and reboot"
+  echo "    → skips kiosk takeover, getty@tty1 comes up for service work"
+  echo "  • Logs:   journalctl -u skytrack-app -f"
+  echo "  • Verify: sudo $REPO_DIR/scripts/install_verify.sh"
 fi
 echo
 echo "Install log: $LOG_FILE"

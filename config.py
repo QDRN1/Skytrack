@@ -16,7 +16,7 @@ DEFAULT_CONFIG = {
     # --- General ---
     'device_name_prefix': 'QDRN-SkyTrack',
     'host': '0.0.0.0',
-    'port': 80,
+    'port': 8080,
     'debug': False,
     'secret_key': 'skytrack-change-me-in-production',
     'mock_mode': True,

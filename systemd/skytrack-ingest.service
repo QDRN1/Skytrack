@@ -11,7 +11,7 @@ WorkingDirectory=/opt/skytrack
 EnvironmentFile=-/etc/skytrack/skytrack.env
 # Runs the dump1090 → SQLite pipeline as a standalone process so the web
 # app can crash and restart without losing tracker data.
-ExecStart=/opt/skytrack/venv/bin/python -m ingest --standalone
+ExecStart=/opt/skytrack/.venv/bin/python -m ingest --standalone
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

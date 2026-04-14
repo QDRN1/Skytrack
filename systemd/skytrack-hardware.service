@@ -12,7 +12,7 @@ WorkingDirectory=/opt/skytrack
 EnvironmentFile=-/etc/skytrack/skytrack.env
 # Polls DHT22 on GPIO 21 every 15 s, drives the buzzer on GPIO 18 if the
 # buzzer threshold is exceeded. Reads thresholds from config.yaml.
-ExecStart=/opt/skytrack/venv/bin/python -m buzzer --supervise
+ExecStart=/opt/skytrack/.venv/bin/python -m buzzer --supervise
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=10

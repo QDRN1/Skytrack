@@ -1,13 +1,63 @@
 #!/bin/sh
 # =============================================================================
-# SkyTrack .xinitrc — used by startx to launch Openbox + kiosk
+# SkyTrack appliance — xinit entrypoint
+# Runs inside xinit as skytrack-kiosk on tty1/vt1. Starts openbox, disables
+# screen blanking, hides the cursor, then loops Chromium in kiosk mode so a
+# crash never exposes the X root or a Linux desktop.
 # =============================================================================
 
-# Start window manager (lightweight, no desktop)
+set -u
+
+# Window manager (empty rc.xml gives us focus handling with no menu/chrome)
 openbox-session &
+sleep 0.5
 
-# Give WM a moment to initialize before launching Chromium
-sleep 2
+# Disable all power management and screen blanking
+xset -dpms      || true
+xset s off      || true
+xset s noblank  || true
 
-# Launch the kiosk script
-exec /opt/skytrack/kiosk/skytrack-kiosk.sh
+# Hide mouse cursor immediately and whenever idle
+unclutter -idle 0 -root >/dev/null 2>&1 &
+
+# Local branded splash — polls /healthz, redirects to /kiosk when ready,
+# switches to "service unavailable" after a timeout. Served via file:// so it
+# works even before skytrack-app is listening.
+SPLASH_URL="file:///opt/skytrack/static/splash/index.html"
+
+# Fresh per-launch profile dir — prevents Chromium restore bubbles
+PROFILE_DIR="/tmp/skytrack-kiosk-profile"
+
+while true; do
+  rm -rf "$PROFILE_DIR" 2>/dev/null || true
+  mkdir -p "$PROFILE_DIR"
+
+  /usr/bin/chromium-browser \
+    --user-data-dir="$PROFILE_DIR" \
+    --app="$SPLASH_URL" \
+    --kiosk \
+    --incognito \
+    --noerrdialogs \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-infobars \
+    --disable-translate \
+    --disable-features=TranslateUI,MediaRouter,AutofillServerCommunication \
+    --disable-session-crashed-bubble \
+    --disable-restore-session-state \
+    --disable-component-update \
+    --disable-background-networking \
+    --disable-sync \
+    --disable-breakpad \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --check-for-update-interval=31536000 \
+    --password-store=basic \
+    --autoplay-policy=no-user-gesture-required \
+    --force-device-scale-factor=1 \
+    --start-fullscreen \
+    >/dev/null 2>&1
+
+  # Brief pause before relaunch so a runaway crash loop doesn't spin the CPU
+  sleep 1
+done

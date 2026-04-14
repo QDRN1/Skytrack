@@ -10,8 +10,8 @@ User=skytrack
 Group=skytrack
 WorkingDirectory=/opt/skytrack
 EnvironmentFile=-/etc/skytrack/skytrack.env
-ExecStart=/opt/skytrack/venv/bin/python /opt/skytrack/app.py
-Restart=on-failure
+ExecStart=/opt/skytrack/.venv/bin/python /opt/skytrack/app.py
+Restart=always
 RestartSec=5
 TimeoutStopSec=15
 

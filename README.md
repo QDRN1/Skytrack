@@ -78,8 +78,8 @@ After it finishes:
 ```bash
 git clone https://github.com/QDRN1/Skytrack.git
 cd Skytrack
-./install.sh --dev          # creates venv, fetches vendor JS, migrates db
-DEV_MODE=1 venv/bin/python app.py
+./install.sh --dev          # creates .venv, fetches vendor JS, migrates db
+DEV_MODE=1 .venv/bin/python app.py
 ```
 
 Then open `http://127.0.0.1:8080/`. With `DEV_MODE=1` the app uses mock

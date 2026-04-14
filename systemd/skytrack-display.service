@@ -1,34 +1,36 @@
 [Unit]
-Description=SkyTrack Portal v2 — touch display kiosk (Chromium fullscreen)
-After=graphical.target skytrack-app.service
-Wants=skytrack-app.service
+Description=SkyTrack Portal v2 — appliance kiosk display (owns tty1)
+Documentation=https://github.com/qdrnow/skytrack
+After=skytrack-app.service systemd-user-sessions.service
+Requires=skytrack-app.service
+Conflicts=getty@tty1.service
 ConditionPathExists=/usr/bin/chromium-browser
+ConditionPathExists=!/boot/firmware/skytrack-safe-mode
 
 [Service]
 Type=simple
-User=skytrack
-Group=skytrack
-EnvironmentFile=-/etc/skytrack/skytrack.env
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/skytrack/.Xauthority
-ExecStartPre=/bin/sh -c 'until curl -fsS --max-time 2 http://127.0.0.1:8080/healthz >/dev/null; do sleep 2; done'
-ExecStart=/usr/bin/chromium-browser \
-  --kiosk \
-  --noerrdialogs \
-  --disable-infobars \
-  --disable-translate \
-  --disable-features=TranslateUI \
-  --check-for-update-interval=31536000 \
-  --autoplay-policy=no-user-gesture-required \
-  --overscroll-history-navigation=0 \
-  --disable-pinch \
-  --app=http://127.0.0.1:8080/kiosk
-Restart=on-failure
-RestartSec=10
-
+User=skytrack-kiosk
+Group=skytrack-kiosk
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
 StandardOutput=journal
 StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+EnvironmentFile=-/etc/skytrack/skytrack.env
+Environment=HOME=/home/skytrack-kiosk
+Environment=XDG_RUNTIME_DIR=/run/user/1001
+Environment=XDG_SESSION_TYPE=x11
+WorkingDirectory=/home/skytrack-kiosk
+# xinit launches X on vt1 and runs our xinitrc which loops Chromium.
+ExecStart=/usr/bin/xinit /opt/skytrack/kiosk/xinitrc -- /usr/bin/X :0 vt1 -nolisten tcp -nocursor
+Restart=always
+RestartSec=2
 SyslogIdentifier=skytrack-display
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
