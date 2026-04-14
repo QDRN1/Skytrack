@@ -9,7 +9,10 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/portal.css') }}">
   {% block head %}{% endblock %}
 </head>
-<body class="page page-{% block body_class %}default{% endblock %}">
+<body class="page page-{% block body_class %}default{% endblock %}"
+      data-configured="{{ '1' if configured else '0' }}"
+      data-role="{{ current_role or '' }}"
+      data-has-pin="{{ '1' if has_pin else '0' }}">
   <div id="particles-bg" class="particles-bg" aria-hidden="true"></div>
 
   {% block topbar %}
@@ -23,14 +26,18 @@
     </div>
     <nav class="topbar-nav">
       <a href="{{ url_for('dashboard.index') }}" class="topbar-link">Dashboard</a>
-      <a href="{{ url_for('settings.index') }}" class="topbar-link">Settings</a>
-      <a href="{{ url_for('network.index') }}" class="topbar-link">Network</a>
-      <a href="{{ url_for('logs.index') }}" class="topbar-link">Logs</a>
+      <a href="{{ url_for('settings.index') }}" class="topbar-link" data-protected="admin">Settings</a>
+      <a href="{{ url_for('network.index') }}" class="topbar-link" data-protected="admin">Network</a>
+      <a href="{{ url_for('logs.index') }}" class="topbar-link" data-protected="admin">Logs</a>
     </nav>
     <div class="topbar-right">
       <button id="theme-toggle" class="iconbtn" title="Toggle theme">◐</button>
-      {% if current_role %}
-      <a href="{{ url_for('auth.logout') }}" class="topbar-link">Sign out</a>
+      {% if is_admin %}
+        <span class="topbar-role" id="topbar-role">Admin</span>
+        <a href="{{ url_for('auth.logout') }}" class="topbar-link" id="topbar-signout">Sign out</a>
+      {% else %}
+        <button type="button" class="topbar-link" id="topbar-signin"
+                data-auth-trigger="admin">Sign in</button>
       {% endif %}
     </div>
   </header>
@@ -52,9 +59,47 @@
     <span>SkyTrack Portal v{{ app_version }} • {{ device_id }}{% if dev_mode %} • DEV{% endif %}</span>
   </footer>
 
+  {# ---------- Admin sign-in modal ---------- #}
+  <div class="auth-modal" id="auth-modal" hidden role="dialog" aria-modal="true"
+       aria-labelledby="auth-modal-title">
+    <div class="auth-modal-backdrop" data-auth-close></div>
+    <div class="auth-modal-card">
+      <header class="auth-modal-head">
+        <h2 id="auth-modal-title">Admin sign in</h2>
+        <button type="button" class="iconbtn" data-auth-close aria-label="Close">×</button>
+      </header>
+      <p class="auth-modal-hint" id="auth-modal-hint">
+        This action is admin-only. Sign in with your admin password
+        {% if has_pin %}or PIN{% endif %} to continue.
+      </p>
+      <form id="auth-modal-form" autocomplete="off">
+        <label for="auth-modal-password">Admin password</label>
+        <input id="auth-modal-password" name="password" type="password" autocomplete="current-password">
+
+        <label for="auth-modal-pin" class="auth-modal-pin-label"
+               {% if not has_pin %}hidden{% endif %}>
+          PIN <span class="muted">(4–8 digits)</span>
+        </label>
+        <input id="auth-modal-pin" name="pin" type="password" inputmode="numeric"
+               pattern="[0-9]{4,8}" maxlength="8" autocomplete="off"
+               {% if not has_pin %}hidden{% endif %}>
+
+        <p class="auth-modal-error" id="auth-modal-error" hidden></p>
+        <div class="auth-modal-actions">
+          <button type="button" class="btn" data-auth-close>Cancel</button>
+          <button type="submit" class="btn primary">Sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ---------- Toast container ---------- #}
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
   <script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/bus.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/api.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/auth.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/topbar.js') }}" defer></script>
   {% block scripts %}{% endblock %}

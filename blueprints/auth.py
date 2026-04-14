@@ -1,16 +1,23 @@
-"""Auth blueprint — first-boot setup wizard, PIN/admin login, super-user.
+"""Auth blueprint — first-boot setup wizard, admin login, super-user.
 
-This is the only blueprint that sees unauthenticated traffic. Every other
-blueprint sits behind `@auth_lib.login_required(...)`.
+This blueprint is **not** a global gate. The portal is public by default
+and individual routes opt in to admin protection via
+`@auth_lib.login_required(ROLE_ADMIN)`. The only thing this blueprint
+does globally is redirect to /setup when the device hasn't been
+activated yet, and only for the small handful of endpoints that need
+that nudge (root, dashboard).
 
-Endpoints:
-  GET  /                  → root redirect (setup | login | dashboard)
+Endpoints
+---------
+  GET  /                  → root redirect (setup | dashboard)
   GET  /healthz           → liveness probe (always public)
   GET  /setup             → first-boot wizard page
   POST /setup             → submit wizard form
-  GET  /login             → PIN keypad page
-  POST /login             → PIN or admin password
-  GET  /logout            → clear session
+  GET  /login             → fallback full-page login (modal is preferred)
+  POST /login             → admin login (password OR PIN)
+  POST /api/auth/login    → JSON-only admin login (used by the modal)
+  GET  /api/auth/status   → session snapshot for the front-end shell
+  POST /logout            → clear session
   GET  /superuser         → hidden super-user login page
   POST /superuser         → super-user verify
 """
@@ -21,8 +28,7 @@ import time
 from flask import (Blueprint, current_app, jsonify, redirect, render_template,
                    request, url_for)
 
-# Top-level auth module (the credential store / decorator). Aliased to
-# avoid colliding with the `blueprints.auth` package name.
+# Top-level auth module aliased to avoid colliding with `blueprints.auth`.
 import auth as auth_lib
 import device_id
 import logs_svc
@@ -38,7 +44,7 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/healthz')
 def healthz():
-    """Always-public liveness probe used by systemd, watchdog scripts, CI."""
+    """Always-public liveness probe used by systemd, watchdog, CI."""
     return jsonify({
         'ok': True,
         'configured': auth_lib.is_configured(),
@@ -48,10 +54,10 @@ def healthz():
 
 @auth_bp.route('/')
 def root():
+    """Land on /setup if the device isn't activated yet, otherwise on the
+    public dashboard. Never bounces through a login screen."""
     if not auth_lib.is_configured():
         return redirect(url_for('auth.setup_page'))
-    if not auth_lib.current_role():
-        return redirect(url_for('auth.login_page'))
     return redirect(url_for('dashboard.index'))
 
 
@@ -84,7 +90,7 @@ def _setup_locked_to_other(ip: str) -> bool:
 @auth_bp.route('/setup')
 def setup_page():
     if auth_lib.is_configured():
-        return redirect(url_for('auth.login_page'))
+        return redirect(url_for('dashboard.index'))
     ip = request.remote_addr or 'unknown'
     if _setup_locked_to_other(ip):
         return render_template('setup_locked.html'), 423
@@ -109,68 +115,83 @@ def setup_submit():
         return jsonify({'ok': False, 'error': 'setup locked to another client'}), 423
 
     payload = request.get_json(silent=True) or request.form
-    pin = (payload.get('pin') or '').strip()
     admin_pw = payload.get('admin_password') or ''
+    pin = (payload.get('pin') or '').strip()  # optional
 
     try:
-        rec = auth_lib.complete_setup(pin, admin_pw)
+        rec = auth_lib.complete_setup(admin_pw, pin=pin or None)
     except ValueError as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
 
-    timeout = int(current_app.skytrack_config.get('session_timeout_hours', 8)) * 3600
-    auth_lib.login_as(auth_lib.ROLE_ADMIN, timeout_seconds=timeout)
-    logs_svc.log_portal('admin', 'first_boot_setup_complete',
-                        {'device': current_app.config.get('DEVICE_ID')})
+    auth_lib.login_as(auth_lib.ROLE_ADMIN)
+    logs_svc.log_portal('admin', 'first_boot_setup_complete', {
+        'device': current_app.config.get('DEVICE_ID'),
+        'pin_set': bool(pin),
+    })
     return jsonify({
         'ok': True,
         'next': url_for('dashboard.index'),
         'hotspot_password': rec.get('hotspot_password'),
+        'pin_set': bool(rec.get('pin_hash')),
     })
 
 
 # ---------------------------------------------------------------------------
-# Login / logout
+# Login / logout — admin only (no PIN role)
 # ---------------------------------------------------------------------------
 
 @auth_bp.route('/login')
 def login_page():
+    """Fallback full-page login. The preferred path is the modal that
+    `static/js/auth.js` opens whenever a protected route returns 401."""
     if not auth_lib.is_configured():
         return redirect(url_for('auth.setup_page'))
-    return render_template('login.html')
+    next_url = request.args.get('next') or url_for('dashboard.index')
+    return render_template('login.html', next=next_url, has_pin=auth_lib.has_pin())
+
+
+def _do_admin_login():
+    """Shared login impl used by both /login and /api/auth/login."""
+    payload = request.get_json(silent=True) or request.form
+    password = payload.get('password') or ''
+    pin = (payload.get('pin') or '').strip()
+    ip = request.remote_addr or 'unknown'
+
+    if auth_lib.is_locked_out(ip, auth_lib.ROLE_ADMIN):
+        return jsonify({'ok': False, 'error': 'temporary lockout — try again later'}), 429
+
+    ok = auth_lib.verify_admin_credential(password=password, pin=pin)
+    auth_lib.record_attempt(ip, auth_lib.ROLE_ADMIN, ok)
+    if not ok:
+        return jsonify({'ok': False, 'error': 'invalid credentials'}), 401
+
+    auth_lib.login_as(auth_lib.ROLE_ADMIN)
+    method = 'pin' if (pin and not password) else 'password'
+    logs_svc.log_portal('admin', 'login_success', {'ip': ip, 'method': method})
+    next_url = (payload.get('next') or '').strip() or url_for('dashboard.index')
+    return jsonify({
+        'ok': True,
+        'next': next_url,
+        'role': auth_lib.ROLE_ADMIN,
+        'method': method,
+    })
 
 
 @auth_bp.route('/login', methods=['POST'])
 def login_submit():
-    payload = request.get_json(silent=True) or request.form
-    role = (payload.get('role') or 'pin').strip().lower()
-    ip = request.remote_addr or 'unknown'
+    return _do_admin_login()
 
-    if auth_lib.is_locked_out(ip, role):
-        return jsonify({'ok': False, 'error': 'temporary lockout — try again later'}), 429
 
-    timeout = int(current_app.skytrack_config.get('session_timeout_hours', 8)) * 3600
+@auth_bp.route('/api/auth/login', methods=['POST'])
+def api_auth_login():
+    """JSON-only sibling of POST /login, used by the in-page modal."""
+    return _do_admin_login()
 
-    if role == auth_lib.ROLE_PIN:
-        pin = (payload.get('pin') or '').strip()
-        ok = auth_lib.verify_pin(pin)
-        auth_lib.record_attempt(ip, auth_lib.ROLE_PIN, ok)
-        if not ok:
-            return jsonify({'ok': False, 'error': 'invalid PIN'}), 401
-        auth_lib.login_as(auth_lib.ROLE_PIN, timeout_seconds=timeout)
-        logs_svc.log_portal('pin', 'login_success', {'ip': ip})
-        return jsonify({'ok': True, 'next': url_for('dashboard.index')})
 
-    if role == auth_lib.ROLE_ADMIN:
-        password = payload.get('password') or ''
-        ok = auth_lib.verify_admin(password)
-        auth_lib.record_attempt(ip, auth_lib.ROLE_ADMIN, ok)
-        if not ok:
-            return jsonify({'ok': False, 'error': 'invalid admin password'}), 401
-        auth_lib.login_as(auth_lib.ROLE_ADMIN, timeout_seconds=timeout)
-        logs_svc.log_portal('admin', 'login_success', {'ip': ip})
-        return jsonify({'ok': True, 'next': url_for('dashboard.index')})
-
-    return jsonify({'ok': False, 'error': 'unknown role'}), 400
+@auth_bp.route('/api/auth/status')
+def api_auth_status():
+    """Used by the topbar and the modal to know who is signed in."""
+    return jsonify(auth_lib.session_state())
 
 
 @auth_bp.route('/logout', methods=['GET', 'POST'])
@@ -179,7 +200,9 @@ def logout():
     if role:
         logs_svc.log_portal(role, 'logout', {'ip': request.remote_addr})
     auth_lib.logout()
-    return redirect(url_for('auth.login_page'))
+    if request.method == 'POST' or request.path.startswith('/api/'):
+        return jsonify({'ok': True})
+    return redirect(url_for('dashboard.index'))
 
 
 # ---------------------------------------------------------------------------
@@ -208,37 +231,6 @@ def superuser_login():
     if not ok:
         return jsonify({'ok': False, 'error': 'invalid credentials'}), 401
 
-    timeout = int(current_app.skytrack_config.get('session_timeout_hours', 8)) * 3600
-    auth_lib.login_as(auth_lib.ROLE_SUPER, timeout_seconds=timeout)
+    auth_lib.login_as(auth_lib.ROLE_SUPER)
     logs_svc.log_portal('super', 'login_success', {'ip': ip, 'username': username})
     return jsonify({'ok': True, 'next': url_for('super.console')})
-
-
-# ---------------------------------------------------------------------------
-# Global setup-wizard guard — first request from any user that hits a non-
-# auth route gets redirected to /setup if the device is not configured.
-# Setup, login, healthz, static, and super-user endpoints bypass this.
-# ---------------------------------------------------------------------------
-
-_BYPASS_ENDPOINTS = {
-    'auth.healthz',
-    'auth.root',
-    'auth.setup_page',
-    'auth.setup_submit',
-    'auth.login_page',
-    'auth.login_submit',
-    'auth.superuser_page',
-    'auth.superuser_login',
-    'static',
-}
-
-
-@auth_bp.before_app_request
-def _enforce_setup():
-    if auth_lib.is_configured():
-        return None
-    if (request.endpoint or '') in _BYPASS_ENDPOINTS:
-        return None
-    if request.path.startswith('/static/'):
-        return None
-    return redirect(url_for('auth.setup_page'))

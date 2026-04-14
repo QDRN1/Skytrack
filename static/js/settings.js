@@ -28,13 +28,16 @@
         const fd = new FormData(form);
         const body = {};
         const secrets = {};
+        // The PIN form is a special case: an empty value means "clear
+        // the PIN", so we must transmit it instead of stripping it.
+        const allowEmptyKeys = (form.id === 'form-pin') ? new Set(['pin']) : new Set();
         fd.forEach((v, k) => {
-          if (v === '') return;
+          if (v === '' && !allowEmptyKeys.has(k)) return;
           if (form.querySelector(`[name="${k}"]`).type === 'checkbox') {
             body[k] = form.querySelector(`[name="${k}"]`).checked;
           } else if (k.endsWith('_key') || k.endsWith('_pass') || k === 'opensky_user' || k === 'piaware_feeder_id') {
             secrets[k] = v;
-          } else if (!isNaN(v) && v !== '') {
+          } else if (v !== '' && !isNaN(v)) {
             body[k] = Number(v);
           } else {
             body[k] = v;

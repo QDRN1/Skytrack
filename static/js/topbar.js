@@ -1,4 +1,9 @@
-/* Topbar: clock, secondary meta, 5-tap super-user shortcut. */
+/* Topbar: clock, secondary meta, 5-tap super-user shortcut.
+ *
+ * The status pills (net / cell / temp) are powered by the public
+ * /api/network/status, /api/sensor, and /api/auth/status endpoints,
+ * so they render even before the user signs in.
+ */
 (function () {
   document.addEventListener('DOMContentLoaded', () => {
 
@@ -23,16 +28,36 @@
           if (net) net.textContent = status.internet ? 'net ✓' : 'net ✗';
           if (cell) cell.textContent = status.cellular && status.cellular.detected
             ? `cell ${status.cellular.signal_pct || 0}%` : 'cell —';
-        } catch (e) { /* not signed in yet */ }
+        } catch (e) { /* network probe failed; leave dashes */ }
         try {
           const sensor = await window.api.get('/api/sensor');
           const t = document.getElementById('meta-temp');
           if (t && sensor.reading) t.textContent = `${sensor.reading.temperature_f}°F`;
-        } catch (e) { /* not signed in yet */ }
+        } catch (e) { /* sensor unavailable */ }
       };
       refresh();
       setInterval(refresh, 30000);
     }
+
+    // Sign-out link — fire a POST so we don't leak credentials in logs,
+    // then reload to repaint the topbar.
+    const signout = document.getElementById('topbar-signout');
+    if (signout) {
+      signout.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        try {
+          await fetch('/logout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+          });
+        } catch (_e) { /* offline */ }
+        if (window.auth && window.auth.toast) window.auth.toast('Signed out', 'info');
+        window.location.href = '/dashboard';
+      });
+    }
+
+    // Sign-in button is wired by auth.js via [data-auth-trigger="admin"].
 
     // 5-tap or long-press super-user shortcut on the topbar logo
     const logo = document.getElementById('topbar-logo');

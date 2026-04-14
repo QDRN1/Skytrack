@@ -356,9 +356,13 @@ def _start_background_services(app: Flask) -> None:
 # ---------------------------------------------------------------------------
 
 def _register_blueprints(app: Flask) -> None:
-    """Register every blueprint. The auth blueprint installs the
-    setup-wizard guard via @before_app_request that redirects unconfigured
-    devices to /setup before any other route is reached."""
+    """Register every blueprint.
+
+    There is no global auth gate. The auth blueprint exposes /setup, /login,
+    /logout, /superuser, and /healthz. Per-route admin protection is done
+    via @auth_lib.login_required(ROLE_ADMIN) inside each blueprint that
+    needs it. The dashboard is intentionally public so the kiosk can render
+    without authentication."""
     from blueprints.auth import auth_bp
     from blueprints.dashboard import dashboard_bp
     from blueprints.settings import settings_bp
@@ -384,12 +388,16 @@ def _register_template_globals(app: Flask) -> None:
     @app.context_processor
     def _inject_globals():
         identity = app.config.get('DEVICE_RECORD', {})
+        role = auth_lib.current_role()
         return {
             'device': identity,
             'device_id': app.config.get('DEVICE_ID'),
             'radar_url': device_id.radar_url(identity) if identity else '',
             'config': app.skytrack_config,
-            'current_role': auth_lib.current_role(),
+            'current_role': role,
+            'is_admin': role in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER),
+            'is_super': role == auth_lib.ROLE_SUPER,
+            'has_pin': auth_lib.has_pin(),
             'configured': auth_lib.is_configured(),
             'dev_mode': app.config.get('DEV_MODE', False),
             'app_version': '2.0.0',

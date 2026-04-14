@@ -24,24 +24,24 @@ logs_bp = Blueprint('logs', __name__)
 # ---------------------------------------------------------------------------
 
 @logs_bp.route('/logs')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def index():
     return render_template('logs/index.html')
 
 
 # ---------------------------------------------------------------------------
-# JSON tails
+# JSON tails — all admin-only
 # ---------------------------------------------------------------------------
 
 @logs_bp.route('/api/logs/portal')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_portal_tail():
     limit = int(request.args.get('limit', 100))
     return jsonify(logs_svc.tail_portal(limit=limit))
 
 
 @logs_bp.route('/api/logs/network')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_network_tail():
     limit = int(request.args.get('limit', 100))
     return jsonify(logs_svc.tail_network(limit=limit))

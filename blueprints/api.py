@@ -4,13 +4,15 @@ These are intentionally thin — most data lives behind the dashboard or
 settings blueprints. This blueprint is for cross-cutting endpoints that
 the front-end shell needs (topbar identity, weather, health, sensor
 heartbeat) without coupling them to any one page.
+
+All endpoints here are **public**. They feed the topbar and the
+public dashboard, both of which must work without a login.
 """
 
 import logging
 
 from flask import Blueprint, current_app, jsonify
 
-import auth as auth_lib
 import device_id
 
 logger = logging.getLogger('skytrack.api_bp')
@@ -19,7 +21,6 @@ api_bp = Blueprint('api', __name__)
 
 
 @api_bp.route('/api/device')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_device():
     identity = current_app.config.get('DEVICE_RECORD', {})
     return jsonify({
@@ -29,13 +30,11 @@ def api_device():
 
 
 @api_bp.route('/api/health')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_health():
     return jsonify(current_app.health_svc.get_status())
 
 
 @api_bp.route('/api/sensor')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_sensor():
     reading = current_app.sensor_svc.read()
     eval_result = current_app.buzzer.evaluate(reading)
@@ -43,6 +42,5 @@ def api_sensor():
 
 
 @api_bp.route('/api/weather')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_weather():
     return jsonify(current_app.weather_svc.get_weather())

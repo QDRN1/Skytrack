@@ -23,7 +23,7 @@ network_bp = Blueprint('network', __name__)
 # ---------------------------------------------------------------------------
 
 @network_bp.route('/network')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def index():
     return render_template('network/index.html')
 
@@ -33,8 +33,8 @@ def index():
 # ---------------------------------------------------------------------------
 
 @network_bp.route('/api/network/status')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_status():
+    """Public — used by the topbar pill on every page (including dashboard)."""
     cfg = current_app.skytrack_config
     cached = getattr(current_app, 'cellular_state', {}) or {}
     status = network_svc.get_network_status(cfg)
@@ -74,7 +74,7 @@ def api_hotspot_restart():
 
 
 @network_bp.route('/api/network/metered', methods=['POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_metered_toggle():
     payload = request.get_json(silent=True) or {}
     val = bool(payload.get('metered_connection'))

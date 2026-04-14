@@ -12,16 +12,17 @@
 
 Network and Logs are split into their own blueprints per the v2 layout.
 The settings page itself renders all 9 tabs via partials.
+
+All routes here require admin (password OR PIN). The dashboard is
+public; settings are not.
 """
 
 import logging
 import os
 
-from flask import (Blueprint, current_app, jsonify, render_template, request,
-                   url_for)
+from flask import Blueprint, current_app, jsonify, render_template, request
 
 import auth as auth_lib
-import db
 import device_id
 import enrich
 import logs_svc
@@ -37,7 +38,7 @@ settings_bp = Blueprint('settings', __name__)
 # ---------------------------------------------------------------------------
 
 @settings_bp.route('/settings')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def index():
     cfg = current_app.skytrack_config
     return render_template(
@@ -59,7 +60,7 @@ _GENERAL_KEYS = (
 
 
 @settings_bp.route('/api/settings/general', methods=['GET', 'POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_general():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
@@ -69,24 +70,25 @@ def api_general():
     updates = {k: payload[k] for k in _GENERAL_KEYS if k in payload}
     cfg.update(updates)
     _persist(updates)
-    logs_svc.log_portal(auth_lib.current_role() or 'pin', 'settings_general_update', updates)
+    logs_svc.log_portal(auth_lib.current_role() or 'admin', 'settings_general_update', updates)
     return jsonify({'ok': True, 'config': {k: cfg.get(k) for k in _GENERAL_KEYS}})
 
 
 # ---------------------------------------------------------------------------
-# Access tab — change PIN / admin password (admin required)
+# Access tab — change PIN / admin password / hotspot password
 # ---------------------------------------------------------------------------
 
 @settings_bp.route('/api/settings/access/pin', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_change_pin():
+    """Set/clear the optional PIN. Empty string removes the PIN."""
     payload = request.get_json(silent=True) or {}
     try:
-        auth_lib.change_pin((payload.get('pin') or '').strip())
+        auth_lib.change_admin_pin((payload.get('pin') or '').strip())
     except ValueError as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
-    logs_svc.log_portal('admin', 'change_pin', {})
-    return jsonify({'ok': True})
+    logs_svc.log_portal('admin', 'change_pin', {'has_pin': auth_lib.has_pin()})
+    return jsonify({'ok': True, 'has_pin': auth_lib.has_pin()})
 
 
 @settings_bp.route('/api/settings/access/admin', methods=['POST'])
@@ -117,7 +119,7 @@ _INTEGRATION_SECRETS = (
 
 
 @settings_bp.route('/api/settings/integrations', methods=['GET', 'POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_integrations():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
@@ -139,19 +141,19 @@ def api_integrations():
         if key in secret_updates:
             auth_lib.set_secret(key, secret_updates[key])
 
-    logs_svc.log_portal(auth_lib.current_role() or 'pin', 'settings_integrations_update',
+    logs_svc.log_portal(auth_lib.current_role() or 'admin', 'settings_integrations_update',
                         {'flags': list(flag_updates), 'secrets': list(secret_updates)})
     return jsonify({'ok': True})
 
 
 @settings_bp.route('/api/settings/integrations/test/aeroapi', methods=['POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_test_aeroapi():
     return jsonify(enrich.test_aeroapi())
 
 
 @settings_bp.route('/api/settings/integrations/test/opensky', methods=['POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_test_opensky():
     return jsonify(enrich.test_opensky())
 
@@ -164,7 +166,7 @@ _FEEDER_SECRETS = ('fr24_key', 'piaware_feeder_id')
 
 
 @settings_bp.route('/api/settings/feeders', methods=['GET', 'POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_feeders():
     if request.method == 'GET':
         return jsonify({
@@ -174,7 +176,7 @@ def api_feeders():
     for key in _FEEDER_SECRETS:
         if key in payload:
             auth_lib.set_secret(key, payload[key])
-    logs_svc.log_portal(auth_lib.current_role() or 'pin', 'settings_feeders_update',
+    logs_svc.log_portal(auth_lib.current_role() or 'admin', 'settings_feeders_update',
                         {'keys': list(payload)})
     return jsonify({'ok': True})
 
@@ -184,7 +186,7 @@ def api_feeders():
 # ---------------------------------------------------------------------------
 
 @settings_bp.route('/api/settings/radar', methods=['GET', 'POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_radar():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
@@ -210,7 +212,7 @@ _HARDWARE_KEYS = (
 
 
 @settings_bp.route('/api/settings/hardware', methods=['GET', 'POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_hardware():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
@@ -228,15 +230,15 @@ def api_hardware():
         current_app.buzzer.set_enabled(bool(updates['buzzer_enabled']))
     if updates:
         _persist(updates)
-    logs_svc.log_portal(auth_lib.current_role() or 'pin', 'settings_hardware_update', updates)
+    logs_svc.log_portal(auth_lib.current_role() or 'admin', 'settings_hardware_update', updates)
     return jsonify({'ok': True, 'config': {k: cfg.get(k) for k in _HARDWARE_KEYS}})
 
 
 @settings_bp.route('/api/settings/hardware/buzzer/test', methods=['POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_buzzer_test():
     result = current_app.buzzer.test()
-    logs_svc.log_portal(auth_lib.current_role() or 'pin', 'buzzer_test', result)
+    logs_svc.log_portal(auth_lib.current_role() or 'admin', 'buzzer_test', result)
     return jsonify(result)
 
 

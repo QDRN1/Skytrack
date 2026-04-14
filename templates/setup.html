@@ -40,30 +40,54 @@
     </section>
 
     <form class="setup-form" id="setup-form" autocomplete="off">
-      <h2>Create your access</h2>
-      <p class="muted">PIN signs in for everyday use. Admin password protects sensitive actions like updates and credential changes.</p>
+      <h2>Create your admin access</h2>
+      <p class="muted">
+        The admin password protects settings, network, integrations, updates, and any
+        action that changes the device. The dashboard stays public — anyone on the
+        SkyTrack-Portal Wi-Fi can view live aircraft without signing in.
+      </p>
 
-      <label for="setup-pin">PIN <span class="muted">(4–8 digits)</span></label>
-      <input id="setup-pin" name="pin" type="password" inputmode="numeric"
-             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required>
-
-      <label for="setup-pin-confirm">Confirm PIN</label>
-      <input id="setup-pin-confirm" name="pin_confirm" type="password" inputmode="numeric"
-             pattern="[0-9]{4,8}" maxlength="8" minlength="4" required>
-
-      <label for="setup-admin">Admin password <span class="muted">(min 6 chars)</span></label>
-      <input id="setup-admin" name="admin_password" type="password" minlength="6" required>
+      <label for="setup-admin">Admin password <span class="muted">(min 6 chars, required)</span></label>
+      <input id="setup-admin" name="admin_password" type="password" minlength="6" required
+             autocomplete="new-password">
 
       <label for="setup-admin-confirm">Confirm admin password</label>
-      <input id="setup-admin-confirm" name="admin_password_confirm" type="password" minlength="6" required>
+      <input id="setup-admin-confirm" name="admin_password_confirm" type="password"
+             minlength="6" required autocomplete="new-password">
+
+      <label for="setup-pin">PIN <span class="muted">(optional, 4–8 digits — alternate sign-in)</span></label>
+      <input id="setup-pin" name="pin" type="password" inputmode="numeric"
+             pattern="[0-9]{4,8}" maxlength="8" autocomplete="off">
 
       <button type="submit" class="btn primary">Activate device</button>
       <p class="setup-error" id="setup-error" hidden></p>
     </form>
 
+    {# Hotspot password reveal — populated by setup.js after the POST succeeds #}
+    <section class="setup-done" id="setup-done" hidden>
+      <h2>Device activated</h2>
+      <p class="muted">
+        Your hotspot is now WPA2-secured. Save this password — you'll need it to
+        reconnect after the hotspot reloads. You can view or change it any time
+        from <em>Settings → Network → Hotspot</em>.
+      </p>
+      <div class="setup-hotspot-pw">
+        <span class="label">SSID</span>
+        <code>{{ ssid }}</code>
+      </div>
+      <div class="setup-hotspot-pw">
+        <span class="label">Password</span>
+        <code id="setup-hotspot-pw">—</code>
+      </div>
+      <p>
+        <a id="setup-go-dashboard" class="btn primary" href="/dashboard">
+          Continue to dashboard
+        </a>
+      </p>
+    </section>
+
     <footer class="setup-footer muted">
       Once activated, your hotspot will switch from open to WPA2.
-      The new password will be shown in <em>Settings → Network</em>.
     </footer>
   </div>
 

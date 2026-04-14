@@ -1,20 +1,27 @@
 <div class="form-grid">
-  <form class="form" id="form-pin" data-endpoint="/api/settings/access/pin">
-    <h2>Change PIN</h2>
-    <p class="muted">Used for everyday sign-in. 4–8 digits.</p>
-    <label>New PIN
-      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" required>
-    </label>
-    <button type="submit" class="btn">Update PIN</button>
-  </form>
-
   <form class="form" id="form-admin" data-endpoint="/api/settings/access/admin">
-    <h2>Change admin password</h2>
-    <p class="muted">Required for sensitive actions and updates. Minimum 6 characters.</p>
+    <h2>Admin password</h2>
+    <p class="muted">
+      Required for every sensitive action — settings, network, integrations,
+      updates, diagnostics. Minimum 6 characters.
+    </p>
     <label>New admin password
       <input name="password" type="password" minlength="6" required>
     </label>
     <button type="submit" class="btn">Update admin password</button>
+  </form>
+
+  <form class="form" id="form-pin" data-endpoint="/api/settings/access/pin">
+    <h2>PIN <span class="muted">(optional)</span></h2>
+    <p class="muted">
+      Optional alternate sign-in for the admin role. Anyone with the PIN gets
+      the same access as someone with the admin password — keep it private.
+      Leave blank and submit to remove the PIN entirely.
+    </p>
+    <label>New PIN <span class="muted">(4–8 digits, blank to clear)</span>
+      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}">
+    </label>
+    <button type="submit" class="btn">Save PIN</button>
   </form>
 </div>
 

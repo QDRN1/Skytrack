@@ -1,9 +1,13 @@
-"""Dashboard blueprint — the main authenticated landing page.
+"""Dashboard blueprint — the public landing page.
 
-UI shows 4 cards, recent activity, top airlines/routes, trend chart,
-search box, weather card, and the live aircraft map. All data is
-served via REST endpoints under /api/dashboard/*; the page itself is
-mostly static and hydrates with JavaScript.
+The dashboard is intentionally **public**. The on-device kiosk display
+points at /dashboard and must never be blocked by a login screen.
+Anyone who connects to the SkyTrack-Portal Wi-Fi can browse the live
+aircraft, weather, sensor, and identity panels without authenticating.
+
+Read-only data lives under /api/dashboard/* and is also public. The
+only endpoint that requires admin is `api_enrich`, because it spends
+AeroAPI / OpenSky budget when called.
 """
 
 import logging
@@ -21,11 +25,10 @@ dashboard_bp = Blueprint('dashboard', __name__)
 
 
 # ---------------------------------------------------------------------------
-# Page
+# Page (public)
 # ---------------------------------------------------------------------------
 
 @dashboard_bp.route('/dashboard')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def index():
     cfg = current_app.skytrack_config
     return render_template(
@@ -37,11 +40,10 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# Card APIs
+# Card APIs (public read-only)
 # ---------------------------------------------------------------------------
 
 @dashboard_bp.route('/api/dashboard/cards')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_cards():
     return jsonify({
         'now':     dashboard_svc.card_aircraft_now(),
@@ -52,41 +54,35 @@ def api_cards():
 
 
 @dashboard_bp.route('/api/dashboard/recent')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_recent():
     limit = int(request.args.get('limit', 25))
     return jsonify(dashboard_svc.recent_aircraft(limit=limit))
 
 
 @dashboard_bp.route('/api/dashboard/airlines')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_airlines():
     range_key = request.args.get('range', '24h')
     return jsonify(dashboard_svc.top_airlines(range_key))
 
 
 @dashboard_bp.route('/api/dashboard/routes')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_routes():
     range_key = request.args.get('range', '24h')
     return jsonify(dashboard_svc.top_routes(range_key))
 
 
 @dashboard_bp.route('/api/dashboard/trend')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_trend():
     range_key = request.args.get('range', '24h')
     return jsonify(dashboard_svc.trend(range_key))
 
 
 @dashboard_bp.route('/api/dashboard/positions')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_positions():
     return jsonify(dashboard_svc.aircraft_now_positions())
 
 
 @dashboard_bp.route('/api/dashboard/search')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_search():
     q = request.args.get('q', '').strip()
     range_key = request.args.get('range', '24h')
@@ -96,13 +92,11 @@ def api_search():
 
 
 @dashboard_bp.route('/api/dashboard/weather')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_weather():
     return jsonify(current_app.weather_svc.get_weather())
 
 
 @dashboard_bp.route('/api/dashboard/sensor')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_sensor():
     reading = current_app.sensor_svc.read()
     eval_result = current_app.buzzer.evaluate(reading)
@@ -110,7 +104,6 @@ def api_sensor():
 
 
 @dashboard_bp.route('/api/dashboard/identity')
-@auth_lib.login_required(auth_lib.ROLE_PIN)
 def api_identity():
     return jsonify({
         'device': current_app.identity,
@@ -119,11 +112,11 @@ def api_identity():
 
 
 # ---------------------------------------------------------------------------
-# Per-aircraft enrichment (on demand only — see enrich.py for budget rules)
+# Per-aircraft enrichment (admin only — spends AeroAPI / OpenSky budget)
 # ---------------------------------------------------------------------------
 
 @dashboard_bp.route('/api/dashboard/enrich/<icao>', methods=['POST'])
-@auth_lib.login_required(auth_lib.ROLE_PIN)
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_enrich(icao):
     callsign = (request.args.get('callsign') or '').strip() or None
     record = enrich.enrich_flight(icao, callsign, current_app.skytrack_config)

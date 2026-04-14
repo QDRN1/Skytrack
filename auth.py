@@ -1,55 +1,76 @@
-"""Authentication — PIN, Admin password, Super User credentials.
+"""Authentication — Admin (password OR optional PIN) + hidden Super User.
 
 Storage: /var/lib/skytrack/auth.json (mode 0600)
 Shape:
   {
     "configured": true/false,           # first-boot wizard completed
-    "pin_hash": "pbkdf2:...",
-    "admin_hash": "pbkdf2:...",
+    "admin_hash": "pbkdf2:...",         # admin password (required)
+    "pin_hash": "pbkdf2:..." or null,   # optional alternate admin credential
     "super_username": "collin",
     "super_hash": "pbkdf2:...",
-    "secrets": {
-      "aeroapi_key": "...",
-      "opensky_user": "...",
-      "opensky_pass": "...",
-      "fr24_key": "...",
-      "piaware_feeder_id": "...",
-      "weather_api_key": "..."
-    },
-    "hotspot_password": "random-16-char",
+    "secrets": {...},
+    "hotspot_password": "random-12-char",
     "updated_at": "2026-04-14T12:00:00Z"
   }
+
+Roles
+-----
+There are exactly two roles:
+
+    ROLE_ADMIN  the everyday admin user. May authenticate with the
+                admin password OR the optional PIN — both grant the
+                same role.
+    ROLE_SUPER  hidden override role. Reachable only via the 5-tap
+                topbar shortcut, the long-press, or /superuser. Defaults
+                to username "collin", password "collin123".
+
+There is no separate "PIN role" anymore — PIN is just an alternate
+credential for the same admin role.
+
+Auth gating
+-----------
+The portal is **public by default**. Only routes that change config or
+expose privileged data wear `@login_required(ROLE_ADMIN)`. Page routes
+that hit 401 render `auth_gate.html` (which auto-opens the login modal
+and redirects on success). API routes that hit 401 return JSON, which
+the front-end fetch wrapper intercepts to open the same modal.
+
+Sessions are 2-hour idle, sliding window. The decorator touches the
+session on every authorized request.
 """
 
 import json
 import logging
 import os
 import secrets
-import string
 import time
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Optional
 
-from flask import redirect, request, session, url_for
+from flask import (jsonify, redirect, render_template, request, session,
+                   url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = logging.getLogger('skytrack.auth')
 
 DEFAULT_AUTH_PATH = Path('/var/lib/skytrack/auth.json')
 
-ROLE_PIN = 'pin'
+# --- Roles ----------------------------------------------------------------
 ROLE_ADMIN = 'admin'
 ROLE_SUPER = 'super'
 
-_HIERARCHY = {ROLE_PIN: 1, ROLE_ADMIN: 2, ROLE_SUPER: 3}
+_HIERARCHY = {ROLE_ADMIN: 1, ROLE_SUPER: 2}
 
-# Lockout policy
+# --- Session policy -------------------------------------------------------
+DEFAULT_SESSION_TIMEOUT = 7200  # 2 hours, sliding window
+
+# --- Lockout policy -------------------------------------------------------
 LOCKOUT_MAX_ATTEMPTS = 5
 LOCKOUT_WINDOW_SEC = 300  # 5 minutes
 
-# Default super-user seed (editable in Settings → Access)
+# --- Default super-user seed (editable in /super) -------------------------
 DEFAULT_SUPER_USERNAME = 'collin'
 DEFAULT_SUPER_PASSWORD = 'collin123'
 
@@ -69,8 +90,8 @@ def _now_iso():
 def _empty_record() -> dict:
     return {
         'configured': False,
-        'pin_hash': None,
         'admin_hash': None,
+        'pin_hash': None,
         'super_username': DEFAULT_SUPER_USERNAME,
         'super_hash': generate_password_hash(DEFAULT_SUPER_PASSWORD),
         'secrets': {},
@@ -118,18 +139,26 @@ def is_configured() -> bool:
 # First-boot setup
 # ---------------------------------------------------------------------------
 
-def complete_setup(pin: str, admin_password: str,
+def complete_setup(admin_password: str, pin: Optional[str] = None,
                    secrets_overrides: Optional[dict] = None) -> dict:
-    """Finalize first-boot wizard. Sets PIN, admin password, generates
-    a hotspot password, and marks the device configured."""
-    if not pin or not pin.isdigit() or not (4 <= len(pin) <= 8):
-        raise ValueError('PIN must be 4–8 digits')
+    """Finalize the first-boot wizard.
+
+    Required: admin password (≥6 chars).
+    Optional: PIN (4–8 digits) as an alternate admin credential.
+
+    Always auto-generates a fresh hotspot password and marks the device
+    configured. Returns the full auth record so the caller can surface
+    the hotspot password to the operator.
+    """
     if not admin_password or len(admin_password) < 6:
         raise ValueError('Admin password must be at least 6 characters')
+    pin = (pin or '').strip()
+    if pin and (not pin.isdigit() or not (4 <= len(pin) <= 8)):
+        raise ValueError('PIN must be 4–8 digits if provided')
 
     rec = read_auth()
-    rec['pin_hash'] = generate_password_hash(pin)
     rec['admin_hash'] = generate_password_hash(admin_password)
+    rec['pin_hash'] = generate_password_hash(pin) if pin else None
     rec['hotspot_password'] = _random_hotspot_password()
     if secrets_overrides:
         rec.setdefault('secrets', {}).update(
@@ -137,12 +166,13 @@ def complete_setup(pin: str, admin_password: str,
         )
     rec['configured'] = True
     write_auth(rec)
-    logger.info('First-boot setup completed; device is now configured')
+    logger.info('First-boot setup completed; device is now configured (pin_set=%s)',
+                bool(rec['pin_hash']))
     return rec
 
 
 def _random_hotspot_password(length: int = 12) -> str:
-    """Generate an easy-to-read WPA2 password (no ambiguous chars)."""
+    """Generate an easy-to-read WPA2 password (no ambiguous characters)."""
     alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
@@ -151,20 +181,32 @@ def _random_hotspot_password(length: int = 12) -> str:
 # Credential mutation
 # ---------------------------------------------------------------------------
 
-def change_pin(new_pin: str) -> None:
-    if not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
-        raise ValueError('PIN must be 4–8 digits')
-    rec = read_auth()
-    rec['pin_hash'] = generate_password_hash(new_pin)
-    write_auth(rec)
-
-
 def change_admin_password(new_password: str) -> None:
     if len(new_password) < 6:
         raise ValueError('Admin password must be at least 6 characters')
     rec = read_auth()
     rec['admin_hash'] = generate_password_hash(new_password)
     write_auth(rec)
+
+
+def change_admin_pin(new_pin: Optional[str]) -> None:
+    """Set or clear the optional PIN credential.
+
+    Pass an empty string / None to remove the PIN entirely.
+    """
+    rec = read_auth()
+    new_pin = (new_pin or '').strip()
+    if not new_pin:
+        rec['pin_hash'] = None
+    else:
+        if not new_pin.isdigit() or not (4 <= len(new_pin) <= 8):
+            raise ValueError('PIN must be 4–8 digits or empty')
+        rec['pin_hash'] = generate_password_hash(new_pin)
+    write_auth(rec)
+
+
+def has_pin() -> bool:
+    return bool(read_auth().get('pin_hash'))
 
 
 def change_super_credentials(new_username: str, new_password: str) -> None:
@@ -203,16 +245,26 @@ def set_hotspot_password(password: Optional[str] = None) -> str:
 # Verification
 # ---------------------------------------------------------------------------
 
-def verify_pin(pin: str) -> bool:
+def verify_admin_password(password: str) -> bool:
+    rec = read_auth()
+    h = rec.get('admin_hash')
+    return bool(h) and check_password_hash(h, password or '')
+
+
+def verify_admin_pin(pin: str) -> bool:
     rec = read_auth()
     h = rec.get('pin_hash')
     return bool(h) and check_password_hash(h, pin or '')
 
 
-def verify_admin(password: str) -> bool:
-    rec = read_auth()
-    h = rec.get('admin_hash')
-    return bool(h) and check_password_hash(h, password or '')
+def verify_admin_credential(*, password: Optional[str] = None,
+                            pin: Optional[str] = None) -> bool:
+    """Returns True if either credential authenticates the admin role."""
+    if password and verify_admin_password(password):
+        return True
+    if pin and verify_admin_pin(pin):
+        return True
+    return False
 
 
 def verify_super(username: str, password: str) -> bool:
@@ -224,7 +276,7 @@ def verify_super(username: str, password: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Lockout — records failed attempts in auth_attempts (in db.py)
+# Lockout — records failed attempts in auth_attempts (db.py)
 # ---------------------------------------------------------------------------
 
 def record_attempt(ip: str, role: str, success: bool) -> None:
@@ -260,7 +312,7 @@ def is_locked_out(ip: str, role: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Session / decorator
+# Session helpers
 # ---------------------------------------------------------------------------
 
 def _session_touch():
@@ -272,47 +324,45 @@ def _session_expired(timeout_seconds: int) -> bool:
     return (int(time.time()) - int(last)) > timeout_seconds
 
 
-def login_required(role: str = ROLE_PIN):
-    """Decorator: require at least `role` (hierarchical)."""
-    min_level = _HIERARCHY[role]
-
-    def wrap(fn):
-        @wraps(fn)
-        def inner(*args, **kwargs):
-            # First-boot wizard gate: if device not configured, redirect to /setup
-            if not is_configured():
-                if request.endpoint not in (
-                    'auth.setup_page', 'auth.setup_submit',
-                    'auth.superuser_page', 'auth.superuser_login',
-                    'auth.healthz', 'static',
-                ):
-                    return redirect(url_for('auth.setup_page'))
-
-            user_role = session.get('role')
-            level = _HIERARCHY.get(user_role, 0)
-
-            # Session timeout
-            timeout = int(session.get('session_timeout_seconds', 28800))  # 8h
-            if user_role and _session_expired(timeout):
-                session.clear()
-                return redirect(url_for('auth.login_page'))
-
-            if level < min_level:
-                return redirect(url_for('auth.login_page'))
-
-            _session_touch()
-            return fn(*args, **kwargs)
-
-        return inner
-
-    return wrap
-
-
 def current_role() -> Optional[str]:
-    return session.get('role')
+    """Returns the active role, or None if the session is expired/empty."""
+    role = session.get('role')
+    if not role:
+        return None
+    timeout = int(session.get('session_timeout_seconds', DEFAULT_SESSION_TIMEOUT))
+    if _session_expired(timeout):
+        session.clear()
+        return None
+    return role
 
 
-def login_as(role: str, timeout_seconds: int = 28800) -> None:
+def is_admin() -> bool:
+    """Convenience: True if the current session is admin or super."""
+    role = current_role()
+    return role in (ROLE_ADMIN, ROLE_SUPER)
+
+
+def is_super() -> bool:
+    return current_role() == ROLE_SUPER
+
+
+def session_state() -> dict:
+    """Compact snapshot for /api/auth/status."""
+    role = current_role()
+    last = int(session.get('last_seen', 0))
+    timeout = int(session.get('session_timeout_seconds', DEFAULT_SESSION_TIMEOUT))
+    return {
+        'configured': is_configured(),
+        'role': role,
+        'is_admin': role in (ROLE_ADMIN, ROLE_SUPER),
+        'is_super': role == ROLE_SUPER,
+        'has_pin': has_pin(),
+        'session_expires_in': max(0, (last + timeout) - int(time.time())) if role else 0,
+        'session_timeout_seconds': timeout,
+    }
+
+
+def login_as(role: str, timeout_seconds: int = DEFAULT_SESSION_TIMEOUT) -> None:
     session.clear()
     session['role'] = role
     session['session_timeout_seconds'] = int(timeout_seconds)
@@ -322,3 +372,60 @@ def login_as(role: str, timeout_seconds: int = 28800) -> None:
 
 def logout() -> None:
     session.clear()
+
+
+# ---------------------------------------------------------------------------
+# Auth decorator — only Admin and Super
+# ---------------------------------------------------------------------------
+
+def _wants_json() -> bool:
+    """Best-effort: did this request come from XHR / fetch?"""
+    if request.path.startswith('/api/'):
+        return True
+    if request.is_json:
+        return True
+    accept = (request.headers.get('Accept') or '')
+    if 'application/json' in accept:
+        return True
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return True
+    return False
+
+
+def _unauthorized_response(required_role: str):
+    """Return a 401 in the right shape for the caller."""
+    if _wants_json():
+        return jsonify({
+            'ok': False,
+            'error': 'authentication required',
+            'required_role': required_role,
+            'configured': is_configured(),
+        }), 401
+    # Page navigation — render the auth gate (modal pre-opened).
+    return render_template(
+        'auth_gate.html',
+        next=request.full_path if request.query_string else request.path,
+        required_role=required_role,
+        configured=is_configured(),
+    ), 401
+
+
+def login_required(role: str = ROLE_ADMIN):
+    """Decorator: require at least `role` (admin or super, hierarchical)."""
+    if role not in _HIERARCHY:
+        raise ValueError(f'unknown role: {role}')
+    min_level = _HIERARCHY[role]
+
+    def wrap(fn):
+        @wraps(fn)
+        def inner(*args, **kwargs):
+            user_role = current_role()
+            level = _HIERARCHY.get(user_role or '', 0)
+            if level < min_level:
+                return _unauthorized_response(role)
+            _session_touch()
+            return fn(*args, **kwargs)
+
+        return inner
+
+    return wrap

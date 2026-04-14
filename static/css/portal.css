@@ -283,3 +283,118 @@ button { font: inherit; cursor: pointer; }
 .radar-url { background: var(--bg-elev); padding: 12px; border-radius: 10px; margin-bottom: 12px; }
 .radar-url .label { display: block; color: var(--fg-muted); font-size: 0.8em; text-transform: uppercase; }
 .radar-url a { font-family: ui-monospace, monospace; font-size: 1.05em; }
+
+/* -------- Auth modal (in-page admin sign-in) -------- */
+.auth-modal[hidden] { display: none; }
+.auth-modal {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(8, 12, 30, 0.65);
+  backdrop-filter: blur(6px);
+}
+.auth-modal-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  width: min(420px, calc(100vw - 32px));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.auth-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.auth-modal-head h2 { margin: 0; font-size: 1.25em; }
+.auth-modal-hint { color: var(--fg-muted); font-size: 0.9em; margin: 8px 0 16px; }
+.auth-modal-card label {
+  display: block; color: var(--fg-muted);
+  font-size: 0.8em; text-transform: uppercase;
+  margin: 12px 0 4px;
+}
+.auth-modal-card input[type="password"] {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 10px;
+  font-size: 1em;
+}
+.auth-modal-error { color: var(--accent-warn); margin: 10px 0 0; min-height: 1.2em; }
+.auth-modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;
+}
+body.modal-open { overflow: hidden; }
+
+/* -------- Auth gate fallback page -------- */
+.auth-gate-shell {
+  display: flex; justify-content: center; align-items: center;
+  min-height: calc(100vh - var(--topbar-h, 60px) - 80px);
+  padding: 40px 20px;
+}
+.auth-gate-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 32px; max-width: 520px;
+  box-shadow: var(--shadow);
+}
+.auth-gate-card h1 { margin-top: 0; }
+
+/* -------- Topbar role + sign-in -------- */
+.topbar-role {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+}
+button.topbar-link {
+  background: none; border: none; cursor: pointer;
+  color: inherit; font: inherit; padding: 4px 8px;
+}
+
+/* -------- Setup hotspot password reveal -------- */
+.setup-done {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(60, 220, 130, 0.08);
+  border: 1px solid rgba(60, 220, 130, 0.4);
+  border-radius: 12px;
+}
+.setup-done h2 { margin-top: 0; }
+.setup-hotspot-pw {
+  display: flex; align-items: center; gap: 12px;
+  margin: 8px 0;
+}
+.setup-hotspot-pw .label {
+  color: var(--fg-muted); font-size: 0.8em;
+  text-transform: uppercase; min-width: 80px;
+}
+.setup-hotspot-pw code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 6px 12px; border-radius: 8px;
+  font-size: 1.1em; letter-spacing: 0.5px;
+}
+
+/* -------- Toast stack -------- */
+.toast-stack {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9500; pointer-events: none;
+}
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  font-size: 0.9em;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast.toast-show { opacity: 1; transform: translateY(0); }
+.toast-success { border-color: rgba(60, 220, 130, 0.5); }
+.toast-error { border-color: var(--accent-warn); }

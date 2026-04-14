@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Admin sign-in required{% endblock %}
+{% block body_class %}auth-gate{% endblock %}
+
+{% block content %}
+<section class="auth-gate-shell">
+  {% if not configured %}
+    <div class="auth-gate-card">
+      <h1>Device not yet activated</h1>
+      <p class="muted">
+        This SkyTrack hasn't completed its first-boot setup yet.
+        Open <a href="{{ url_for('auth.setup_page') }}">the setup wizard</a>
+        to choose an admin password and secure the hotspot.
+      </p>
+      <p>
+        <a class="btn primary" href="{{ url_for('auth.setup_page') }}">
+          Run first-boot setup
+        </a>
+      </p>
+    </div>
+  {% else %}
+    <div class="auth-gate-card">
+      <h1>Admin sign-in required</h1>
+      <p class="muted">
+        This page changes device configuration, so it's protected.
+        Sign in with the admin password
+        {% if has_pin %}or your PIN{% endif %} to continue. The
+        public dashboard is always available without signing in.
+      </p>
+      <p>
+        <button type="button" class="btn primary" id="auth-gate-open"
+                data-auth-trigger="admin"
+                data-auth-next="{{ next or '' }}">
+          Sign in as admin
+        </button>
+        <a class="btn" href="{{ url_for('dashboard.index') }}">Back to dashboard</a>
+      </p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Auto-open the modal as soon as the gate page loads, so the
+  // user only has to type their credentials.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.auth && window.auth.openModal) {
+      window.auth.openModal({
+        next: {{ (next or '')|tojson }},
+        reason: 'admin_required',
+      });
+    }
+  });
+</script>
+{% endblock %}

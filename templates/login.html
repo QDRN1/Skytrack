@@ -19,33 +19,32 @@
 {% block content %}
 <div class="login-shell">
   <div class="login-card">
-    <h1>Sign in</h1>
-    <p class="muted">Enter your PIN to unlock the dashboard.</p>
+    <h1>Admin sign in</h1>
+    <p class="muted">
+      The dashboard is public — you only need to sign in for settings, network,
+      integrations, updates, diagnostics, and logs.
+    </p>
 
-    <div class="login-pin-display" id="pin-display">
-      <span></span><span></span><span></span><span></span>
-      <span class="extra"></span><span class="extra"></span>
-      <span class="extra"></span><span class="extra"></span>
-    </div>
+    <form id="login-form" autocomplete="off">
+      <input type="hidden" name="next" value="{{ next or '/dashboard' }}">
 
-    <div class="keypad">
-      {% for n in [1,2,3,4,5,6,7,8,9] %}
-      <button class="key" data-key="{{ n }}">{{ n }}</button>
-      {% endfor %}
-      <button class="key key-action" data-key="clear">CLR</button>
-      <button class="key" data-key="0">0</button>
-      <button class="key key-action" data-key="enter">↵</button>
-    </div>
+      <label for="login-password">Admin password</label>
+      <input id="login-password" name="password" type="password"
+             autocomplete="current-password">
 
-    <p class="login-error" id="login-error" hidden></p>
+      {% if has_pin %}
+      <label for="login-pin">PIN <span class="muted">(or admin password above)</span></label>
+      <input id="login-pin" name="pin" type="password" inputmode="numeric"
+             pattern="[0-9]{4,8}" maxlength="8" autocomplete="off">
+      {% endif %}
 
-    <details class="login-admin">
-      <summary>Sign in with admin password</summary>
-      <form id="admin-form" autocomplete="off">
-        <input type="password" name="password" placeholder="Admin password" required>
-        <button class="btn" type="submit">Continue</button>
-      </form>
-    </details>
+      <button type="submit" class="btn primary">Sign in</button>
+      <p class="login-error" id="login-error" hidden></p>
+    </form>
+
+    <p class="login-back muted">
+      <a href="{{ url_for('dashboard.index') }}">← Back to public dashboard</a>
+    </p>
   </div>
 </div>
 {% endblock %}
