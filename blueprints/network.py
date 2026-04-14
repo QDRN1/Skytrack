@@ -61,6 +61,56 @@ def api_status():
     return jsonify(status)
 
 
+@network_bp.route('/api/network/state')
+def api_state():
+    """Phase 1 — normalized network truth model.
+
+    Canonical endpoint the kiosk network card and the onboarding flow
+    consume. Every dimension is a hard fact read from nmcli / mmcli /
+    /proc/net/route, never inferred. The shape is fixed and documented
+    on `net_backend.normalized_network_state()`:
+
+        wifi:        {enabled, connected, ssid, signal_pct, interface, ipv4}
+        cellular:    {enabled, modem_present, modem_registered,
+                      bearer_connected, nm_profile_present, nm_profile_active,
+                      nm_profile_name, ip_assigned, route_active,
+                      apn, apn_source, carrier, signal_pct, access_tech,
+                      interface, ipv4}
+        hotspot:     {enabled, configured, service_running, dhcp_active,
+                      dhcp_installed, actually_usable, ssid, local_url,
+                      gateway, password?, seconds_remaining?}
+        routing:     {primary, primary_interface, internet_reachable}
+        preferences: {preferred_uplink}
+        backend:     'nm' | 'direct'
+
+    `password` and `seconds_remaining` are only present for admin
+    callers — the kiosk pre-auth view never sees the hotspot password.
+    """
+    cfg = current_app.skytrack_config
+    state = network_svc.normalized_state(cfg)
+
+    # Daemon-cached cellular fields (mmcli is slow on a cold call) win
+    # over the freshly-polled value when they're newer.
+    cached = getattr(current_app, 'cellular_state', {}) or {}
+    if cached.get('detected'):
+        cellular = state.get('cellular') or {}
+        for k in ('signal_pct', 'access_tech', 'carrier'):
+            if cached.get(k) is not None:
+                cellular[k] = cached.get(k)
+        state['cellular'] = cellular
+
+    # Admin-only enrichments — never leak the hotspot password to a
+    # pre-auth caller.
+    if auth_lib.current_role() == auth_lib.ROLE_ADMIN:
+        try:
+            rec = auth_lib.read_auth() or {}
+            state['hotspot']['password'] = rec.get('hotspot_password') or ''
+        except Exception:
+            pass
+
+    return jsonify(state)
+
+
 # ---------------------------------------------------------------------------
 # Hotspot — credentials + regenerate + restart
 #

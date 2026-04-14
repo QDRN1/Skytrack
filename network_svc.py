@@ -55,6 +55,16 @@ def backend_info() -> dict:
     return net_backend.backend_info()
 
 
+def normalized_state(config) -> dict:
+    """Phase 1 of the network truth model.
+
+    Thin re-export so blueprints can import from the service layer
+    instead of reaching into net_backend directly. The dict shape is
+    documented on `net_backend.normalized_network_state()`.
+    """
+    return net_backend.normalized_network_state(config)
+
+
 def default_route_interface() -> Optional[str]:
     return net_backend.active_uplink().get('interface') or None
 

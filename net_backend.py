@@ -450,7 +450,13 @@ def set_apn(apn: str, connection_name: Optional[str] = None) -> Dict:
 
     Sequence:
       1. If a gsm connection exists, `nmcli connection modify <name> gsm.apn`.
-         Otherwise create `skytrack-cellular` with the new APN.
+         Otherwise create one called `cellular` (matching the verified
+         working flow on the reference device:
+             nmcli connection add type gsm con-name cellular apn nrbroadband
+         — note the deliberate absence of any `ifname` argument; pinning
+         to wwan0 prevents NM from binding to the modem at all on
+         SIM7600G-H, and pinning to `*` is rejected as an invalid
+         interface name on some nmcli builds).
       2. `nmcli connection down <name>` (best effort) then `up <name>`
          so the new APN takes effect immediately on the live link, not
          only on the next modem cycle.
@@ -487,10 +493,13 @@ def set_apn(apn: str, connection_name: Optional[str] = None) -> Dict:
             }
         logger.info('APN on %s set to %s', target, apn)
     else:
-        target = 'skytrack-cellular'
+        # No existing gsm profile — create one. Use the same canonical
+        # name the operator validated by hand so we don't end up with
+        # two parallel profiles fighting for the modem.
+        target = 'cellular'
         r = _run(
             ['nmcli', 'connection', 'add', 'type', 'gsm',
-             'con-name', target, 'ifname', '*', 'apn', apn],
+             'con-name', target, 'apn', apn],
             timeout=15,
         )
         if not r['ok']:
@@ -522,6 +531,258 @@ def set_apn(apn: str, connection_name: Optional[str] = None) -> Dict:
         'created': created,
         'applied': applied,
     }
+
+
+# ---------------------------------------------------------------------------
+# Low-level routing / interface helpers — used by the normalized state model
+# ---------------------------------------------------------------------------
+
+def _default_route_iface() -> Optional[str]:
+    """Read the kernel's default-route interface. Authoritative.
+
+    Reads /proc/net/route directly so we don't depend on `ip` being in
+    PATH (busybox-only systems). Returns None if no default route exists.
+    """
+    try:
+        with open('/proc/net/route', 'r') as f:
+            next(f)  # header
+            for line in f:
+                fields = line.split()
+                if len(fields) >= 11 and fields[1] == '00000000':
+                    return fields[0]
+    except Exception:
+        pass
+    # Fallback for environments without /proc/net/route (e.g. tests)
+    return _ip_default_interface()
+
+
+def _iface_ipv4(iface: str) -> str:
+    """Return the first IPv4 address bound to an interface, or ''."""
+    if not iface:
+        return ''
+    r = _run(['ip', '-4', '-o', 'addr', 'show', 'dev', iface], timeout=3)
+    if not r['ok']:
+        return ''
+    for line in r['stdout'].splitlines():
+        m = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', line)
+        if m:
+            return m.group(1)
+    return ''
+
+
+def _nm_profile_exists(name: str) -> bool:
+    """Does a NetworkManager connection profile by this exact name exist?"""
+    if detect_backend() != 'nm' or not name:
+        return False
+    r = _run(['nmcli', '-t', '-f', 'NAME', 'connection', 'show'], timeout=5)
+    if not r['ok']:
+        return False
+    for raw in r['stdout'].splitlines():
+        if raw.replace('\\:', ':').strip() == name:
+            return True
+    return False
+
+
+def _nm_profile_active(name: str) -> bool:
+    """Is the named NM connection currently activated?"""
+    if detect_backend() != 'nm' or not name:
+        return False
+    r = _run(
+        ['nmcli', '-t', '-f', 'NAME,STATE', 'connection', 'show', '--active'],
+        timeout=5,
+    )
+    if not r['ok']:
+        return False
+    for raw in r['stdout'].splitlines():
+        parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
+        if len(parts) >= 2 and parts[0] == name and parts[1] == 'activated':
+            return True
+    return False
+
+
+def _gsm_profile_name() -> str:
+    """Name of the live GSM profile, or '' if none exists."""
+    return _read_apn_nm()[1] or ''
+
+
+def _service_active(unit: str) -> bool:
+    """Is a systemd unit currently active?"""
+    r = _run(['systemctl', 'is-active', unit], timeout=3)
+    return bool(r['ok'] and r['stdout'] == 'active')
+
+
+def _radio_state(domain: str) -> bool:
+    """Is `nmcli radio <domain>` enabled? domain ∈ {wifi, wwan}."""
+    if detect_backend() != 'nm':
+        return True  # no NM, no toggle — assume on
+    r = _run(['nmcli', '-t', '-f', domain.upper(), 'radio'], timeout=3)
+    if not r['ok']:
+        return True
+    return r['stdout'].strip().lower() == 'enabled'
+
+
+# ---------------------------------------------------------------------------
+# Normalized network state — the SINGLE source of truth for the UI.
+#
+# Phase 1 of the product-quality pass establishes this contract: the
+# frontend MUST consume only this dict (or its serialized form via
+# /api/network/state). Anything that infers state from raw mmcli/nmcli
+# output in JS is a regression and should be deleted.
+# ---------------------------------------------------------------------------
+
+def normalized_network_state(config) -> Dict:
+    """Return the full, normalized network truth model.
+
+    Every dimension is independently checked against the kernel / nmcli /
+    mmcli, never inferred. This means the dict can legitimately contain
+    states like:
+        modem_registered: True, bearer_connected: True,
+        nm_profile_active: True, ip_assigned: False
+    which is the actual "modem dialed but interface didn't get an IP"
+    failure mode — the UI can render that honestly instead of guessing.
+    """
+    cfg = config or {}
+
+    # ---- WiFi ----
+    wifi_radio_on = _radio_state('wifi')
+    w = wifi_status()
+    wifi_iface = ''
+    if detect_backend() == 'nm':
+        r = _run(
+            ['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE', 'device'],
+            timeout=5,
+        )
+        if r['ok']:
+            for line in r['stdout'].splitlines():
+                parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', line)]
+                if len(parts) >= 2 and parts[1] == 'wifi':
+                    wifi_iface = parts[0]
+                    break
+    wifi_ipv4 = _iface_ipv4(wifi_iface) if wifi_iface else ''
+
+    wifi = {
+        'enabled':       bool(wifi_radio_on),
+        'connected':     bool(w.get('connected')),
+        'ssid':          w.get('ssid') or '',
+        'signal_pct':    int(w.get('signal_pct') or 0),
+        'interface':     wifi_iface,
+        'ipv4':          wifi_ipv4,
+    }
+
+    # ---- Cellular ----
+    cell_raw = cellular_status()
+    gsm_name = _gsm_profile_name()
+    nm_present = bool(gsm_name)
+    nm_active  = _nm_profile_active(gsm_name) if gsm_name else False
+    cell_iface = cell_raw.get('interface') or ''
+    cell_ipv4  = _iface_ipv4(cell_iface) if cell_iface else ''
+    cell_state = (cell_raw.get('state') or '').lower()
+
+    # mmcli reports 'registered' or 'connected' once the modem is on the
+    # network; bearer_connected is a stricter check for an actual data session.
+    modem_registered = (
+        bool(cell_raw.get('detected'))
+        and any(s in cell_state for s in ('registered', 'connected', 'enabled'))
+    )
+    bearer_connected = ('connected' in cell_state)
+
+    cellular = {
+        'enabled':            bool(cfg.get('cellular_enabled', True))
+                              and _radio_state('wwan'),
+        'modem_present':      bool(cell_raw.get('detected')),
+        'modem_registered':   modem_registered,
+        'bearer_connected':   bearer_connected,
+        'nm_profile_present': nm_present,
+        'nm_profile_active':  nm_active,
+        'nm_profile_name':    gsm_name,
+        'ip_assigned':        bool(cell_ipv4),
+        'route_active':       (_default_route_iface() == cell_iface) if cell_iface else False,
+        'apn':                cell_raw.get('apn') or (cfg.get('cellular_apn') or ''),
+        'apn_source':         cell_raw.get('apn_source') or '',
+        'carrier':            cell_raw.get('carrier') or '',
+        'signal_pct':         int(cell_raw.get('signal_pct') or 0),
+        'access_tech':        cell_raw.get('access_tech') or '',
+        'interface':          cell_iface,
+        'ipv4':               cell_ipv4,
+    }
+
+    # ---- Hotspot ----
+    # We don't claim "actually_usable" unless every layer is up:
+    #   hostapd serving beacons, dnsmasq handing out leases, NAT in place.
+    # Phase 5 (real hotspot stack) lights all of these up; Phase 1 just
+    # surfaces them honestly so a half-installed hotspot stops claiming
+    # to be running.
+    hostapd_up = _service_active('hostapd') or _service_active('skytrack-hotspot')
+    dnsmasq_up = _service_active('dnsmasq')
+    dnsmasq_present = bool(shutil.which('dnsmasq'))
+    nm_hotspot_active = False
+    if detect_backend() == 'nm':
+        r = _run(
+            ['nmcli', '-t', '-f', 'NAME,TYPE,STATE', 'connection', 'show', '--active'],
+            timeout=5,
+        )
+        if r['ok']:
+            for raw in r['stdout'].splitlines():
+                parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
+                if len(parts) >= 3 and parts[2] == 'activated' and 'SkyTrack' in parts[0]:
+                    nm_hotspot_active = True
+                    break
+
+    hs_service = bool(hostapd_up or nm_hotspot_active)
+    hs_dhcp    = bool(dnsmasq_up or nm_hotspot_active)
+    hs_usable  = bool(hs_service and hs_dhcp)
+
+    hotspot = {
+        'enabled':         bool(cfg.get('hotspot_auto_start') or hs_service),
+        'configured':      bool(cfg.get('hotspot_ssid')),
+        'service_running': hs_service,
+        'dhcp_active':     hs_dhcp,
+        'dhcp_installed':  dnsmasq_present,
+        'actually_usable': hs_usable,
+        'ssid':            cfg.get('hotspot_ssid') or '',
+        'local_url':       f"http://{cfg.get('hotspot_gateway') or '10.4.26.89'}",
+        'gateway':         cfg.get('hotspot_gateway') or '10.4.26.89',
+        # password/seconds_remaining are session data — added by the
+        # blueprint when the request is admin-authed (see network.py).
+    }
+
+    # ---- Routing ----
+    route_iface = _default_route_iface() or ''
+    route_kind  = _classify(route_iface)
+    routing = {
+        'primary':           route_kind,
+        'primary_interface': route_iface,
+        'internet_reachable': _internet_reachable_quick(),
+    }
+
+    # ---- Preferences ----
+    preferences = {
+        'preferred_uplink': cfg.get('preferred_uplink') or 'auto',  # auto|wifi|cellular
+    }
+
+    return {
+        'wifi':        wifi,
+        'cellular':    cellular,
+        'hotspot':     hotspot,
+        'routing':     routing,
+        'preferences': preferences,
+        'backend':     detect_backend(),
+    }
+
+
+def _internet_reachable_quick(timeout: float = 1.5) -> bool:
+    """A very fast reachability probe used inside the state aggregator.
+
+    We deliberately keep this tiny so calling normalized_network_state()
+    in a hot path (poll) doesn't add measurable latency. The richer
+    reachability check lives in network_svc.internet_reachable().
+    """
+    import socket
+    try:
+        socket.create_connection(('1.1.1.1', 53), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
 
 
 # ---------------------------------------------------------------------------
