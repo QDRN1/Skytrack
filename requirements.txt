@@ -24,9 +24,16 @@ requests>=2.31,<3.0
 # --- Misc ---
 python-dateutil>=2.8,<3.0
 
-# --- Raspberry Pi hardware (uncomment on the Pi) ---
+# --- Raspberry Pi hardware ---
 # Used by buzzer.py + sensor polling. With DEV_MODE=1 they are not imported.
-# adafruit-circuitpython-dht>=4.0
-# adafruit-blinka>=8.0
-# RPi.GPIO>=0.7
-# gpiozero>=2.0
+#
+# These are NOT listed here because installing RPi.GPIO on a non-Pi dev box
+# fails to compile against the wrong arch and there is nothing useful for it
+# to talk to. install.sh detects /proc/device-tree/model and pip-installs
+# them into .venv only on a real Pi (see step 1b/5b). scripts/firstboot.sh
+# does the same top-up for upgrade-in-place on existing devices.
+#
+#   adafruit-circuitpython-dht>=4.0
+#   adafruit-blinka>=8.0
+#   RPi.GPIO>=0.7
+#   gpiozero>=2.0

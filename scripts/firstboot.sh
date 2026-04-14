@@ -122,6 +122,42 @@ for s in quick_check long_check; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+# Pi hardware Python libs — top-up for upgrade-in-place
+#
+# Devices that were imaged BEFORE install.sh learned to install RPi.GPIO
+# will keep showing "RPi.GPIO not installed" in the buzzer status until
+# the venv catches up. We pip-install the libs once, ONLY on a real Pi,
+# ONLY if they're not already importable, so it's a no-op on every
+# subsequent boot.
+# ---------------------------------------------------------------------------
+if grep -qi 'raspberry pi' /proc/device-tree/model 2>/dev/null; then
+  if ! "$VENV_PY" -c 'import RPi.GPIO' >/dev/null 2>&1; then
+    echo "firstboot: installing Pi hardware Python libs (one-time top-up)"
+    PI_PIP_PKGS=(
+      "RPi.GPIO>=0.7"
+      "gpiozero>=2.0"
+      "adafruit-blinka>=8.0"
+      "adafruit-circuitpython-dht>=4.0"
+    )
+    for pi_pkg in "${PI_PIP_PKGS[@]}"; do
+      if "$REPO_DIR/.venv/bin/pip" install --quiet "$pi_pkg" >/dev/null 2>&1; then
+        echo "firstboot: installed $pi_pkg"
+      else
+        echo "firstboot: $pi_pkg failed (buzzer/sensor stay in mock mode until fixed)"
+      fi
+    done
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Hotspot stack — unmask in case Bookworm shipped dnsmasq/hostapd masked
+# (most common cause of skytrack-hotspot.service=failed on first boot).
+# Idempotent and silent on the happy path.
+# ---------------------------------------------------------------------------
+systemctl unmask hostapd >/dev/null 2>&1 || true
+systemctl unmask dnsmasq >/dev/null 2>&1 || true
+
 echo "firstboot: writing marker"
 date -u +%FT%TZ > "$MARKER"
 echo "firstboot: complete"

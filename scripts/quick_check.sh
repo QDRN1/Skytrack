@@ -130,14 +130,25 @@ if [[ -n "$NETSTATE_JSON" ]]; then
   WIFI_SSID="$(    echo "$NETSTATE_JSON" | jq -r '.wifi.ssid // ""')"
   CELL_BEARER="$(  echo "$NETSTATE_JSON" | jq -r 'if .cellular.bearer_connected then "yes" else "no" end')"
   CELL_ROUTE="$(   echo "$NETSTATE_JSON" | jq -r 'if .cellular.route_active   then "yes" else "no" end')"
-  HOTSPOT_ON="$(   echo "$NETSTATE_JSON" | jq -r 'if .hotspot.enabled         then "yes" else "no" end')"
+  CELL_REGD="$(    echo "$NETSTATE_JSON" | jq -r 'if .cellular.modem_registered then "yes" else "no" end')"
+  # Hotspot truth: "enabled" alone is just config intent; the operator
+  # cares about what's actually serving clients. We pull every field the
+  # normalized state already exposes so we can paint the truth.
+  HOTSPOT_ENABLED="$(  echo "$NETSTATE_JSON" | jq -r 'if .hotspot.enabled         then "yes" else "no" end')"
+  HOTSPOT_SERVICE="$(  echo "$NETSTATE_JSON" | jq -r 'if .hotspot.service_running then "yes" else "no" end')"
+  HOTSPOT_DHCP="$(     echo "$NETSTATE_JSON" | jq -r 'if .hotspot.dhcp_active     then "yes" else "no" end')"
+  HOTSPOT_USABLE="$(   echo "$NETSTATE_JSON" | jq -r 'if .hotspot.actually_usable then "yes" else "no" end')"
+  HOTSPOT_DHCP_INST="$(echo "$NETSTATE_JSON" | jq -r 'if .hotspot.dhcp_installed  then "yes" else "no" end')"
+  HOTSPOT_CONFIGURED="$(echo "$NETSTATE_JSON" | jq -r 'if .hotspot.configured     then "yes" else "no" end')"
   PRIMARY="$(      echo "$NETSTATE_JSON" | jq -r '.routing.primary // "—"')"
   PRIMARY_IFACE="$(echo "$NETSTATE_JSON" | jq -r '.routing.primary_interface // ""')"
   ONLINE="$(       echo "$NETSTATE_JSON" | jq -r 'if .routing.internet_reachable then "yes" else "no" end')"
 else
   WIFI_CONNECTED="?"; WIFI_SSID=""
-  CELL_BEARER="?";    CELL_ROUTE="?"
-  HOTSPOT_ON="?";     PRIMARY="—"; PRIMARY_IFACE=""; ONLINE="?"
+  CELL_BEARER="?";    CELL_ROUTE="?";   CELL_REGD="?"
+  HOTSPOT_ENABLED="?"; HOTSPOT_SERVICE="?"; HOTSPOT_DHCP="?"
+  HOTSPOT_USABLE="?";  HOTSPOT_DHCP_INST="?"; HOTSPOT_CONFIGURED="?"
+  PRIMARY="—"; PRIMARY_IFACE=""; ONLINE="?"
   mark_bad
 fi
 
@@ -145,13 +156,64 @@ WIFI_LABEL="$WIFI_CONNECTED"
 [[ "$WIFI_CONNECTED" == "yes" && -n "$WIFI_SSID" ]] && WIFI_LABEL="connected (${WIFI_SSID})"
 [[ "$WIFI_CONNECTED" == "no" ]] && WIFI_LABEL="off"
 
+# ---------------------------------------------------------------------------
+# Cellular label — distinguish "broken" from "connected as backup".
+#
+#   off            modem off / disabled
+#   no modem       modem absent
+#   not registered modem present but not on a network
+#   primary route  cellular IS the active default route
+#   connected (backup) cellular bearer is up, default route is via something
+#                  else (typically WiFi). NOT a fault.
+#   bearer only    bearer up but no IP / no route at all (genuine half-state)
+# ---------------------------------------------------------------------------
 CELL_LABEL="$CELL_BEARER"
-if [[ "$CELL_BEARER" == "yes" && "$CELL_ROUTE" == "yes" ]]; then
-  CELL_LABEL="connected (route active)"
-elif [[ "$CELL_BEARER" == "yes" ]]; then
-  CELL_LABEL="bearer up (no route)"
+if [[ "$CELL_BEARER" == "yes" ]]; then
+  if [[ "$CELL_ROUTE" == "yes" || "$PRIMARY" == "cellular" ]]; then
+    CELL_LABEL="connected (primary route)"
+  elif [[ "$PRIMARY" == "wifi" || "$PRIMARY" == "ethernet" ]]; then
+    CELL_LABEL="connected (backup, ${PRIMARY} primary)"
+  else
+    CELL_LABEL="connected (backup)"
+  fi
+elif [[ "$CELL_REGD" == "yes" ]]; then
+  CELL_LABEL="registered (no bearer)"
 elif [[ "$CELL_BEARER" == "no" ]]; then
   CELL_LABEL="off"
+fi
+
+# ---------------------------------------------------------------------------
+# Hotspot label — never imply "running" when the stack isn't usable.
+#
+#   off                          enabled=no, service down
+#   running                      service+DHCP up, actually_usable=true
+#   enabled (DHCP down)          hostapd up, dnsmasq down
+#   enabled (dnsmasq missing)    hostapd up, dnsmasq pkg not even installed
+#   enabled (not usable)         enabled but neither layer is up
+#   configured (off)             ssid set, nothing started
+# ---------------------------------------------------------------------------
+HOTSPOT_LABEL="$HOTSPOT_ENABLED"
+HOTSPOT_COLOR=""
+if [[ "$HOTSPOT_USABLE" == "yes" ]]; then
+  HOTSPOT_LABEL="running"
+  HOTSPOT_COLOR="$C_GREEN"
+elif [[ "$HOTSPOT_SERVICE" == "yes" && "$HOTSPOT_DHCP_INST" == "no" ]]; then
+  HOTSPOT_LABEL="enabled (dnsmasq missing)"
+  HOTSPOT_COLOR="$C_RED"
+  mark_bad
+elif [[ "$HOTSPOT_SERVICE" == "yes" && "$HOTSPOT_DHCP" == "no" ]]; then
+  HOTSPOT_LABEL="enabled (DHCP down)"
+  HOTSPOT_COLOR="$C_RED"
+  mark_bad
+elif [[ "$HOTSPOT_ENABLED" == "yes" ]]; then
+  HOTSPOT_LABEL="enabled (not usable)"
+  HOTSPOT_COLOR="$C_YELLOW"
+elif [[ "$HOTSPOT_CONFIGURED" == "yes" ]]; then
+  HOTSPOT_LABEL="configured (off)"
+  HOTSPOT_COLOR="$C_DIM"
+elif [[ "$HOTSPOT_ENABLED" == "no" ]]; then
+  HOTSPOT_LABEL="off"
+  HOTSPOT_COLOR="$C_DIM"
 fi
 
 ROUTE_LABEL="$PRIMARY"
@@ -201,7 +263,7 @@ printf "  PIN Set       : %s\n" "$ONB_PIN"
 printf "  Configured    : %s\n" "$ONB_CONFIG"
 printf "  WiFi          : %s\n" "$WIFI_LABEL"
 printf "  Cellular      : %s\n" "$CELL_LABEL"
-printf "  Hotspot       : %s\n" "$HOTSPOT_ON"
+printf "  Hotspot       : %b%s%b\n" "$HOTSPOT_COLOR" "$HOTSPOT_LABEL" "$C_RESET"
 printf "  Primary Route : %s\n" "$ROUTE_LABEL"
 printf "  Internet      : %s\n" "$ONLINE"
 printf "  GPS           : %s\n" "$GPS_STATE"

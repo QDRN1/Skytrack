@@ -160,6 +160,60 @@ if [[ "$DEV_INSTALL" != true ]]; then
     apt-get install -y -qq chromium        >> "$LOG_FILE" 2>&1 || \
       warn "could not install chromium — kiosk will paint a dark screen until installed"
   fi
+
+  # Hotspot-critical packages — verify they actually landed. The bulk
+  # apt-get above runs with `|| warn` so a single failed package in the
+  # batch (often dnsmasq getting masked by systemd-resolved on a fresh
+  # Bookworm) silently leaves the hotspot stack incomplete. Re-install
+  # any missing critical package one at a time so we get a real error per
+  # package, then unmask + enable dnsmasq + hostapd unconditionally.
+  for crit_pkg in hostapd dnsmasq; do
+    if ! dpkg -s "$crit_pkg" >/dev/null 2>&1; then
+      info "hotspot-critical package missing — installing $crit_pkg individually"
+      apt-get install -y -qq "$crit_pkg" >> "$LOG_FILE" 2>&1 \
+        || warn "failed to install $crit_pkg — hotspot will not be usable"
+    fi
+  done
+  # Bookworm ships dnsmasq.service disabled (and sometimes masked when
+  # systemd-resolved is bound to :53). Unmasking is safe and idempotent;
+  # we leave the dnsmasq drop-in to scripts/hotspot_apply.sh.
+  systemctl unmask hostapd >> "$LOG_FILE" 2>&1 || true
+  systemctl unmask dnsmasq >> "$LOG_FILE" 2>&1 || true
+fi
+
+# ---------------------------------------------------------------------------
+# 1b. Pi-only Python hardware libs (RPi.GPIO + DHT)
+#
+# requirements.txt commits to "minimal deps" for the dev box, so the Pi
+# hardware libs are commented out there. They're real packages though,
+# and without them Phase 2.5 Long Check shows:
+#     buzzer.last_error = RPi.GPIO not installed: No module named 'RPi'
+# We install them here, but ONLY when /proc/device-tree/model says we're
+# actually on a Raspberry Pi — installing RPi.GPIO on a non-Pi dev box
+# fails to compile against the wrong arch and there's nothing useful for
+# it to talk to anyway.
+#
+# Each pkg is installed individually so a single transient failure (most
+# common: gpiozero pulling lgpio on Bookworm) doesn't poison the others.
+# ---------------------------------------------------------------------------
+if [[ "$DEV_INSTALL" != true ]]; then
+  if grep -qi 'raspberry pi' /proc/device-tree/model 2>/dev/null; then
+    log "step 1b/14: Pi hardware Python libs (RPi.GPIO, gpiozero, DHT)"
+    PI_PIP_PKGS=(
+      "RPi.GPIO>=0.7"
+      "gpiozero>=2.0"
+      "adafruit-blinka>=8.0"
+      "adafruit-circuitpython-dht>=4.0"
+    )
+    # We need the venv to exist before we can pip into it. The main venv
+    # creation is at step 5/14 below, so just stash the package list in
+    # an env var and install it then.
+    SKYTRACK_PI_PIP="${PI_PIP_PKGS[*]}"
+    export SKYTRACK_PI_PIP
+    info "queued Pi pip packages for step 5: $SKYTRACK_PI_PIP"
+  else
+    info "step 1b/14: not on a Raspberry Pi (no /proc/device-tree/model match) — skipping GPIO libs"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -236,6 +290,20 @@ if [[ ! -x "$VENV_DIR/bin/python3" ]]; then
 fi
 "$VENV_DIR/bin/pip" install --upgrade pip >> "$LOG_FILE" 2>&1
 "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt" >> "$LOG_FILE" 2>&1 || warn "pip install had errors"
+
+# Pi hardware Python libs queued by step 1b. Install one at a time so a
+# single bad wheel (most common: lgpio failing to build on first boot
+# because libgpiod headers landed late) doesn't take down the others.
+if [[ -n "${SKYTRACK_PI_PIP:-}" ]]; then
+  log "step 5b/14: installing Pi hardware Python libs into $VENV_DIR"
+  for pi_pkg in $SKYTRACK_PI_PIP; do
+    if "$VENV_DIR/bin/pip" install --quiet "$pi_pkg" >> "$LOG_FILE" 2>&1; then
+      info "installed $pi_pkg"
+    else
+      warn "failed to install $pi_pkg — buzzer/sensor may stay in mock mode until fixed"
+    fi
+  done
+fi
 
 # ---------------------------------------------------------------------------
 # 6. /etc/skytrack/skytrack.env

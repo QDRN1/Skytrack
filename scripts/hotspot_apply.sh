@@ -130,10 +130,28 @@ fi
 
 # ---------------------------------------------------------------------------
 # Bring services up
+#
+# The whole point of this script is "best-effort bring up". On a fresh
+# Bookworm Lite image any of the following can be true at install time:
+#
+#   • dnsmasq.service is masked by the libnss-myhostname/systemd-resolved
+#     stack and a plain `systemctl restart dnsmasq` exits non-zero
+#   • hostapd.service is masked because it ships disabled by default
+#   • dhcpcd.service doesn't exist at all (Bookworm uses NetworkManager)
+#
+# Under `set -e` ANY non-zero exit aborts the whole oneshot — which is
+# exactly what was making `skytrack-hotspot.service` show as `failed` in
+# Long Check even though the underlying problem was a single restart.
+# Every restart below now: unmasks first, enables, then restarts with
+# `|| true` so a single subsystem hiccup can't poison the whole apply.
+# The watchdog at the bottom of this file is the real safety net — it
+# detects "hostapd never came up" and rolls back.
 # ---------------------------------------------------------------------------
 echo "restarting dhcpcd / hostapd / dnsmasq"
-systemctl unmask hostapd 2>/dev/null || true
-systemctl enable hostapd dnsmasq 2>/dev/null || true
+systemctl unmask hostapd  2>/dev/null || true
+systemctl unmask dnsmasq  2>/dev/null || true
+systemctl enable hostapd  2>/dev/null || true
+systemctl enable dnsmasq  2>/dev/null || true
 
 # dhcpcd: only present on older Raspberry Pi OS / Debian. On Bookworm-Pi
 # it's been replaced by NetworkManager — the unit file doesn't exist and
@@ -142,7 +160,7 @@ systemctl enable hostapd dnsmasq 2>/dev/null || true
 # so hostapd has something to bind to.
 if systemctl list-unit-files dhcpcd.service >/dev/null 2>&1 && \
    systemctl cat dhcpcd.service >/dev/null 2>&1; then
-  systemctl restart dhcpcd
+  systemctl restart dhcpcd || echo "warn: dhcpcd restart failed (continuing)"
 else
   echo "note: dhcpcd.service not present — assigning $GATEWAY/24 to wlan0 directly"
   # NetworkManager may also be managing wlan0. Detach it so our static
@@ -153,8 +171,23 @@ else
   ip link set wlan0 up 2>/dev/null || true
 fi
 sleep 1
-systemctl restart hostapd
-systemctl restart dnsmasq
+
+# hostapd is the layer that actually serves the wifi beacon. If this fails
+# the watchdog at the bottom rolls everything back, so we DO want to know
+# about it — but we still don't want `set -e` to short-circuit dnsmasq.
+if ! systemctl restart hostapd; then
+  echo "warn: hostapd restart failed (watchdog will roll back if it stays down)"
+fi
+
+# dnsmasq is the most common offender on a fresh image. We've already
+# unmasked + enabled it above; if the restart still fails we report it
+# loudly but DO NOT abort — the apply script has done its job (configs
+# written, hostapd attempted), and Quick/Long Check will surface the
+# DHCP-down state truthfully so the operator sees what's wrong.
+if ! systemctl restart dnsmasq; then
+  echo "warn: dnsmasq restart failed — hotspot will be 'enabled (DHCP down)' until fixed"
+  systemctl status dnsmasq --no-pager 2>&1 | sed 's/^/  dnsmasq: /' || true
+fi
 
 # ---------------------------------------------------------------------------
 # Watchdog rollback
