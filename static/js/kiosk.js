@@ -37,6 +37,7 @@
   const WEATHER_URL = '/api/weather';
   const DEVICE_URL  = '/api/device';
   const HEALTH_URL  = '/healthz';
+  const HOTSPOT_URL = '/api/hotspot/health';
   const SPLASH_URL  = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
 
   // ----- Cadences ------------------------------------------------------
@@ -48,6 +49,7 @@
   const SETUP_VIDEO_HOLD_MS = 6000;
   const BOOT_VIDEO_FAIL_MS  = 3000;
   const BOOT_VIDEO_HARD_MS  = 12000;
+  const HOTSPOT_POLL_MS     = 2000;
   const HEALTH_POLL_MS      = 5000;
   const HEALTH_FALLBACK_MS  = 30000;
 
@@ -60,6 +62,7 @@
 
   let onbTimer = null, opCardsTimer = null, opWxTimer = null;
   let opDevTimer = null, opClockTimer = null, healthTimer = null;
+  let hotspotTimer = null;
   let particles = null;
 
   // PIN keypad local buffers (the first PIN never leaves the kiosk; we
@@ -92,6 +95,7 @@
     hide($('kiosk-op'));
     stopParticles();
     stopOperationalTimers();
+    stopHotspotHealthPoll();
     const sv = $('kiosk-setup-video');
     const bv = $('kiosk-boot-video');
     if (sv) { try { sv.pause(); } catch (_e) {} }
@@ -348,11 +352,71 @@
   // Credentials come from /api/onboarding/state, which only exposes the
   // password while the persistent stage IS setup_now_hotspot. That keeps
   // the cred bundle off the wire any other time.
+  //
+  // While this card is visible we also poll /api/hotspot/health every
+  // ~2s to paint a live truth line under the credentials: "Checking
+  // hotspot…" -> "Waiting for your device…" -> "1 device connected"
+  // -> (on unusable hotspot) "Hotspot not usable: <reason>". This is
+  // the phase 2 truth-model hook so the operator never stares at
+  // credentials while the hotspot is silently down.
   function showHotspotCard() {
     if (visual === 'hotspot') return;
     visual = 'hotspot';
     hideAllScreens();
     show($('kiosk-hotspot'));
+    startHotspotHealthPoll();
+  }
+
+  function paintHotspotStatus(h) {
+    const el = $('kiosk-hs-status');
+    if (!el) return;
+    if (!h) {
+      el.dataset.state = 'waiting';
+      el.textContent = 'Checking hotspot status…';
+      return;
+    }
+    if (!h.usable) {
+      el.dataset.state = 'degraded';
+      const reason = (h.degraded_reasons && h.degraded_reasons.length)
+        ? h.degraded_reasons[0]
+        : 'unavailable';
+      el.textContent = 'Hotspot not usable: ' + reason;
+      return;
+    }
+    const n = Number(h.stations || 0);
+    if (n <= 0) {
+      el.dataset.state = 'waiting';
+      el.textContent = 'Waiting for your device to connect…';
+      return;
+    }
+    el.dataset.state = 'connected';
+    el.textContent = (n === 1)
+      ? '1 device connected — open the URL above in your browser'
+      : (n + ' devices connected — open the URL above in your browser');
+  }
+
+  async function pollHotspotHealth() {
+    try {
+      const r = await fetch(HOTSPOT_URL, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!r.ok) { paintHotspotStatus(null); return; }
+      paintHotspotStatus(await r.json());
+    } catch (_e) {
+      paintHotspotStatus(null);
+    }
+  }
+
+  function startHotspotHealthPoll() {
+    if (hotspotTimer) return;
+    pollHotspotHealth(); // immediate first paint
+    hotspotTimer = setInterval(pollHotspotHealth, HOTSPOT_POLL_MS);
+  }
+
+  function stopHotspotHealthPoll() {
+    if (hotspotTimer) { clearInterval(hotspotTimer); hotspotTimer = null; }
   }
 
   // ----- Operational stage -------------------------------------------
@@ -730,6 +794,7 @@
   window.addEventListener('beforeunload', () => {
     stopOnboardingPolling();
     stopOperationalTimers();
+    stopHotspotHealthPoll();
     stopParticles();
     if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   });

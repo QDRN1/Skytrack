@@ -280,6 +280,33 @@
       pointer-events: none;
     }
 
+    /* ----- Hotspot live status (setup_now_hotspot card) ----------------- */
+    .kiosk-onb .onb-hs-status {
+      margin-top: clamp(10px, 1.6vh, 18px);
+      padding: clamp(10px, 1.4vh, 14px) clamp(14px, 2vw, 22px);
+      border-radius: clamp(10px, 1.4vh, 14px);
+      border: 1px solid rgba(120, 160, 255, 0.28);
+      background: rgba(14, 22, 48, 0.55);
+      color: rgba(220, 232, 255, 0.80);
+      font-size: clamp(0.9em, 1.9vh, 1.05em);
+      font-weight: 500;
+      letter-spacing: 0.6px;
+      text-align: center;
+      transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+    }
+    .kiosk-onb .onb-hs-status[data-state="connected"] {
+      background: rgba(242, 145, 53, 0.20);
+      border-color: rgba(242, 145, 53, 0.70);
+      color: #ffcf8a;
+      font-weight: 700;
+    }
+    .kiosk-onb .onb-hs-status[data-state="degraded"] {
+      background: rgba(220, 80, 80, 0.18);
+      border-color: rgba(220, 80, 80, 0.65);
+      color: #ffb1b1;
+      font-weight: 600;
+    }
+
     /* ----- Setup offer (Set Up Now / Skip) ------------------------------ */
     .kiosk-onb .onb-actions {
       display: flex;
@@ -672,6 +699,12 @@
           <dt>URL</dt><dd class="muted" id="kiosk-hs-url">http://{{ gateway }}</dd>
           <dt>Device</dt><dd class="muted">{{ device_id }}</dd>
         </dl>
+        {# Live truth line from /api/hotspot/health. Starts muted and
+           becomes bright amber on connect, or red when the hotspot is
+           unusable (hostapd down, no IP, etc). #}
+        <div class="onb-hs-status" id="kiosk-hs-status" data-state="waiting">
+          Checking hotspot status…
+        </div>
         <div class="onb-actions">
           <button type="button" class="onb-btn primary" id="kiosk-hotspot-done">I'm Connected — Continue</button>
         </div>

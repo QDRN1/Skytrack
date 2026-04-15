@@ -135,10 +135,29 @@ def api_hotspot_credentials():
 @network_bp.route('/api/network/hotspot/regenerate', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_hotspot_regenerate():
+    """Rotate password AND bounce hostapd atomically.
+
+    See blueprints/settings.py:api_hotspot_regenerate for why the
+    rotate-then-restart dance is a single request now (phase 2).
+    """
+    if hotspot.ssh_on_wlan0():
+        return jsonify({
+            'ok': False,
+            'message': 'refused: your SSH session is on wlan0 — rotating the hotspot password would lock you out. Run from eth0 or a console.',
+        }), 409
     pw = auth_lib.set_hotspot_password(None)
-    logs_svc.log_network('hotspot_password_regenerated',
-                         {'len': len(pw or ''), 'source': 'network_page'})
-    return jsonify({'ok': True, 'password': pw})
+    restart = hotspot.restart_hotspot()
+    logs_svc.log_network('hotspot_password_regenerated', {
+        'len': len(pw or ''),
+        'source': 'network_page',
+        'restart_ok': bool(restart.get('ok')),
+    })
+    return jsonify({
+        'ok': True,
+        'password': pw,
+        'restart_ok': bool(restart.get('ok')),
+        'restart_message': restart.get('message') or '',
+    })
 
 
 @network_bp.route('/api/network/hotspot/restart', methods=['POST'])
@@ -146,7 +165,8 @@ def api_hotspot_regenerate():
 def api_hotspot_restart():
     result = hotspot.restart_hotspot()
     logs_svc.log_network('hotspot_restart', result)
-    return jsonify(result)
+    status = 200 if result.get('ok') else 409
+    return jsonify(result), status
 
 
 @network_bp.route('/api/hotspot/health')

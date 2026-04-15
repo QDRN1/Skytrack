@@ -258,8 +258,46 @@ def list_clients(leases_path: str = DEFAULT_LEASES) -> List[dict]:
     return out
 
 
+def ssh_on_wlan0() -> bool:
+    """True if the caller is on an SSH session coming in over wlan0.
+
+    Mirrors the safety check inside `scripts/hotspot_apply.sh`. The Flask
+    restart endpoints need the same guard, because `systemctl restart
+    hostapd` will immediately disconnect an SSH session coming in over
+    the hotspot interface and leave the operator locked out.
+
+    Returns False (allow) on any uncertainty — dev boxes, missing
+    SSH_CONNECTION, IP parsing failures all fall through. The script
+    side is the real enforcement layer; this exists so the Flask path
+    fails fast with a 409 instead of hanging the request and killing
+    the session.
+    """
+    ssh_conn = os.environ.get('SSH_CONNECTION', '').strip()
+    if not ssh_conn:
+        return False
+    # SSH_CONNECTION is "<client_ip> <client_port> <server_ip> <server_port>"
+    client_ip = ssh_conn.split()[0] if ssh_conn else ''
+    if not client_ip:
+        return False
+    try:
+        result = subprocess.run(
+            ['ip', '-o', 'route', 'get', client_ip],
+            capture_output=True, text=True, timeout=3,
+        )
+        # Look for `... dev wlan0 ...` in the output
+        m = re.search(r'\bdev\s+(\S+)', result.stdout)
+        return bool(m and m.group(1) == 'wlan0')
+    except Exception:
+        return False
+
+
 def restart_hotspot() -> dict:
     """Bounce hostapd + dnsmasq via the helper script. Requires sudo / capabilities."""
+    if ssh_on_wlan0():
+        return {
+            'ok': False,
+            'message': 'refused: caller is on SSH over wlan0 (restart would lock you out)',
+        }
     helper = '/opt/skytrack/scripts/hotspot_apply.sh'
     if not os.path.exists(helper):
         helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
