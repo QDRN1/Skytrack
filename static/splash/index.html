@@ -7,31 +7,29 @@
   <!--
     SkyTrack appliance splash.
 
-    Loaded by Chromium from file:// BEFORE skytrack-app is listening. It has
-    three visual states driven by polling /healthz, and each state is a
-    full-bleed looping video plus the Device ID pill at the top. There is
-    NO forced overlay on top of the video: the generated brand/spinner
-    card is a true last-resort fallback that only appears if the active
-    state's <video> element fails to decode (bad file, missing codec,
-    truncated asset). When the video is playing, the only thing drawn
-    on top is the device-ID pill.
+    Loaded by Chromium from file:// BEFORE skytrack-app is listening. Its
+    job is deliberately small: paint something branded while the backend
+    comes up, then hand off to /kiosk the moment /healthz answers. The
+    /kiosk route owns the entire onboarding experience (boot_video,
+    setup_video, pin_required, pin_confirm, setup_offer,
+    setup_now_hotspot, operational) via /api/onboarding/state, so the
+    splash must NOT try to second-guess configuration state.
 
     States
     ------
       boot         — SkyTrack Boot Screen-V1.mp4
-                     default on cold start; shown while /healthz is still
-                     polling OR after /healthz says configured=true, up
-                     until the redirect to /kiosk fires.
-
-      setup        — SkyTrack Setup Screen.mp4
-                     /healthz answered ok but configured=false. We stay on
-                     the splash (do NOT redirect) and keep polling. The
-                     moment configured flips to true we redirect to /kiosk.
+                     default on cold start; shown while /healthz has not
+                     yet returned a 2xx response.
 
       unavailable  — SkyTrack Service Unavail.mp4
                      /healthz has been unreachable for UNAVAILABLE_MS, or
                      kiosk.js bounced us here with ?from=kiosk (runtime
                      backend crash). Also keeps polling so we auto-recover.
+
+    (The 'setup' video element is still declared below so the installer
+    doesn't have to ship a special cold-boot asset list, but the splash
+    never switches to it — the kiosk plays the setup explainer itself
+    as part of the setup_video onboarding stage.)
 
     Device-ID pill
     --------------
@@ -418,22 +416,19 @@
             if (!r || !r.ok) throw new Error("http " + (r ? r.status : "?"));
             return r.json().catch(function () { return {}; });
           })
-          .then(function (body) {
-            // /healthz returns { ok, configured, device }.
-            var configured = !!(body && body.configured);
-            if (configured) {
-              // Configured device: hand off to the real kiosk route.
-              redirecting = true;
-              window.location.replace(KIOSK_URL);
-              return;
-            }
-            // Backend is up but the device isn't configured yet. Pin the
-            // splash to the Setup Screen video and keep polling. The
-            // admin finishes /setup on their phone over the hotspot, and
-            // the next successful poll with configured=true triggers
-            // the redirect above.
-            if (state !== STATE_SETUP) gotoState(STATE_SETUP);
-            setTimeout(poll, POLL_MS);
+          .then(function (_body) {
+            // Backend is alive — hand off unconditionally to /kiosk. The
+            // kiosk page owns every onboarding screen (boot_video,
+            // setup_video, pin_required, pin_confirm, setup_offer,
+            // setup_now_hotspot, operational) via /api/onboarding/state,
+            // so the splash never needs to know whether the device is
+            // already configured. Staying on the splash in the
+            // unconfigured case (Phase 2 behavior) stranded the kiosk
+            // at a looping setup video and never reached the PIN
+            // keypad — Phase 3 moved that flow into /kiosk.
+            redirecting = true;
+            window.location.replace(KIOSK_URL);
+            return;
           })
           .catch(function () {
             if (timeoutId) clearTimeout(timeoutId);
