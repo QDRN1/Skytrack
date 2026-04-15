@@ -149,6 +149,39 @@ def api_hotspot_restart():
     return jsonify(result)
 
 
+@network_bp.route('/api/hotspot/health')
+def api_hotspot_health():
+    """Deep hotspot health probe — PUBLIC, no secrets.
+
+    The kiosk polls this from the setup_now_hotspot card to show a
+    live "waiting for your device…" / "1 device connected" status
+    line. It is intentionally unauthenticated because the kiosk is
+    rendered pre-login and the hotspot card is exactly the flow that
+    needs live feedback before the admin has a session.
+
+    Exposes only health flags + counts. No SSID password, no MAC
+    addresses, no lease details — just the truth model from
+    `hotspot.hotspot_health()`. Admin-authed callers who need more
+    should use `/api/network/hotspot/credentials`.
+    """
+    cfg = current_app.skytrack_config
+    h = hotspot.hotspot_health(cfg)
+    resp = jsonify({
+        'usable':           h['usable'],
+        'hostapd_active':   h['hostapd_active'],
+        'dnsmasq_active':   h['dnsmasq_active'],
+        'has_gateway_ip':   h['has_gateway_ip'],
+        'ap_mode':          h['ap_mode'],
+        'stations':         h['stations'],
+        'leases':           h['leases'],
+        'ssid':             h['ssid'],
+        'gateway':          h['gateway'],
+        'degraded_reasons': h['degraded_reasons'],
+    })
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
 # ---------------------------------------------------------------------------
 # Other network endpoints used by the legacy page
 # ---------------------------------------------------------------------------

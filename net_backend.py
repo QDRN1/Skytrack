@@ -707,14 +707,27 @@ def normalized_network_state(config) -> Dict:
     }
 
     # ---- Hotspot ----
-    # We don't claim "actually_usable" unless every layer is up:
-    #   hostapd serving beacons, dnsmasq handing out leases, NAT in place.
-    # Phase 5 (real hotspot stack) lights all of these up; Phase 1 just
-    # surfaces them honestly so a half-installed hotspot stops claiming
-    # to be running.
-    hostapd_up = _service_active('hostapd') or _service_active('skytrack-hotspot')
-    dnsmasq_up = _service_active('dnsmasq')
+    # Source of truth is hotspot.hotspot_health(), which does a deep
+    # probe (hostapd + dnsmasq + wlan0 in AP mode with a gateway IP in
+    # the hotspot subnet). Phase 2 moved `actually_usable` off a naive
+    # `systemctl is-active hostapd` so the UI stops claiming the
+    # hotspot is up when no client could actually get an IP.
+    #
+    # NetworkManager-shared mode is still checked as a secondary path:
+    # a few dev installs run the hotspot under NM instead of the
+    # direct hostapd stack, and we don't want to flag those as broken.
+    try:
+        from hotspot import hotspot_health
+        hs_health = hotspot_health(cfg)
+    except Exception as e:
+        logger.debug('hotspot_health failed: %s', e)
+        hs_health = {
+            'usable': False, 'hostapd_active': False, 'dnsmasq_active': False,
+            'has_gateway_ip': False, 'ap_mode': False, 'stations': 0,
+            'leases': 0, 'degraded_reasons': ['probe error: ' + str(e)],
+        }
     dnsmasq_present = bool(shutil.which('dnsmasq'))
+
     nm_hotspot_active = False
     if detect_backend() == 'nm':
         r = _run(
@@ -728,20 +741,27 @@ def normalized_network_state(config) -> Dict:
                     nm_hotspot_active = True
                     break
 
-    hs_service = bool(hostapd_up or nm_hotspot_active)
-    hs_dhcp    = bool(dnsmasq_up or nm_hotspot_active)
-    hs_usable  = bool(hs_service and hs_dhcp)
+    hs_service = bool(hs_health['hostapd_active'] or nm_hotspot_active)
+    hs_dhcp    = bool(hs_health['dnsmasq_active'] or nm_hotspot_active)
+    hs_usable  = bool(hs_health['usable'] or nm_hotspot_active)
 
     hotspot = {
-        'enabled':         bool(cfg.get('hotspot_auto_start') or hs_service),
-        'configured':      bool(cfg.get('hotspot_ssid')),
-        'service_running': hs_service,
-        'dhcp_active':     hs_dhcp,
-        'dhcp_installed':  dnsmasq_present,
-        'actually_usable': hs_usable,
-        'ssid':            cfg.get('hotspot_ssid') or '',
-        'local_url':       f"http://{cfg.get('hotspot_gateway') or '10.4.26.89'}",
-        'gateway':         cfg.get('hotspot_gateway') or '10.4.26.89',
+        'enabled':          bool(cfg.get('hotspot_auto_start') or hs_service),
+        'configured':       bool(cfg.get('hotspot_ssid')),
+        'service_running':  hs_service,
+        'dhcp_active':      hs_dhcp,
+        'dhcp_installed':   dnsmasq_present,
+        'actually_usable':  hs_usable,
+        'ssid':             cfg.get('hotspot_ssid') or '',
+        'local_url':        f"http://{cfg.get('hotspot_gateway') or '10.4.26.89'}",
+        'gateway':          cfg.get('hotspot_gateway') or '10.4.26.89',
+        # Rich truth surfaced for the UI so it can show WHY the
+        # hotspot is degraded, not just `usable=false`.
+        'ap_mode':          hs_health['ap_mode'],
+        'has_gateway_ip':   hs_health['has_gateway_ip'],
+        'stations':         hs_health['stations'],
+        'leases':           hs_health['leases'],
+        'degraded_reasons': hs_health['degraded_reasons'],
         # password/seconds_remaining are session data — added by the
         # blueprint when the request is admin-authed (see network.py).
     }
