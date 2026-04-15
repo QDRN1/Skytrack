@@ -112,6 +112,67 @@ def _station_count() -> int:
         return 0
 
 
+def _wlan0_link_ok() -> bool:
+    """True if the kernel sees a responsive wlan0 interface.
+
+    `iw dev wlan0 link` on an AP-mode interface prints "Not connected."
+    which IS normal (that subcommand reports station-mode client links).
+    What we really care about here is "can iw talk to the interface at
+    all?" — if wlan0 is missing, hung, or the driver has wedged, the
+    command exits non-zero. That's the failure mode we want to detect.
+
+    Crucially this is a different signal from `_wlan0_is_ap()`: the
+    radio can be in the right mode but still broken, or present but
+    hidden behind rfkill. This probe answers the narrower kernel-visible
+    question.
+    """
+    try:
+        result = subprocess.run(
+            ['iw', 'dev', 'wlan0', 'link'],
+            capture_output=True, text=True, timeout=3,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _rfkill_state() -> dict:
+    """Return rfkill soft/hard block state for wlan radios.
+
+    Parses `rfkill list wlan` output like:
+
+        0: phy0: Wireless LAN
+                Soft blocked: no
+                Hard blocked: no
+
+    Returns `{'available': bool, 'soft_blocked': bool, 'hard_blocked': bool}`.
+    `available=False` means rfkill isn't installed or returned nothing
+    usable — we treat that as "can't tell, don't flag" (the other
+    probes will catch an actually-down radio).
+    """
+    out = {'available': False, 'soft_blocked': False, 'hard_blocked': False}
+    try:
+        result = subprocess.run(
+            ['rfkill', 'list', 'wlan'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return out
+        out['available'] = True
+        for line in result.stdout.splitlines():
+            m = re.match(r'\s*Soft blocked:\s*(yes|no)', line, re.IGNORECASE)
+            if m and m.group(1).lower() == 'yes':
+                out['soft_blocked'] = True
+                continue
+            m = re.match(r'\s*Hard blocked:\s*(yes|no)', line, re.IGNORECASE)
+            if m and m.group(1).lower() == 'yes':
+                out['hard_blocked'] = True
+    except Exception:
+        # rfkill missing or errored — stay in "can't tell" state
+        pass
+    return out
+
+
 def _address_in_subnet(cidr: str, subnet: str) -> bool:
     """True if `cidr` (e.g. '10.4.26.89/24') lies inside `subnet`."""
     if not cidr or not subnet:
@@ -168,6 +229,8 @@ def hotspot_health(config) -> dict:
     dnsmasq_active = _systemctl_active('dnsmasq')
     wlan0_addr     = _wlan0_address()
     ap_mode        = _wlan0_is_ap()
+    link_ok        = _wlan0_link_ok()
+    rfkill         = _rfkill_state()
     stations       = _station_count()
     leases         = _count_leases_in_subnet(DEFAULT_LEASES, subnet)
 
@@ -178,6 +241,15 @@ def hotspot_health(config) -> dict:
     has_gateway_ip = _address_in_subnet(wlan0_addr, subnet)
 
     reasons: List[str] = []
+    # Order matters here: the operator reads these top-to-bottom, so
+    # put the root-cause-ish signals first (rfkill, interface down)
+    # before the downstream symptoms (hostapd/dnsmasq not active).
+    if rfkill['hard_blocked']:
+        reasons.append('wlan radio hard-blocked (rfkill)')
+    if rfkill['soft_blocked']:
+        reasons.append('wlan radio soft-blocked (rfkill)')
+    if not link_ok:
+        reasons.append('wlan0 interface state broken (iw link failed)')
     if not hostapd_active:
         reasons.append('hostapd not active')
     if not dnsmasq_active:
@@ -192,21 +264,28 @@ def hotspot_health(config) -> dict:
     usable = (hostapd_active
               and dnsmasq_active
               and has_gateway_ip
-              and ap_mode)
+              and ap_mode
+              and link_ok
+              and not rfkill['hard_blocked']
+              and not rfkill['soft_blocked'])
 
     return {
-        'usable':           usable,
-        'hostapd_active':   hostapd_active,
-        'dnsmasq_active':   dnsmasq_active,
-        'has_gateway_ip':   has_gateway_ip,
-        'ap_mode':          ap_mode,
-        'stations':         stations,
-        'leases':           leases,
-        'ssid':             ssid,
-        'gateway':          gateway,
-        'subnet':           subnet,
-        'wlan0_address':    wlan0_addr,
-        'degraded_reasons': reasons,
+        'usable':             usable,
+        'hostapd_active':     hostapd_active,
+        'dnsmasq_active':     dnsmasq_active,
+        'has_gateway_ip':     has_gateway_ip,
+        'ap_mode':            ap_mode,
+        'link_ok':            link_ok,
+        'rfkill_available':   rfkill['available'],
+        'rfkill_soft_blocked': rfkill['soft_blocked'],
+        'rfkill_hard_blocked': rfkill['hard_blocked'],
+        'stations':           stations,
+        'leases':             leases,
+        'ssid':               ssid,
+        'gateway':            gateway,
+        'subnet':             subnet,
+        'wlan0_address':      wlan0_addr,
+        'degraded_reasons':   reasons,
     }
 
 

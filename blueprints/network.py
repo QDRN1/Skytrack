@@ -167,16 +167,20 @@ def api_hotspot_health():
     cfg = current_app.skytrack_config
     h = hotspot.hotspot_health(cfg)
     resp = jsonify({
-        'usable':           h['usable'],
-        'hostapd_active':   h['hostapd_active'],
-        'dnsmasq_active':   h['dnsmasq_active'],
-        'has_gateway_ip':   h['has_gateway_ip'],
-        'ap_mode':          h['ap_mode'],
-        'stations':         h['stations'],
-        'leases':           h['leases'],
-        'ssid':             h['ssid'],
-        'gateway':          h['gateway'],
-        'degraded_reasons': h['degraded_reasons'],
+        'usable':              h['usable'],
+        'hostapd_active':      h['hostapd_active'],
+        'dnsmasq_active':      h['dnsmasq_active'],
+        'has_gateway_ip':      h['has_gateway_ip'],
+        'ap_mode':             h['ap_mode'],
+        'link_ok':             h['link_ok'],
+        'rfkill_available':    h['rfkill_available'],
+        'rfkill_soft_blocked': h['rfkill_soft_blocked'],
+        'rfkill_hard_blocked': h['rfkill_hard_blocked'],
+        'stations':            h['stations'],
+        'leases':              h['leases'],
+        'ssid':                h['ssid'],
+        'gateway':             h['gateway'],
+        'degraded_reasons':    h['degraded_reasons'],
     })
     resp.headers['Cache-Control'] = 'no-store'
     return resp
