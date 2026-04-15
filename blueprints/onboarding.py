@@ -35,6 +35,7 @@ import logging
 from flask import Blueprint, current_app, jsonify, request
 
 import auth as auth_lib
+import hotspot
 import logs_svc
 import onboarding
 
@@ -155,6 +156,145 @@ def api_pin():
         'ok': True,
         'state': new_state,
         'hotspot_password': (auth_lib.read_auth() or {}).get('hotspot_password'),
+    })
+
+
+# ---------------------------------------------------------------------------
+# POST /api/onboarding/skip
+# ---------------------------------------------------------------------------
+#
+# Phase 2 stabilization: the escape hatch. An operator can skip forward
+# to `operational` from the welcome, pin, or hotspot screens. This is
+# the ONE endpoint that enforces the logging contract: when source is
+# `hotspot` we capture the full `/api/hotspot/health` snapshot into the
+# network-logs table so a future audit can answer "why did the operator
+# give up on hotspot setup on device X?"
+#
+# Valid sources:
+#   welcome  → "Set up later" on the new welcome card
+#   pin      → "Skip for now" on the PIN keypad
+#   hotspot  → "Continue without setup" on the hotspot reveal card
+#
+# We never accept source='setup_offer' here — that screen already has
+# its own Skip For Now button that routes through /api/onboarding/advance
+# with {to: operational}, and we don't want to change that path.
+#
+# Logging is ADDITIVE: if the log insert fails the endpoint still
+# advances the state and returns 200. The UI is never blocked by
+# logging failure. (See the try/except around log_network + log_portal.)
+
+_ALLOWED_SKIP_SOURCES = ('welcome', 'pin', 'hotspot')
+
+
+@onboarding_bp.route('/api/onboarding/skip', methods=['POST'])
+def api_skip():
+    """Skip forward to `operational` from a whitelisted onboarding stage.
+
+    Body: {"source": "welcome" | "pin" | "hotspot"}
+
+    Semantics per source:
+
+      welcome:  stage=operational,  configured=true,  pin_set unchanged.
+                No hotspot probe; log_portal a simple note.
+      pin:      stage=operational,  configured=true,  pin_set=false.
+                No hotspot probe; log_portal a simple note.
+      hotspot:  stage=operational,  configured=true,  pin_set unchanged.
+                Probes hotspot_health() BEFORE advancing and stores the
+                full snapshot (usable, ap_mode, stations, degraded_reasons,
+                and everything else the truth probe surfaces) in
+                network_logs as event='hotspot_skipped'.
+
+    Public — the kiosk is pre-auth. Rejected with 409 if the device is
+    already operational (prevents rollback-style abuse), except that
+    calling with source=hotspot while operational still records the
+    health snapshot for diagnostics and returns 200 with a no-op state.
+    """
+    payload = request.get_json(silent=True) or {}
+    source = (payload.get('source') or '').strip().lower()
+
+    if source not in _ALLOWED_SKIP_SOURCES:
+        return jsonify({
+            'ok': False,
+            'error': f'source must be one of {list(_ALLOWED_SKIP_SOURCES)}',
+        }), 400
+
+    state = onboarding.get_state(_cfg())
+    current_stage = state['stage']
+
+    # Hotspot snapshot is captured BEFORE the advance so the log always
+    # reflects the state that drove the operator's decision to skip,
+    # not the state a moment later after the stage flip. Probe is
+    # wrapped in its own try because a degraded subsystem (e.g. iw
+    # missing on a dev box) must never wedge the skip.
+    hotspot_snapshot = None
+    if source == 'hotspot':
+        try:
+            hotspot_snapshot = hotspot.hotspot_health(_cfg())
+        except Exception as e:
+            logger.debug('hotspot skip: health probe failed: %s', e)
+            hotspot_snapshot = {'probe_error': str(e)}
+
+    # Refuse re-entry from operational for non-hotspot sources. Hotspot
+    # is allowed to re-log (diagnostics) but does not re-advance.
+    if current_stage == 'operational':
+        if source == 'hotspot':
+            try:
+                logs_svc.log_network('hotspot_skipped', {
+                    'reason': 'hotspot_not_active',
+                    'source': source,
+                    'from_stage': current_stage,
+                    'health_snapshot': hotspot_snapshot or {},
+                    'degraded_reasons': (hotspot_snapshot or {}).get('degraded_reasons') or [],
+                    'usable':   (hotspot_snapshot or {}).get('usable'),
+                    'ap_mode':  (hotspot_snapshot or {}).get('ap_mode'),
+                    'stations': (hotspot_snapshot or {}).get('stations'),
+                })
+            except Exception as e:
+                logger.debug('hotspot_skipped re-log failed: %s', e)
+            return jsonify({'ok': True, 'state': state, 'noop': True})
+        return jsonify({
+            'ok': False,
+            'error': 'device is already operational',
+        }), 409
+
+    # Log BEFORE the advance so the audit line exists even if the
+    # advance somehow fails. Both log calls are fire-and-forget: they
+    # must not break the escape hatch.
+    try:
+        if source == 'hotspot':
+            logs_svc.log_network('hotspot_skipped', {
+                'reason': 'hotspot_not_active',
+                'source': source,
+                'from_stage': current_stage,
+                'health_snapshot': hotspot_snapshot or {},
+                # Duplicate the four required fields at the top level so
+                # a tail-the-log grep finds them without having to JSON-
+                # parse health_snapshot on every row.
+                'degraded_reasons': (hotspot_snapshot or {}).get('degraded_reasons') or [],
+                'usable':   (hotspot_snapshot or {}).get('usable'),
+                'ap_mode':  (hotspot_snapshot or {}).get('ap_mode'),
+                'stations': (hotspot_snapshot or {}).get('stations'),
+            })
+        logs_svc.log_portal('system', 'onboarding_skipped', {
+            'source': source,
+            'from_stage': current_stage,
+        })
+    except Exception as e:
+        # Not fatal: the UI must still transition. Log to the Python
+        # logger so a dev running `journalctl -u skytrack-app` sees it.
+        logger.warning('onboarding skip log failed (source=%s): %s', source, e)
+
+    try:
+        new_state = onboarding.skip_to_operational(source, config=_cfg())
+    except Exception as e:
+        logger.exception('onboarding skip advance failed')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    return jsonify({
+        'ok': True,
+        'state': new_state,
+        'source': source,
+        'hotspot_snapshot': hotspot_snapshot,  # echo for UI debugging
     })
 
 

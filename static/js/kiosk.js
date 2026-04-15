@@ -33,6 +33,7 @@
   const ADVANCE_URL = '/api/onboarding/advance';
   const PIN_URL     = '/api/onboarding/pin';
   const RESET_URL   = '/api/onboarding/reset';
+  const SKIP_URL    = '/api/onboarding/skip';
   const CARDS_URL   = '/api/dashboard/cards';
   const WEATHER_URL = '/api/weather';
   const DEVICE_URL  = '/api/device';
@@ -102,6 +103,7 @@
     hide($('kiosk-particles'));
     hide($('kiosk-fallback'));
     hide($('kiosk-device-id-overlay'));
+    hide($('kiosk-welcome'));
     hide($('kiosk-pin'));
     hide($('kiosk-offer'));
     hide($('kiosk-hotspot'));
@@ -125,6 +127,7 @@
     switch (stage) {
       case 'boot_video':        showBootVideo(true);   break;
       case 'setup_video':       showSetupVideo();      break;
+      case 'welcome':           showWelcome();         break;
       case 'pin_required':      showPinPad('first');   break;
       case 'pin_confirm':       showPinPad('confirm'); break;
       case 'setup_offer':       showSetupOffer();      break;
@@ -132,6 +135,21 @@
       case 'operational':       showOperational();     break;
       default:                  showSetupFallback();
     }
+  }
+
+  // ----- Welcome screen (Phase 2 stabilization) ----------------------
+  // Lands between the looping setup video and the PIN keypad. The
+  // operator sees branding + device info with a primary "Continue
+  // setup" button that advances to pin_required and a secondary
+  // "Set up later" escape that posts to /api/onboarding/skip with
+  // source="welcome". The skip endpoint force-transitions the server
+  // to operational with pin_set unchanged (false), and the next poll
+  // tick will paint the operational dashboard.
+  function showWelcome() {
+    if (visual === 'welcome') return;
+    visual = 'welcome';
+    hideAllScreens();
+    show($('kiosk-welcome'));
   }
 
   // ----- Boot video stage --------------------------------------------
@@ -188,8 +206,11 @@
       if (advanced) return;
       advanced = true;
       setTimeout(() => {
+        // Phase 2 stabilization: advance to the new welcome card instead
+        // of jumping straight into pin_required. The welcome card is
+        // where the operator gets an explicit "Set up later" escape.
         if (serverStage === 'setup_video') {
-          advanceServer('pin_required').catch(() => {});
+          advanceServer('welcome').catch(() => {});
         }
       }, SETUP_VIDEO_HOLD_MS);
     };
@@ -565,6 +586,37 @@
     return data;
   }
 
+  // Phase 2 stabilization — onboarding escape hatch. Wraps
+  // /api/onboarding/skip which force-transitions to operational from a
+  // whitelisted source. For source="hotspot" the server probes
+  // /api/hotspot/health first and records the snapshot in network_logs
+  // BEFORE advancing — we don't need to pass any health data from here.
+  //
+  // Fire-and-forget: the UI transitions on the server's response, and
+  // if the request fails we still paint operational locally so the
+  // operator is never trapped. The onboarding poll loop will resync on
+  // the next tick.
+  async function skipOnboarding(source) {
+    try {
+      const r = await fetch(SKIP_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ source: source }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data && data.state && data.state.stage) {
+        applyStage(data.state.stage);
+        return data;
+      }
+    } catch (_e) { /* fall through to local failsafe */ }
+    // Server rejected or network died. Paint operational so we don't
+    // strand the operator on the escape screen; the next poll tick
+    // will reconcile with whatever the server actually persisted.
+    applyStage('operational');
+    return null;
+  }
+
   function startOnboardingPolling() {
     if (onbTimer) return;
     onbTimer = setInterval(pollOnboarding, ONB_POLL_MS);
@@ -812,15 +864,46 @@
       });
     }
 
+    // Welcome screen buttons (Phase 2 stabilization)
+    const welcomeContinue = $('kiosk-welcome-continue');
+    const welcomeLater    = $('kiosk-welcome-later');
+    if (welcomeContinue) {
+      welcomeContinue.addEventListener('click', () => {
+        advanceServer('pin_required').catch(() => {});
+      });
+    }
+    if (welcomeLater) {
+      welcomeLater.addEventListener('click', () => {
+        skipOnboarding('welcome');
+      });
+    }
+
     // Setup-offer buttons
     const setupNow  = $('kiosk-offer-now');
     const setupSkip = $('kiosk-offer-skip');
     if (setupNow)  setupNow.addEventListener('click',  () => advanceServer('setup_now_hotspot').catch(() => {}));
     if (setupSkip) setupSkip.addEventListener('click', () => advanceServer('operational').catch(() => {}));
 
-    // Hotspot Continue button
+    // PIN keypad escape hatch (Phase 2 stabilization)
+    const pinSkip = $('kiosk-pin-skip');
+    if (pinSkip) {
+      pinSkip.addEventListener('click', () => {
+        skipOnboarding('pin');
+      });
+    }
+
+    // Hotspot Continue button + skip (Phase 2 stabilization)
     const hsDone = $('kiosk-hotspot-done');
     if (hsDone) hsDone.addEventListener('click', () => advanceServer('operational').catch(() => {}));
+    const hsSkip = $('kiosk-hotspot-skip');
+    if (hsSkip) {
+      hsSkip.addEventListener('click', () => {
+        // source=hotspot tells the server to capture the live
+        // /api/hotspot/health snapshot into network_logs before the
+        // state flips to operational.
+        skipOnboarding('hotspot');
+      });
+    }
 
     // Resume safety (guard #1): on a fresh page load pinFirst is
     // definitionally empty, so a persisted server stage of pin_confirm

@@ -311,7 +311,76 @@
       border-color: rgba(255, 255, 255, 0.35);
       box-shadow: 0 0 26px rgba(77, 139, 255, 0.45);
     }
+    /* Phase 2 stabilization: secondary / "skip" button style. Visually
+       quieter than the primary CTA so the operator reads it as an
+       escape, not the default action. Used on the PIN screen
+       ("Skip for now"), the hotspot screen ("Continue without setup"),
+       and the welcome screen ("Set up later"). */
+    .kiosk-onb .onb-btn.onb-btn-secondary {
+      background: transparent;
+      border-color: rgba(151, 160, 196, 0.45);
+      color: rgba(231, 235, 255, 0.78);
+      box-shadow: none;
+      font-weight: 600;
+      letter-spacing: 1.1px;
+    }
+    .kiosk-onb .onb-btn.onb-btn-secondary:active {
+      background: rgba(120, 160, 255, 0.08);
+    }
     .kiosk-onb .onb-btn:active { transform: scale(0.97); }
+
+    /* ----- Welcome screen (Phase 2 stabilization) ----------------------
+       Appears whenever `pin_set == false`, between the setup video and
+       the PIN keypad. Gives the operator an explicit "not right now"
+       exit so they don't get trapped on the keypad during first boot. */
+    .kiosk-onb .onb-welcome-brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(8px, 1.4vw, 16px);
+      margin-bottom: clamp(4px, 1vh, 10px);
+    }
+    .kiosk-onb .onb-welcome-brand .mark {
+      display: inline-block;
+      padding: 0.2em 0.7em;
+      border-radius: 0.4em;
+      background: linear-gradient(135deg, #2e6cf6, #4d8bff);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: clamp(1.0em, 2.4vh, 1.5em);
+      letter-spacing: 1.4px;
+      box-shadow: 0 0 22px rgba(77, 139, 255, 0.45);
+    }
+    .kiosk-onb .onb-welcome-brand .brand-text {
+      font-size: clamp(1.2em, 3vh, 1.9em);
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      color: #ffffff;
+    }
+    .kiosk-onb .onb-welcome-meta {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: clamp(6px, 1.2vh, 12px) clamp(12px, 2vw, 22px);
+      width: min(520px, 86vw);
+      margin: clamp(6px, 1.2vh, 14px) 0 clamp(8px, 1.6vh, 18px);
+      align-items: center;
+    }
+    .kiosk-onb .onb-welcome-meta dt {
+      font-size: clamp(0.75em, 1.6vh, 0.95em);
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(151, 160, 196, 0.92);
+      text-align: right;
+      margin: 0;
+    }
+    .kiosk-onb .onb-welcome-meta dd {
+      margin: 0;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(1.0em, 2.2vh, 1.35em);
+      color: #ffd49b;
+      text-align: left;
+      word-break: break-all;
+    }
 
     /* ----- Hotspot reveal card ----------------------------------------- */
     .kiosk-onb .creds {
@@ -680,6 +749,37 @@
       <span class="kiosk-device-id-pill">{{ device_id }}</span>
     </div>
 
+    {# ---- Welcome screen (Phase 2 stabilization) ----
+         Shown whenever pin_set == false. Replaces the previous direct
+         jump from the setup video into the PIN keypad so the operator
+         always has a branded landing card with an explicit "not now"
+         escape ("Set up later"). Primary action "Continue setup"
+         advances the state machine to pin_required. #}
+    <div class="kiosk-onb" id="kiosk-welcome" hidden>
+      <div class="onb-card">
+        <div class="onb-welcome-brand">
+          <span class="mark">QDRN</span>
+          <span class="brand-text">SkyTrack Portal</span>
+        </div>
+        <h2>Welcome</h2>
+        <div class="onb-sub">
+          This appliance is ready to configure. You can finish setup now
+          or start monitoring flights and configure it later from the
+          dashboard.
+        </div>
+        <dl class="onb-welcome-meta">
+          <dt>Device</dt><dd id="kiosk-welcome-device">{{ device_id }}</dd>
+          <dt>Local URL</dt><dd id="kiosk-welcome-url">http://{{ gateway }}</dd>
+        </dl>
+        <div class="onb-actions">
+          <button type="button" class="onb-btn primary"
+                  id="kiosk-welcome-continue">Continue setup</button>
+          <button type="button" class="onb-btn onb-btn-secondary"
+                  id="kiosk-welcome-later">Set up later</button>
+        </div>
+      </div>
+    </div>
+
     {# ---- PIN keypad (pin_required + pin_confirm stages) ---- #}
     <div class="kiosk-onb" id="kiosk-pin" hidden>
       <div class="onb-card">
@@ -700,6 +800,12 @@
           <button type="button" class="pin-key pin-action" data-action="clear">Clear</button>
           <button type="button" class="pin-key" data-key="0">0</button>
           <button type="button" class="pin-key pin-submit" data-action="enter">Enter</button>
+        </div>
+        {# Phase 2 stabilization: escape hatch below the keypad. Posts
+           to /api/onboarding/skip with source="pin". #}
+        <div class="onb-actions">
+          <button type="button" class="onb-btn onb-btn-secondary"
+                  id="kiosk-pin-skip">Skip for now</button>
         </div>
       </div>
     </div>
@@ -747,6 +853,12 @@
         </div>
         <div class="onb-actions">
           <button type="button" class="onb-btn primary" id="kiosk-hotspot-done">I'm Connected — Continue</button>
+          {# Phase 2 stabilization: escape hatch. Posts to
+             /api/onboarding/skip with source="hotspot", which probes
+             /api/hotspot/health and stores the snapshot in network_logs
+             as event=hotspot_skipped before advancing to operational. #}
+          <button type="button" class="onb-btn onb-btn-secondary"
+                  id="kiosk-hotspot-skip">Continue without setup</button>
         </div>
       </div>
     </div>

@@ -55,9 +55,17 @@ logger = logging.getLogger('skytrack.onboarding')
 
 # Canonical, ordered list of stages. Tests and UI both consume this so the
 # enum lives in exactly one place.
+#
+# Phase 2 stabilization (2.6.1) inserted `welcome` between `setup_video`
+# and `pin_required`. The welcome card gates entry to PIN creation — it
+# shows branding + local URL and offers "Continue setup" (→ pin_required)
+# or "Set up later" (→ operational with pin_set=false). Before 2.6.1 the
+# appliance jumped straight from setup_video into the keypad, which
+# trapped any operator who wasn't ready to finish setup right now.
 STAGES = (
     'boot_video',
     'setup_video',
+    'welcome',
     'pin_required',
     'pin_confirm',
     'setup_offer',
@@ -69,13 +77,23 @@ _STAGE_INDEX = {name: i for i, name in enumerate(STAGES)}
 
 # Allowed forward and side transitions. The UI cannot jump backwards
 # except via the explicit `pin_required` reset (used when the operator
-# mistypes the confirmation PIN). Note that you cannot reach
-# `operational` from any stage before `setup_offer` — onboarding is not
-# allowed to be skipped past PIN creation by the kiosk.
+# mistypes the confirmation PIN).
+#
+# Phase 2 stabilization added three new escape edges so the operator
+# can ALWAYS reach the operational dashboard:
+#
+#   welcome      → operational   ("Set up later")
+#   pin_required → operational   ("Skip for now")
+#   setup_now_hotspot → operational was already present
+#
+# None of these clear `pin_set`. The caller (blueprints/onboarding.py
+# `api_skip`) uses the fact that `pin_set` is false to log the escape
+# and keep the legacy `configured` boolean in lock-step with stage.
 _TRANSITIONS = {
-    'boot_video':        {'setup_video', 'pin_required'},
-    'setup_video':       {'pin_required'},
-    'pin_required':      {'pin_confirm'},
+    'boot_video':        {'setup_video', 'welcome', 'pin_required'},
+    'setup_video':       {'welcome', 'pin_required'},
+    'welcome':           {'pin_required', 'operational'},
+    'pin_required':      {'pin_confirm', 'operational'},
     'pin_confirm':       {'setup_offer', 'pin_required'},   # re-enter on mismatch
     'setup_offer':       {'setup_now_hotspot', 'operational'},
     'setup_now_hotspot': {'operational'},
@@ -192,6 +210,17 @@ def _default_next(stage: str) -> Optional[str]:
         return 'setup_offer'
     if stage == 'setup_offer':
         return 'setup_now_hotspot'
+    # The welcome card's primary action is "Continue setup", so the
+    # default forward step from welcome is pin_required — NOT operational.
+    # "Set up later" is an explicit secondary action, never the default.
+    if stage == 'welcome':
+        return 'pin_required'
+    # Same principle at setup_video: prefer the normal onboarding path
+    # forward (welcome), not the escape hatch.
+    if stage == 'setup_video':
+        return 'welcome'
+    if stage == 'boot_video':
+        return 'setup_video'
     forwards = sorted(
         _TRANSITIONS.get(stage, set()),
         key=lambda s: _STAGE_INDEX.get(s, 99),
@@ -288,6 +317,54 @@ def set_pin(pin: str, config: Optional[dict] = None) -> Dict:
     _recompute_completion(block, config, rec.get('secrets') or {})
     auth_lib.write_auth(rec)
     logger.info('onboarding: PIN set, stage -> setup_offer')
+    return get_state(config)
+
+
+def skip_to_operational(source: str, config: Optional[dict] = None) -> Dict:
+    """Phase 2 stabilization escape hatch.
+
+    Force-transition to `operational` from any onboarding stage that has
+    an explicit skip button (`welcome`, `pin_required`, `setup_offer`,
+    `setup_now_hotspot`). Keeps `pin_set` as-is so a skip from welcome
+    or pin_required leaves the device operational BUT unauthenticated
+    for admin actions, which is the correct state — the operator
+    deferred PIN creation and the Settings page will still require one
+    before anything admin-gated runs.
+
+    `source` is recorded in onboarding history so `GET /api/onboarding/state`
+    can show which button triggered the skip. Callers in
+    `blueprints/onboarding.py` are expected to ALSO write a
+    `logs_svc.log_portal` or `log_network` line at the same time; this
+    helper only mutates auth.json.
+
+    Returns the post-write state dict. Idempotent — if the device is
+    already operational we just return the current state without
+    touching history.
+    """
+    rec = auth_lib.read_auth() or {}
+    block = _ensure_block(rec)
+    current = block['stage']
+
+    if current == 'operational':
+        _recompute_completion(block, config, rec.get('secrets') or {})
+        auth_lib.write_auth(rec)
+        return get_state(config)
+
+    block['stage'] = 'operational'
+    block.setdefault('history', []).append({
+        'from':   current,
+        'to':     'operational',
+        'reason': f'skip:{source}',
+    })
+    block['history'] = block['history'][-32:]
+
+    # Lock-step the legacy flag so callers that still check
+    # `rec['configured']` directly see the user's choice.
+    rec['configured'] = True
+
+    _recompute_completion(block, config, rec.get('secrets') or {})
+    auth_lib.write_auth(rec)
+    logger.info('onboarding skip (%s): %s -> operational', source, current)
     return get_state(config)
 
 
