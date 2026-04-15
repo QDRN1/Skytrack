@@ -32,7 +32,6 @@
   const ONBOARD_URL = '/api/onboarding/state';
   const ADVANCE_URL = '/api/onboarding/advance';
   const PIN_URL     = '/api/onboarding/pin';
-  const RESET_URL   = '/api/onboarding/reset';
   const SKIP_URL    = '/api/onboarding/skip';
   const CARDS_URL   = '/api/dashboard/cards';
   const WEATHER_URL = '/api/weather';
@@ -255,8 +254,10 @@
   // ----- PIN keypad ---------------------------------------------------
   // Drives both pin_required (first entry) and pin_confirm (re-entry).
   // The first PIN is held in JS only; we POST to /api/onboarding/pin
-  // once both entries match locally. On a mismatch we POST to
-  // /api/onboarding/reset and re-paint the first keypad.
+  // once both entries match locally. On a mismatch we rewind the
+  // server stage back to pin_required via /api/onboarding/advance
+  // (pin_confirm → pin_required is an allowed transition) and
+  // re-paint the first keypad.
   //
   // Resume safety: pinFirst is in-memory only, but the server stage is
   // persistent across reboots/reloads. Any code path that lands on
@@ -267,6 +268,12 @@
   // a mismatch, get kicked to "Set Admin PIN", then back to "Confirm
   // Admin PIN" — three keypad screens instead of two. showPinPad
   // detects this and rewinds to 'first' both locally and on the server.
+  //
+  // NOTE: this used to POST to /api/onboarding/reset, but that endpoint
+  // is now the admin-gated factory reset and rejects pre-auth callers.
+  // The pre-auth pin-pad rewind is a legitimate transition along the
+  // state machine, so we use /advance with {to: "pin_required"} — the
+  // onboarding state machine allows pin_confirm → pin_required.
   function showPinPad(mode) {
     if (mode === 'confirm' && !pinFirst) {
       // Tell the server to rewind so a parallel poll doesn't paint us
@@ -274,8 +281,12 @@
       // is already going to 'first', and the next onboarding poll will
       // confirm the server is in sync.
       serverStage = 'pin_required';
-      fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' })
-        .catch(() => {});
+      fetch(ADVANCE_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: 'pin_required' }),
+      }).catch(() => {});
       mode = 'first';
     }
     const visualName = (mode === 'confirm') ? 'pin-confirm' : 'pin-required';
@@ -343,8 +354,18 @@
         pinFirst = '';
         pinBuf   = '';
         pinError('PINs did not match — start over');
+        // Rewind the server stage back to pin_required so the poll
+        // loop doesn't immediately repaint us into pin_confirm. This
+        // used to hit /api/onboarding/reset which is now the admin-
+        // gated factory reset — we use /advance instead since the
+        // pin_confirm → pin_required edge is an allowed transition.
         try {
-          await fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' });
+          await fetch(ADVANCE_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: 'pin_required' }),
+          });
         } catch (_e) {}
         showPinPad('first');
         return;
@@ -910,10 +931,17 @@
     // is always orphaned. Rewind it to pin_required before the first
     // paint, otherwise the operator sees a flash of "Confirm Admin PIN"
     // before guard #2 (inside showPinPad) catches it on the next tick.
+    // Uses /advance (pin_confirm → pin_required is allowed) rather
+    // than /reset, because /reset is now the admin-gated factory
+    // reset and rejects pre-auth callers.
     if (serverStage === 'pin_confirm') {
       serverStage = 'pin_required';
-      fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' })
-        .catch(() => {});
+      fetch(ADVANCE_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: 'pin_required' }),
+      }).catch(() => {});
     }
 
     // Paint whatever stage the server stamped on the body. If this is

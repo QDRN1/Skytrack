@@ -371,7 +371,13 @@ def skip_to_operational(source: str, config: Optional[dict] = None) -> Dict:
 def reset_to_pin_required() -> Dict:
     """Wipe back to `pin_required`. Used when the operator mistypes the
     confirmation PIN and we want to force them to start over from the
-    first PIN entry."""
+    first PIN entry.
+
+    NOTE: this is the *internal* pin-pad rewind, not the admin-only
+    factory reset. It does not touch `pin_hash` or `configured` and
+    does NOT wipe history. The admin-only full factory reset is
+    handled by `factory_reset()` below and is wired to the HTTP
+    endpoint `POST /api/onboarding/reset`."""
     rec = auth_lib.read_auth() or {}
     block = _ensure_block(rec)
     prev = block['stage']
@@ -382,3 +388,71 @@ def reset_to_pin_required() -> Dict:
     block['history'] = block['history'][-32:]
     auth_lib.write_auth(rec)
     return get_state()
+
+
+def factory_reset(config: Optional[dict] = None) -> Dict:
+    """Admin-gated logical reset of the onboarding state machine.
+
+    Returns the device to the earliest valid stage before PIN entry
+    (`welcome`) so the operator can re-run the full onboarding flow
+    end-to-end. Exposed via `POST /api/onboarding/reset` in
+    `blueprints/onboarding.py` (admin auth required).
+
+    This is a LOGICAL reset only. It mutates `auth.json` and nothing
+    else — per the Phase 2 stabilization spec, OS-level state is
+    explicitly preserved:
+
+      - hostapd / dnsmasq config           — untouched
+      - Cloudflare tunnel config           — untouched
+      - systemd units                      — not restarted
+      - sqlite tables (sightings, logs)    — untouched
+      - device_id + firstboot marker       — untouched
+      - config.yaml                        — untouched
+      - integration secrets (aeroapi_key)  — preserved so the device
+        still works for flight tracking after the setup flow is re-run
+
+    Fields cleared in auth.json:
+
+      - `pin_hash`          the admin PIN (so the operator is forced
+                            through the welcome → pin flow again)
+      - `admin_hash`        legacy v2.3.x field, paranoid cleanup
+      - `configured`        legacy flag back to False
+      - `onboarding` block  stage reset to 'welcome', history wiped,
+                            pin_set back to False
+
+    The stored `hotspot_password` is ALSO preserved so the reveal
+    card still has credentials to display when the operator reaches
+    the hotspot stage again. Regenerating it would require restarting
+    hostapd, which the spec forbids.
+
+    Returns the post-reset state dict (same shape as `get_state()`).
+    """
+    rec = auth_lib.read_auth() or {}
+
+    # The admin PIN is the only auth material we wipe — everything
+    # else in the record (hotspot_password, secrets, etc.) is kept.
+    rec.pop('pin_hash', None)
+    rec.pop('admin_hash', None)  # legacy v2.3.x field, paranoid cleanup
+
+    # Legacy flag back to False so any call-site that still checks
+    # `rec['configured']` directly sees the reset.
+    rec['configured'] = False
+
+    # Rebuild the onboarding block from scratch so `history` is wiped
+    # and `stage` is the earliest valid stage before PIN.
+    rec['onboarding'] = {
+        'stage':                 'welcome',
+        'pin_set':               False,
+        'apis_configured':       False,   # recomputed on read
+        'adsb_configured':       False,   # recomputed on read
+        'integrations_complete': False,   # recomputed on read
+        'history': [{
+            'from':   None,
+            'to':     'welcome',
+            'reason': 'factory_reset',
+        }],
+    }
+
+    auth_lib.write_auth(rec)
+    logger.warning('onboarding: FACTORY RESET — PIN cleared, stage -> welcome')
+    return get_state(config)

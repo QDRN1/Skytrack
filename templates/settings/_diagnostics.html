@@ -117,4 +117,81 @@
     </div>
   </div>
 
+  {# Reset onboarding — danger zone.
+     Admin-gated. Wipes the PIN, clears onboarding history, rewinds
+     stage to 'welcome' so the operator can re-run the setup flow
+     end-to-end without reflashing the appliance. Logical reset only;
+     no system services are restarted and no OS config is touched.
+     See blueprints/onboarding.py::api_reset for the full contract. #}
+  <div class="settings-card danger-zone" id="onboarding-reset-card">
+    <header class="card-header">
+      <h2>Reset onboarding</h2>
+      <p class="muted">
+        Wipes the admin PIN and returns the device to the welcome
+        screen so the first-boot setup flow can be re-run. This is a
+        logical reset — hostapd, dnsmasq, Cloudflare tunnel, and
+        sqlite data are all preserved. You will be logged out and
+        prompted to set a new PIN.
+      </p>
+    </header>
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button"
+                class="btn btn-lg btn-danger"
+                id="btn-onboarding-reset">Reset device to setup mode</button>
+      </div>
+      <p class="muted" id="onboarding-reset-status">&nbsp;</p>
+    </div>
+  </div>
+
 </section>
+
+<script>
+(function () {
+  // Reset onboarding handler — confirm on the client too, then POST
+  // to /api/onboarding/reset with {confirm: true}. On success the
+  // admin session is invalidated by the factory reset (PIN gone), so
+  // we bounce the browser to /kiosk where the welcome card will be
+  // waiting.
+  const btn    = document.getElementById('btn-onboarding-reset');
+  const status = document.getElementById('onboarding-reset-status');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const ok = window.confirm(
+      'Reset device to setup mode?\n\n' +
+      'This will remove the admin PIN and all setup progress. ' +
+      'The device will return to the welcome screen and you will ' +
+      'need to set a new PIN. Flight tracking data and system ' +
+      'services are not affected.'
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    if (status) status.textContent = 'Resetting…';
+    try {
+      const r = await fetch('/api/onboarding/reset', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept':       'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (status) status.textContent = 'Failed: ' + (data.error || r.status);
+        btn.disabled = false;
+        return;
+      }
+      if (status) status.textContent = 'Reset complete. Reloading…';
+      // Bounce to /kiosk so the operator lands on the welcome card
+      // immediately. A short delay lets the status line render.
+      setTimeout(() => { window.location.href = '/kiosk'; }, 600);
+    } catch (e) {
+      if (status) status.textContent = 'Network error: ' + (e && e.message || e);
+      btn.disabled = false;
+    }
+  });
+})();
+</script>

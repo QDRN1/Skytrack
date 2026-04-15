@@ -299,23 +299,74 @@ def api_skip():
 
 
 # ---------------------------------------------------------------------------
-# POST /api/onboarding/reset
+# POST /api/onboarding/reset — admin-gated factory reset
 # ---------------------------------------------------------------------------
+#
+# "Reset device to setup mode" — wipes the admin PIN and rewinds the
+# onboarding state machine all the way back to `welcome` so the
+# operator can re-run the full first-boot flow end-to-end. This is
+# the only endpoint that clears the admin PIN.
+#
+# Auth model:
+#   - ALWAYS requires admin authentication (ROLE_ADMIN or ROLE_SUPER).
+#     There is no public path — if you can hit this endpoint without
+#     logging in, it's a bug.
+#   - The body must include {"confirm": true} as a server-side
+#     defensive guard against accidental hits. The caller's UI is
+#     also expected to present a confirmation modal, but we don't
+#     rely on that.
+#
+# This is a LOGICAL reset only: it mutates auth.json and writes an
+# audit line. It does NOT touch hostapd, dnsmasq, the Cloudflare
+# tunnel, systemd units, sqlite tables, the device_id, config.yaml,
+# or integration secrets (aeroapi_key etc.) — see the docstring on
+# `onboarding.factory_reset()` for the full preservation list.
+#
+# Note: the kiosk's pin-pad rewind (pin_confirm → pin_required when
+# the operator mistypes the confirmation PIN) used to POST here, but
+# that's a pre-auth internal rewind, so it has been migrated to
+# `POST /api/onboarding/advance` with `{to: "pin_required"}`.
 
 @onboarding_bp.route('/api/onboarding/reset', methods=['POST'])
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_reset():
-    """Rewind to `pin_required`.
+    """Factory-reset the onboarding state machine.
 
-    Used by the kiosk when the operator mistypes the confirmation PIN
-    on the second screen so we can show a clean entry pad again. Public
-    while still onboarding, admin-only once operational.
+    Requires admin authentication. Body must include
+    `{"confirm": true}` as a defensive guard. Returns 401 without
+    admin auth, 400 without confirm, 200 with the fresh state on
+    success.
     """
-    state = onboarding.get_state(_cfg())
-    if state['stage'] == 'operational':
-        if auth_lib.current_role() not in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER):
-            return jsonify({
-                'ok': False,
-                'error': 'admin authentication required',
-            }), 401
-    new_state = onboarding.reset_to_pin_required()
+    payload = request.get_json(silent=True) or {}
+    if not payload.get('confirm'):
+        return jsonify({
+            'ok': False,
+            'error': 'confirmation required; POST {"confirm": true}',
+        }), 400
+
+    # Snapshot the pre-reset state for the audit line so we can tell
+    # from the log whether the operator reset a live device or a
+    # half-configured one.
+    prev = onboarding.get_state(_cfg())
+
+    try:
+        new_state = onboarding.factory_reset(config=_cfg())
+    except Exception as e:
+        logger.exception('factory_reset failed')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    # Audit. The actor is 'admin' because the login_required decorator
+    # already gated us — current_role() is guaranteed to be admin or
+    # super at this point. Log failure is non-fatal.
+    try:
+        logs_svc.log_portal('admin', 'onboarding_reset', {
+            'from_stage':     prev.get('stage'),
+            'pin_was_set':    prev.get('pin_set'),
+            'configured_was': prev.get('configured'),
+            'to_stage':       new_state.get('stage'),
+            'actor_role':     auth_lib.current_role(),
+        })
+    except Exception as e:
+        logger.warning('onboarding_reset audit log failed: %s', e)
+
     return jsonify({'ok': True, 'state': new_state})
