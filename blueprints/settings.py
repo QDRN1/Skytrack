@@ -1459,56 +1459,20 @@ def api_hotspot_password_get():
 @settings_bp.route('/api/settings/network/hotspot/regenerate', methods=['POST'])
 @ADMIN
 def api_hotspot_regenerate():
-    """Rotate the hotspot password AND bounce hostapd atomically.
-
-    The previous version wrote the new password to auth.json but left
-    hostapd running with the old passphrase, so the device and the UI
-    silently disagreed until someone clicked "Restart Hotspot". That
-    caused a lot of "I changed the password and it didn't work"
-    tickets. Phase 2 makes rotation atomic: new password is generated,
-    written, and then hotspot_apply.sh --reapply is invoked so the
-    next beacon carries the new WPA2 passphrase.
-
-    Refuses if the caller is on SSH over wlan0 — a restart there would
-    kick them off the network mid-request.
-    """
-    import hotspot as _hotspot
-    if _hotspot.ssh_on_wlan0():
-        return jsonify({
-            'ok': False,
-            'message': 'refused: your SSH session is on wlan0 — rotating the hotspot password would lock you out. Run from eth0 or a console.',
-        }), 409
     pw = auth_lib.set_hotspot_password(None)
-    restart = _hotspot.restart_hotspot()
-    logs_svc.log_network('hotspot_password_regen', {
-        'len': len(pw or ''),
-        'restart_ok': bool(restart.get('ok')),
-    })
-    return _ok({
-        'password': pw,
-        'restart_ok': bool(restart.get('ok')),
-        'restart_message': restart.get('message') or '',
-    })
+    logs_svc.log_network('hotspot_password_regen', {'len': len(pw or '')})
+    return _ok({'password': pw})
 
 
 @settings_bp.route('/api/settings/network/hotspot/restart', methods=['POST'])
 @ADMIN
 def api_hotspot_restart():
-    """Bounce hotspot via the canonical helper script.
-
-    Routed through `hotspot.restart_hotspot()` (which calls
-    `scripts/hotspot_apply.sh --reapply` with sudo) instead of poking
-    individual systemd units, so we pick up the script's full safety
-    dance — render/snapshot checks, NM detach, ip addr assignment on
-    Bookworm, and the shared SSH-over-wlan0 guard. This is the same
-    code path `/api/network/hotspot/restart` uses.
-    """
-    import hotspot as _hotspot
     logs_svc.log_portal('admin', 'hotspot_restart', {})
-    result = _hotspot.restart_hotspot()
-    logs_svc.log_network('hotspot_restart', result)
-    status = 200 if result.get('ok') else 409
-    return jsonify(result), status
+    results = []
+    for unit in ('hostapd', 'dnsmasq', 'skytrack-hotspot'):
+        ok, msg = _shell(['systemctl', 'restart', unit], timeout=10)
+        results.append({'unit': unit, 'ok': ok, 'message': msg})
+    return jsonify({'ok': any(r['ok'] for r in results), 'results': results})
 
 
 @settings_bp.route('/api/settings/network/wifi/add', methods=['POST'])

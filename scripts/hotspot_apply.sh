@@ -191,21 +191,13 @@ fi
 
 # ---------------------------------------------------------------------------
 # Watchdog rollback
-#
-# Phase 2 moved the 90-second rollback check out of this script and into
-# `skytrack-hotspot-watchdog.timer` (OnBootSec=2m, OnUnitActiveSec=5m).
-# The old inline version was a backgrounded subshell under `set -e` in a
-# Type=oneshot service with RemainAfterExit=yes, which meant:
-#
-#   * systemd never tracked the watchdog process (orphaned on unit stop)
-#   * rapid re-applies spawned parallel watchdogs fighting each other
-#   * the watchdog ran exactly once per apply, so a late failure after
-#     90s would never trigger rollback
-#
-# The systemd timer owns this now. It re-checks hostapd on a cadence and
-# can fire rollback at any point in the unit's lifetime, not just inside
-# a fragile 90s window after apply. See
-# `systemd/skytrack-hotspot-watchdog.{timer,service}`.
 # ---------------------------------------------------------------------------
+(
+  sleep 90
+  if ! systemctl is-active --quiet hostapd; then
+    echo "watchdog: hostapd not active, rolling back"
+    "$REPO_DIR/scripts/hotspot_rollback.sh" || true
+  fi
+) &
 
 echo "hotspot apply complete (SSID=$SSID gateway=$GATEWAY)"
