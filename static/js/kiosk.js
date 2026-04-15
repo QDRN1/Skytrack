@@ -219,7 +219,27 @@
   // The first PIN is held in JS only; we POST to /api/onboarding/pin
   // once both entries match locally. On a mismatch we POST to
   // /api/onboarding/reset and re-paint the first keypad.
+  //
+  // Resume safety: pinFirst is in-memory only, but the server stage is
+  // persistent across reboots/reloads. Any code path that lands on
+  // 'confirm' without a live in-memory pinFirst — a Pi reboot mid-flow,
+  // a kiosk reload triggered by the /healthz watchdog, a Chromium
+  // relaunch — would otherwise paint "Confirm Admin PIN" with nothing
+  // to confirm against. The operator would type a PIN, hit Enter, get
+  // a mismatch, get kicked to "Set Admin PIN", then back to "Confirm
+  // Admin PIN" — three keypad screens instead of two. showPinPad
+  // detects this and rewinds to 'first' both locally and on the server.
   function showPinPad(mode) {
+    if (mode === 'confirm' && !pinFirst) {
+      // Tell the server to rewind so a parallel poll doesn't paint us
+      // right back into pin_confirm. Fire-and-forget: the local view
+      // is already going to 'first', and the next onboarding poll will
+      // confirm the server is in sync.
+      serverStage = 'pin_required';
+      fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' })
+        .catch(() => {});
+      mode = 'first';
+    }
     const visualName = (mode === 'confirm') ? 'pin-confirm' : 'pin-required';
     if (visual === visualName) return;
     visual = visualName;
@@ -682,6 +702,17 @@
     // Hotspot Continue button
     const hsDone = $('kiosk-hotspot-done');
     if (hsDone) hsDone.addEventListener('click', () => advanceServer('operational').catch(() => {}));
+
+    // Resume safety (guard #1): on a fresh page load pinFirst is
+    // definitionally empty, so a persisted server stage of pin_confirm
+    // is always orphaned. Rewind it to pin_required before the first
+    // paint, otherwise the operator sees a flash of "Confirm Admin PIN"
+    // before guard #2 (inside showPinPad) catches it on the next tick.
+    if (serverStage === 'pin_confirm') {
+      serverStage = 'pin_required';
+      fetch(RESET_URL, { method: 'POST', credentials: 'same-origin' })
+        .catch(() => {});
+    }
 
     // Paint whatever stage the server stamped on the body. If this is
     // a fresh boot we land on boot_video; if the device was previously
