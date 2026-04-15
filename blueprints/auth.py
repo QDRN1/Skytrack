@@ -45,12 +45,25 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/healthz')
 def healthz():
-    """Always-public liveness probe used by systemd, watchdog, CI."""
-    return jsonify({
+    """Always-public liveness probe used by systemd, watchdog, CI.
+
+    CORS: the on-device Chromium splash page is loaded from a `file://`
+    URL (see `kiosk/xinitrc`) and polls this endpoint to decide when the
+    backend is up and it's safe to redirect to `/kiosk`. Chromium treats
+    a `file://` origin as "null" and will block the response body (and
+    therefore the .ok check in splash/index.html) unless we explicitly
+    opt in via `Access-Control-Allow-Origin: *`. Without this header the
+    splash used to get stuck polling forever even though Flask was
+    answering — the handoff from splash to /kiosk silently never fired.
+    """
+    resp = jsonify({
         'ok': True,
         'configured': auth_lib.is_configured(),
         'device': current_app.config.get('DEVICE_ID'),
     })
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @auth_bp.route('/')

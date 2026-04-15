@@ -354,20 +354,46 @@
           pauseVideo(videos[s]);
         });
 
-        // 2. Active video → visible + playing, fallback card hidden.
+        // 2. Active video → visible + playing.
+        //    IMPORTANT: we keep the fallback card visible UNTIL the
+        //    video has fired `canplay` at least once. On a slow-decoding
+        //    Pi the <video> element can otherwise paint a transparent /
+        //    featureless rectangle for the first 1–2 seconds, and the
+        //    operator sees "blank screen with device pill at the top"
+        //    instead of something branded. Revealing the card up-front
+        //    and only hiding it once the video is actually decoding
+        //    gives us a true no-black-screen contract.
         var v = videos[state];
         if (v && !videoBroken[state]) {
           setVisible(v, true);
           tryPlay(v);
-          setVisible(fallbackCard, false);
+
+          var copy = fallbackCopyFor(state);
+          if (fallbackMsg) fallbackMsg.textContent = copy[0];
+          if (fallbackDet) fallbackDet.textContent = copy[1];
+
+          if (v.readyState >= 2) {
+            // Already decoded at least one frame — safe to hide card.
+            setVisible(fallbackCard, false);
+          } else {
+            setVisible(fallbackCard, true);
+            v.addEventListener("canplay", function _onCanplay() {
+              v.removeEventListener("canplay", _onCanplay);
+              // Only hide if we're still painting this state — the
+              // poll loop may have switched us in the meantime.
+              if (state === state && !videoBroken[state]) {
+                setVisible(fallbackCard, false);
+              }
+            }, { once: true });
+          }
           return;
         }
 
         // 3. Active video is broken or missing → reveal the fallback
         //    card on top of the static branded gradient.
-        var copy = fallbackCopyFor(state);
-        if (fallbackMsg) fallbackMsg.textContent = copy[0];
-        if (fallbackDet) fallbackDet.textContent = copy[1];
+        var copy2 = fallbackCopyFor(state);
+        if (fallbackMsg) fallbackMsg.textContent = copy2[0];
+        if (fallbackDet) fallbackDet.textContent = copy2[1];
         setVisible(fallbackCard, true);
       }
 
@@ -410,31 +436,49 @@
         var opts = { cache: "no-store" };
         if (controller) opts.signal = controller.signal;
 
+        function handoff() {
+          if (redirecting) return;
+          redirecting = true;
+          window.location.replace(KIOSK_URL);
+        }
+
         fetch(HEALTH_URL, opts)
           .then(function (r) {
             if (timeoutId) clearTimeout(timeoutId);
-            if (!r || !r.ok) throw new Error("http " + (r ? r.status : "?"));
-            return r.json().catch(function () { return {}; });
-          })
-          .then(function (_body) {
-            // Backend is alive — hand off unconditionally to /kiosk. The
-            // kiosk page owns every onboarding screen (boot_video,
-            // setup_video, pin_required, pin_confirm, setup_offer,
-            // setup_now_hotspot, operational) via /api/onboarding/state,
-            // so the splash never needs to know whether the device is
-            // already configured. Staying on the splash in the
-            // unconfigured case (Phase 2 behavior) stranded the kiosk
-            // at a looping setup video and never reached the PIN
-            // keypad — Phase 3 moved that flow into /kiosk.
-            redirecting = true;
-            window.location.replace(KIOSK_URL);
-            return;
+            if (!r || !r.ok) throw new Error("cors http " + (r ? r.status : "?"));
+            // Backend is alive AND CORS headers are present — hand off
+            // unconditionally to /kiosk. The kiosk page owns every
+            // onboarding screen (boot_video, setup_video, pin_required,
+            // pin_confirm, setup_offer, setup_now_hotspot, operational)
+            // via /api/onboarding/state, so the splash never needs to
+            // know whether the device is already configured.
+            handoff();
           })
           .catch(function () {
             if (timeoutId) clearTimeout(timeoutId);
-            // /healthz unreachable. Keep polling; the grace timer above
-            // will flip us to the unavailable video at UNAVAILABLE_MS.
-            setTimeout(poll, POLL_MS);
+            // Primary CORS probe failed. Before giving up and bouncing
+            // back to the poll timer, try a no-cors probe. In no-cors
+            // mode we can't read r.ok / r.status, but we get a resolved
+            // promise whenever the URL is actually reachable on the
+            // wire. That's enough to hand off — /kiosk either renders
+            // or its own error handler does, and either outcome is far
+            // better than sitting stuck on the splash forever if an
+            // older backend image is missing the ACAO header.
+            var probe;
+            try {
+              probe = fetch(HEALTH_URL, { cache: "no-store", mode: "no-cors" });
+            } catch (_e) {
+              setTimeout(poll, POLL_MS);
+              return;
+            }
+            probe.then(function (r) {
+              if (!r) throw new Error("no-cors: no response");
+              handoff();
+            }).catch(function () {
+              // Truly unreachable — keep polling. The grace timer above
+              // will flip us to the unavailable video at UNAVAILABLE_MS.
+              setTimeout(poll, POLL_MS);
+            });
           });
       }
 

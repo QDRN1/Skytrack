@@ -1,11 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" style="background:#05070b;color:#fff;">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <title>SkyTrack Portal — {{ device_id }}</title>
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <!--
+    Inline background paint — this is defense-in-depth against a blank
+    white flash. The main <style> block below sets the same #000
+    background, but if the external kiosk.js fails to load or the
+    <link>-referenced assets race the parser, Chromium may render the
+    body with its default user-agent white background for a few tens of
+    milliseconds. That race is what the operator was seeing as "mostly
+    white screen with only SkyTrack visible at the top" during Phase 3
+    validation. Stamping the gradient on <html> via a style attribute
+    bypasses that race — the background is set before any stylesheet
+    or script is even fetched.
+  -->
+  <style>html,body{background:
+    radial-gradient(ellipse at 18% 20%, rgba(46,108,246,0.28), transparent 62%),
+    radial-gradient(ellipse at 82% 78%, rgba(242,145,53,0.18), transparent 60%),
+    linear-gradient(180deg,#060b1c 0%,#02040e 100%) !important;}</style>
   <style>
     /* =====================================================================
        SkyTrack on-device kiosk — the fullscreen Chromium display.
