@@ -339,6 +339,68 @@
     }
     .kiosk-onb .creds dd.muted { color: rgba(231, 235, 255, 0.75); }
 
+    /* ----- Live hotspot status line (phase 2.2) ------------------------
+       Sits between the credentials list and the primary CTA. Classes
+       are swapped in by static/js/kiosk.js::paintHotspotStatus() based
+       on /api/hotspot/health. Five visual states: checking / starting
+       / waiting / connected / broken. Colors kept inside the existing
+       kiosk palette so the card still reads as one surface. */
+    #kiosk-hs-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: min(560px, 88vw);
+      margin: clamp(4px, 0.8vh, 10px) 0 clamp(10px, 1.6vh, 18px);
+      padding: clamp(8px, 1.2vh, 12px) clamp(12px, 2vw, 18px);
+      border-radius: 10px;
+      font-size: clamp(0.88em, 1.9vh, 1.08em);
+      line-height: 1.35;
+      background: rgba(22, 28, 44, 0.55);
+      border: 1px solid rgba(151, 160, 196, 0.28);
+      color: rgba(231, 235, 255, 0.88);
+      transition: background 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+    }
+    #kiosk-hs-status .hs-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(151, 160, 196, 0.6);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 0 rgba(151, 160, 196, 0.0);
+    }
+    #kiosk-hs-status .hs-text { flex: 1 1 auto; }
+    #kiosk-hs-status.hs-checking .hs-dot,
+    #kiosk-hs-status.hs-starting .hs-dot {
+      background: #f29135;
+      animation: hsPulse 1.6s ease-in-out infinite;
+    }
+    #kiosk-hs-status.hs-waiting .hs-dot {
+      background: #2e6cf6;
+      animation: hsPulse 2.2s ease-in-out infinite;
+    }
+    #kiosk-hs-status.hs-connected {
+      background: rgba(36, 92, 64, 0.55);
+      border-color: rgba(74, 200, 140, 0.55);
+      color: #d6fce5;
+    }
+    #kiosk-hs-status.hs-connected .hs-dot {
+      background: #4ac88c;
+      box-shadow: 0 0 0 4px rgba(74, 200, 140, 0.22);
+    }
+    #kiosk-hs-status.hs-broken {
+      background: rgba(92, 32, 32, 0.55);
+      border-color: rgba(240, 88, 88, 0.55);
+      color: #ffe0e0;
+    }
+    #kiosk-hs-status.hs-broken .hs-dot {
+      background: #f05858;
+      box-shadow: 0 0 0 4px rgba(240, 88, 88, 0.22);
+    }
+    @keyframes hsPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(242, 145, 53, 0.45); opacity: 1; }
+      50%      { box-shadow: 0 0 0 6px rgba(242, 145, 53, 0.0); opacity: 0.55; }
+    }
+
     /* =====================================================================
        OPERATIONAL STAGE — the permanent live display
        Locked to exactly 100vh / 100vw. 3-row layout:
@@ -672,6 +734,17 @@
           <dt>URL</dt><dd class="muted" id="kiosk-hs-url">http://{{ gateway }}</dd>
           <dt>Device</dt><dd class="muted">{{ device_id }}</dd>
         </dl>
+        {# Phase 2.2: live hotspot status line. JS paints classes:
+             .hs-checking  initial load
+             .hs-starting  services coming up (grace window)
+             .hs-waiting   usable, waiting for a phone to join
+             .hs-connected usable, at least one station + AP mode
+             .hs-broken    persistent failure, shows degraded_reasons
+        #}
+        <div id="kiosk-hs-status" class="hs-checking">
+          <span class="hs-dot" aria-hidden="true"></span>
+          <span class="hs-text">Checking hotspot status…</span>
+        </div>
         <div class="onb-actions">
           <button type="button" class="onb-btn primary" id="kiosk-hotspot-done">I'm Connected — Continue</button>
         </div>

@@ -132,18 +132,65 @@ def api_hotspot_credentials():
     })
 
 
+def _lockout_guard():
+    """Refuse the request if the caller is connected via the hotspot.
+
+    Returns a Flask (body, status) tuple if blocked, else None. Phase 2.2:
+    both regenerate and restart bounce hostapd, which drops whatever TCP
+    session the caller is riding on if they're on 10.4.26.0/24. The
+    response then never makes it back to the phone — including the new
+    WPA password — leaving the operator with a locked device. The guard
+    accepts `?force=1` (or `{"force": true}` in the body) to override
+    when the operator knows what they're doing.
+    """
+    cfg = current_app.skytrack_config
+    if not hotspot.caller_on_hotspot(request.remote_addr, cfg):
+        return None
+    forced = request.args.get('force') == '1'
+    if not forced:
+        body = (request.get_json(silent=True) or {}) if request.is_json else {}
+        forced = bool(body.get('force'))
+    if forced:
+        return None
+    return (jsonify({
+        'ok': False,
+        'error': 'hotspot_lockout_guard',
+        'message': ('You are connected via the SkyTrack hotspot. '
+                    'Restarting hostapd will disconnect you before '
+                    'the response arrives. Reconnect over eth0 or '
+                    'cellular, or pass force=1 to override.'),
+        'remote_addr': request.remote_addr,
+    }), 409)
+
+
 @network_bp.route('/api/network/hotspot/regenerate', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_hotspot_regenerate():
+    blocked = _lockout_guard()
+    if blocked:
+        return blocked
     pw = auth_lib.set_hotspot_password(None)
+    # Atomic: rewrite hostapd.conf with the new WPA passphrase and
+    # bounce hostapd in the same request. Without this, the password
+    # stayed in auth.json but never reached /etc/hostapd/hostapd.conf
+    # until the next reboot — which was exactly the 2.5.x bug.
+    apply_result = hotspot.rotate_hotspot_apply()
     logs_svc.log_network('hotspot_password_regenerated',
-                         {'len': len(pw or ''), 'source': 'network_page'})
-    return jsonify({'ok': True, 'password': pw})
+                         {'len': len(pw or ''), 'source': 'network_page',
+                          'apply_ok': apply_result.get('ok', False)})
+    return jsonify({
+        'ok': apply_result.get('ok', False),
+        'password': pw,
+        'apply': apply_result,
+    })
 
 
 @network_bp.route('/api/network/hotspot/restart', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_hotspot_restart():
+    blocked = _lockout_guard()
+    if blocked:
+        return blocked
     result = hotspot.restart_hotspot()
     logs_svc.log_network('hotspot_restart', result)
     return jsonify(result)

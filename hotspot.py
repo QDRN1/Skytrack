@@ -185,6 +185,33 @@ def _address_in_subnet(cidr: str, subnet: str) -> bool:
         return False
 
 
+def caller_on_hotspot(remote_addr, config) -> bool:
+    """True if an HTTP caller at `remote_addr` is inside the hotspot subnet.
+
+    Used by the rotate/restart blueprint endpoints to refuse operations
+    that would break the caller's own connection (the "don't saw off the
+    branch you're sitting on" guard). A web request from a phone joined
+    to SkyTrack-Portal arrives with `remote_addr` inside
+    `config['hotspot_subnet']`; when we bounce hostapd to apply a new
+    password, that TCP connection drops mid-response and the phone never
+    learns the new password it would need to reconnect.
+
+    Returns False on any parse error — we only say "yes, on hotspot" when
+    we are certain, so that the guard is fail-open rather than
+    fail-closed (the alternative would wedge every admin action whenever
+    the subnet config is malformed).
+    """
+    if not remote_addr:
+        return False
+    subnet = config.get('hotspot_subnet', '10.4.26.0/24') if config else '10.4.26.0/24'
+    try:
+        addr = ipaddress.ip_address(remote_addr)
+        net = ipaddress.ip_network(subnet, strict=False)
+        return addr in net
+    except Exception:
+        return False
+
+
 def _count_leases_in_subnet(leases_path: str, subnet: str) -> int:
     """Count dnsmasq lease lines whose address is inside `subnet`."""
     if not os.path.exists(leases_path) or not subnet:
@@ -337,18 +364,24 @@ def list_clients(leases_path: str = DEFAULT_LEASES) -> List[dict]:
     return out
 
 
-def restart_hotspot() -> dict:
-    """Bounce hostapd + dnsmasq via the helper script. Requires sudo / capabilities."""
+def _apply_helper_path() -> str:
+    """Resolve hotspot_apply.sh location — /opt/skytrack in prod, repo in dev."""
     helper = '/opt/skytrack/scripts/hotspot_apply.sh'
     if not os.path.exists(helper):
         helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               'scripts', 'hotspot_apply.sh')
+    return helper
+
+
+def _run_apply(args: list, timeout: int = 30) -> dict:
+    """Invoke hotspot_apply.sh with args. Returns {ok, message}."""
+    helper = _apply_helper_path()
     if not os.path.exists(helper):
         return {'ok': False, 'message': 'hotspot_apply.sh not installed'}
     try:
         result = subprocess.run(
-            ['sudo', '-n', helper, '--reapply'],
-            capture_output=True, text=True, timeout=20,
+            ['sudo', '-n', helper] + list(args),
+            capture_output=True, text=True, timeout=timeout,
         )
         return {
             'ok': result.returncode == 0,
@@ -356,6 +389,33 @@ def restart_hotspot() -> dict:
         }
     except Exception as e:
         return {'ok': False, 'message': str(e)}
+
+
+def restart_hotspot() -> dict:
+    """Cheap bounce: re-run hostapd + dnsmasq WITHOUT re-rendering configs.
+
+    Used by the generic "restart hotspot" button. Passes `--reapply` so
+    hotspot_apply.sh skips config rewrites and just kicks systemd. If
+    you've just written a new WPA password, use `rotate_hotspot_apply()`
+    instead — a plain restart won't pick up the new password because
+    `--reapply` reuses the already-on-disk hostapd.conf.
+    """
+    return _run_apply(['--reapply'], timeout=20)
+
+
+def rotate_hotspot_apply() -> dict:
+    """Full re-render + bounce: the atomic verb for password rotation.
+
+    hotspot_apply.sh re-reads `/var/lib/skytrack/auth.json` at the top of
+    every non-reapply run, rewrites `/etc/hostapd/hostapd.conf` with the
+    fresh WPA passphrase, then bounces hostapd. This is the only way to
+    make a new password take effect without a reboot. Callers (settings
+    `/api/settings/network/hotspot/regenerate` and network
+    `/api/network/hotspot/regenerate`) MUST call this immediately after
+    `auth.set_hotspot_password()` so the write + apply happen in one
+    atomic request.
+    """
+    return _run_apply([], timeout=30)
 
 
 def selfcheck(config) -> dict:

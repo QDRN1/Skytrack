@@ -36,6 +36,7 @@ import auth as auth_lib
 import device_id
 import enrich
 import git_auth
+import hotspot
 import logs_svc
 import network_svc
 from _version import __version__ as SKYTRACK_VERSION
@@ -431,15 +432,57 @@ def api_network():
     })
 
 
+def _hotspot_lockout_guard():
+    """Refuse a rotate/restart if the caller is connected via the hotspot.
+
+    Phase 2.2: see blueprints/network.py::_lockout_guard for the full
+    rationale. This is the settings-blueprint copy so both legacy
+    (/network) and canonical (/settings) paths enforce the same rule.
+    """
+    cfg = current_app.skytrack_config
+    if not hotspot.caller_on_hotspot(request.remote_addr, cfg):
+        return None
+    forced = request.args.get('force') == '1'
+    if not forced:
+        body = (request.get_json(silent=True) or {}) if request.is_json else {}
+        forced = bool(body.get('force'))
+    if forced:
+        return None
+    return (jsonify({
+        'ok': False,
+        'error': 'hotspot_lockout_guard',
+        'message': ('You are connected via the SkyTrack hotspot. '
+                    'Restarting hostapd will disconnect you before '
+                    'the response arrives. Reconnect over eth0 or '
+                    'cellular, or pass force=1 to override.'),
+        'remote_addr': request.remote_addr,
+    }), 409)
+
+
 @settings_bp.route('/api/settings/network/hotspot/password', methods=['POST'])
 @ADMIN
 def api_hotspot_password():
-    """Regenerate or set the hotspot WPA2 password."""
+    """Regenerate or set the hotspot WPA2 password.
+
+    Phase 2.2: atomic — the password is written to auth.json AND the
+    full hotspot_apply.sh re-render is invoked in the same request so
+    /etc/hostapd/hostapd.conf picks up the new passphrase and hostapd
+    is bounced. Previously the password went into auth.json and stayed
+    there until the next reboot, which is the 2.5.x bug this fixes.
+    """
+    blocked = _hotspot_lockout_guard()
+    if blocked:
+        return blocked
     payload = request.get_json(silent=True) or {}
     new_pw = payload.get('password')
     pw = auth_lib.set_hotspot_password(new_pw or None)
-    logs_svc.log_network('hotspot_password_set', {'len': len(pw)})
-    return _ok({'password': pw})
+    apply_result = hotspot.rotate_hotspot_apply()
+    logs_svc.log_network('hotspot_password_set',
+                         {'len': len(pw), 'apply_ok': apply_result.get('ok', False)})
+    if not apply_result.get('ok', False):
+        return _ok({'password': pw, 'apply': apply_result,
+                    'warning': 'password stored but hostapd re-apply failed'})
+    return _ok({'password': pw, 'apply': apply_result})
 
 
 @settings_bp.route('/api/settings/network/wifi', methods=['POST'])
@@ -1459,20 +1502,36 @@ def api_hotspot_password_get():
 @settings_bp.route('/api/settings/network/hotspot/regenerate', methods=['POST'])
 @ADMIN
 def api_hotspot_regenerate():
+    """Regenerate a random WPA2 password and apply it atomically."""
+    blocked = _hotspot_lockout_guard()
+    if blocked:
+        return blocked
     pw = auth_lib.set_hotspot_password(None)
-    logs_svc.log_network('hotspot_password_regen', {'len': len(pw or '')})
-    return _ok({'password': pw})
+    apply_result = hotspot.rotate_hotspot_apply()
+    logs_svc.log_network('hotspot_password_regen',
+                         {'len': len(pw or ''), 'apply_ok': apply_result.get('ok', False)})
+    if not apply_result.get('ok', False):
+        return _ok({'password': pw, 'apply': apply_result,
+                    'warning': 'password stored but hostapd re-apply failed'})
+    return _ok({'password': pw, 'apply': apply_result})
 
 
 @settings_bp.route('/api/settings/network/hotspot/restart', methods=['POST'])
 @ADMIN
 def api_hotspot_restart():
+    """Cheap bounce — does NOT pick up a new password (use regenerate for that)."""
+    blocked = _hotspot_lockout_guard()
+    if blocked:
+        return blocked
     logs_svc.log_portal('admin', 'hotspot_restart', {})
-    results = []
-    for unit in ('hostapd', 'dnsmasq', 'skytrack-hotspot'):
-        ok, msg = _shell(['systemctl', 'restart', unit], timeout=10)
-        results.append({'unit': unit, 'ok': ok, 'message': msg})
-    return jsonify({'ok': any(r['ok'] for r in results), 'results': results})
+    # Route through hotspot.restart_hotspot() so every caller uses the
+    # same `hotspot_apply.sh --reapply` path. Keeps per-unit systemctl
+    # out of the blueprint (where it never had the full picture —
+    # hostapd can be "active" briefly while dnsmasq and the wlan0 IP
+    # both need to come back too, and only the helper script knows
+    # that).
+    result = hotspot.restart_hotspot()
+    return jsonify(result)
 
 
 @settings_bp.route('/api/settings/network/wifi/add', methods=['POST'])

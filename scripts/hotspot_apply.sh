@@ -190,14 +190,34 @@ if ! systemctl restart dnsmasq; then
 fi
 
 # ---------------------------------------------------------------------------
-# Watchdog rollback
+# Watchdog rollback — phase 2.2
+#
+# Replaced an inline `(sleep 90; check) &` subshell with a transient
+# systemd unit scheduled 90s in the future. Rationale:
+#
+#   • Orphaned subshells lose their parent's environment and can be
+#     killed by systemd when the apply oneshot exits, making the
+#     rollback unreliable precisely when it matters.
+#   • A transient unit is visible in `systemctl list-timers` /
+#     `journalctl -u skytrack-hotspot-watchdog.service` — one place
+#     to see why a rollback happened (or didn't). The subshell was
+#     invisible.
+#   • On a dev box without systemd-run, we skip the schedule entirely
+#     rather than fall back to a fragile subshell. The hotspot truth
+#     probe on the kiosk covers that case truthfully.
 # ---------------------------------------------------------------------------
-(
-  sleep 90
-  if ! systemctl is-active --quiet hostapd; then
-    echo "watchdog: hostapd not active, rolling back"
-    "$REPO_DIR/scripts/hotspot_rollback.sh" || true
-  fi
-) &
+if command -v systemd-run >/dev/null 2>&1; then
+  # Cancel any pending watchdog from a prior apply so they don't stack.
+  # `stop` on a non-existent transient unit is a no-op.
+  systemctl stop skytrack-hotspot-watchdog.service 2>/dev/null || true
+  systemd-run \
+    --unit=skytrack-hotspot-watchdog.service \
+    --on-active=90s \
+    --description="SkyTrack hotspot post-apply watchdog" \
+    "$REPO_DIR/scripts/hotspot_watchdog.sh" 2>/dev/null \
+    || echo "warn: could not schedule hotspot watchdog (systemd-run failed)"
+else
+  echo "note: systemd-run not available — skipping watchdog schedule"
+fi
 
 echo "hotspot apply complete (SSID=$SSID gateway=$GATEWAY)"

@@ -37,6 +37,7 @@
   const WEATHER_URL = '/api/weather';
   const DEVICE_URL  = '/api/device';
   const HEALTH_URL  = '/healthz';
+  const HOTSPOT_URL = '/api/hotspot/health';
   const SPLASH_URL  = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
 
   // ----- Cadences ------------------------------------------------------
@@ -50,6 +51,15 @@
   const BOOT_VIDEO_HARD_MS  = 12000;
   const HEALTH_POLL_MS      = 5000;
   const HEALTH_FALLBACK_MS  = 30000;
+  // Hotspot truth probe — poll faster than onboarding so the card
+  // feels alive while the operator waits for a phone to join.
+  const HOTSPOT_POLL_MS     = 3000;
+  // Grace window before a non-usable hotspot gets flagged as "broken".
+  // On a cold boot hostapd + dnsmasq + the wlan0 IP can legitimately
+  // take 15-20 seconds to all come up, so we show "Starting hotspot…"
+  // for the first STARTING_GRACE_MS of the card's lifetime and only
+  // flip to the red "broken" state after that window closes.
+  const STARTING_GRACE_MS   = 20000;
 
   // ----- Mutable state -------------------------------------------------
   // visual = the screen currently painted in the DOM. NOT the persistent
@@ -60,6 +70,12 @@
 
   let onbTimer = null, opCardsTimer = null, opWxTimer = null;
   let opDevTimer = null, opClockTimer = null, healthTimer = null;
+  let hotspotTimer = null;
+  // Timestamp at which the hotspot card first became visible. Used as
+  // the anchor for the STARTING_GRACE_MS window — we avoid flashing a
+  // red "not usable" state during the normal 15-20s cold-boot window
+  // while services are still coming up.
+  let hotspotCardShownAt = 0;
   let particles = null;
 
   // PIN keypad local buffers (the first PIN never leaves the kiosk; we
@@ -92,6 +108,7 @@
     hide($('kiosk-op'));
     stopParticles();
     stopOperationalTimers();
+    stopHotspotHealthPoll();
     const sv = $('kiosk-setup-video');
     const bv = $('kiosk-boot-video');
     if (sv) { try { sv.pause(); } catch (_e) {} }
@@ -353,6 +370,12 @@
     visual = 'hotspot';
     hideAllScreens();
     show($('kiosk-hotspot'));
+    // Phase 2.2: start the live hotspot truth poll while this card is
+    // visible. The anchor timestamp drives STARTING_GRACE_MS so we
+    // don't flash "hotspot broken" during the normal cold-boot window.
+    hotspotCardShownAt = Date.now();
+    paintHotspotStatus(null);  // reset to "Checking…" instantly
+    startHotspotHealthPoll();
   }
 
   // ----- Operational stage -------------------------------------------
@@ -548,6 +571,102 @@
   }
   function stopOnboardingPolling() {
     if (onbTimer) { clearInterval(onbTimer); onbTimer = null; }
+  }
+
+  // ----- Hotspot truth poll (phase 2.2) ------------------------------
+  // Runs ONLY while the setup_now_hotspot card is on screen. Every
+  // HOTSPOT_POLL_MS we fetch /api/hotspot/health (public, no auth) and
+  // paint a live state line under the credentials. The UI state
+  // machine below NEVER trusts the `stations` count on its own — we
+  // explicitly require `usable && ap_mode && stations > 0` before
+  // showing "connected", because on a broken AP the station dump can
+  // still lie (see the on-Pi validation of 2.5.5 where stations=1
+  // while ap_mode=false).
+  async function pollHotspotHealth() {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const to  = ctl ? setTimeout(() => ctl.abort(), 2500) : null;
+      const r = await fetch(HOTSPOT_URL, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        signal: ctl ? ctl.signal : undefined,
+      });
+      if (to) clearTimeout(to);
+      if (!r || !r.ok) { paintHotspotStatus(null); return; }
+      const h = await r.json();
+      paintHotspotStatus(h);
+    } catch (_e) {
+      // Transient fetch error — keep whatever state is on screen
+      // rather than flapping to "checking". The next tick will refresh.
+    }
+  }
+
+  // Map a /api/hotspot/health response (or null for "no data yet")
+  // onto one of the five visual states defined in templates/kiosk.html.
+  function paintHotspotStatus(h) {
+    const el = $('kiosk-hs-status');
+    if (!el) return;
+    const textEl = el.querySelector('.hs-text');
+    const setState = (cls, text) => {
+      el.className = cls;
+      if (textEl) textEl.textContent = text;
+    };
+
+    // 1) No response yet — first paint / transient network error.
+    if (!h) {
+      setState('hs-checking', 'Checking hotspot status…');
+      return;
+    }
+
+    // 2) Healthy + a station is truly associated (AP mode confirmed).
+    //    This is the ONLY branch that trusts h.stations > 0, and even
+    //    then only after we've confirmed usable && ap_mode.
+    if (h.usable && h.ap_mode && h.stations > 0) {
+      const word = h.stations === 1 ? 'device' : 'devices';
+      setState('hs-connected',
+        h.stations + ' ' + word + ' connected — continue setup when ready');
+      return;
+    }
+
+    // 3) Healthy, waiting for a phone to join.
+    if (h.usable) {
+      setState('hs-waiting',
+        'Hotspot live — waiting for your device to join "' + (h.ssid || 'SkyTrack-Portal') + '"');
+      return;
+    }
+
+    // 4) Not usable yet. Decide between "starting" (grace window) and
+    //    "broken" (persistent failure). Hard rfkill or a soft-block
+    //    is never a transient startup state, so we skip straight to
+    //    the red state even inside the grace window.
+    const hardFault = !!(h.rfkill_hard_blocked || h.rfkill_soft_blocked);
+    const withinGrace = hotspotCardShownAt > 0
+      && (Date.now() - hotspotCardShownAt) < STARTING_GRACE_MS;
+
+    if (!hardFault && withinGrace) {
+      setState('hs-starting', 'Starting hotspot…');
+      return;
+    }
+
+    // 5) Persistent failure. Surface the first real reason so the
+    //    operator can tell WHY. Truncate to keep the card tidy.
+    const reasons = Array.isArray(h.degraded_reasons) ? h.degraded_reasons : [];
+    const first = reasons[0] || 'hotspot not usable';
+    const extra = reasons.length > 1 ? ' (+' + (reasons.length - 1) + ' more)' : '';
+    setState('hs-broken', 'Hotspot not usable: ' + first + extra);
+  }
+
+  function startHotspotHealthPoll() {
+    if (hotspotTimer) return;
+    // Fire one immediate poll so the UI paints within the first tick
+    // rather than sitting on "Checking…" for HOTSPOT_POLL_MS.
+    pollHotspotHealth();
+    hotspotTimer = setInterval(pollHotspotHealth, HOTSPOT_POLL_MS);
+  }
+  function stopHotspotHealthPoll() {
+    if (hotspotTimer) { clearInterval(hotspotTimer); hotspotTimer = null; }
+    hotspotCardShownAt = 0;
   }
 
   // ----- Health watchdog ---------------------------------------------
