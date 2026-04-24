@@ -644,6 +644,8 @@ def api_wifi_remove():
 # ===========================================================================
 
 _TUNNEL_TOKEN_PATH = '/etc/skytrack/tunnel_token'
+_TUNNEL_ID_PATH = '/etc/skytrack/tunnel_id'
+_TUNNEL_CONFIG_PATH = '/etc/cloudflared/config.yml'
 
 @settings_bp.route('/api/settings/tunnel', methods=['GET'])
 @ADMIN
@@ -661,7 +663,9 @@ def api_tunnel_status():
             running = result.stdout.strip() == 'active'
         except Exception:
             pass
-    token_set = os.path.exists(_TUNNEL_TOKEN_PATH)
+    token_set = (os.path.exists(_TUNNEL_TOKEN_PATH)
+                 or os.path.exists(_TUNNEL_ID_PATH)
+                 or os.path.exists(_TUNNEL_CONFIG_PATH))
     return jsonify({
         'installed': installed,
         'running': running,

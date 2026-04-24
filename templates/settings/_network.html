@@ -240,42 +240,65 @@
           <code class="ro-value" id="tunnel-running">—</code>
         </div>
         <div class="readonly-row">
-          <span class="ro-label">Token configured</span>
-          <code class="ro-value" id="tunnel-token-set">—</code>
+          <span class="ro-label">Tunnel</span>
+          <code class="ro-value" id="tunnel-name-display">—</code>
         </div>
         <div class="readonly-row" id="tunnel-hostname-row" hidden>
           <span class="ro-label">Public URL</span>
-          <code class="ro-value" id="tunnel-hostname-value">—</code>
+          <a class="ro-value" id="tunnel-hostname-value" href="#" target="_blank" rel="noopener">—</a>
         </div>
       </div>
 
-      <div class="field" id="tunnel-setup-group">
-        <label for="tunnel-token">Connector token</label>
-        <p class="muted small">
-          Get this from
-          <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Zero Trust</a>
-          → Networks → Tunnels → Create → Cloudflared.
+      {# Setup form — hidden once a tunnel is running #}
+      <div id="tunnel-setup-form">
+        <p class="muted small" style="margin-bottom:12px">
+          Set up from SSH on this device. This is the recommended method
+          — the device creates and manages the tunnel directly with your
+          Cloudflare account.
         </p>
-        <textarea id="tunnel-token" class="input" rows="3"
-                  placeholder="eyJhIjoiNjQ3..."></textarea>
+        <pre class="log-pre" style="font-size:0.85em;padding:12px;user-select:all">sudo bash /opt/skytrack/scripts/setup_tunnel.sh skytrack-baycity skytrack-baycity.yourdomain.com</pre>
+        <p class="muted small" style="margin-top:8px">
+          You'll be given a URL to open in any browser to authorize the
+          device with your Cloudflare account. The script creates the
+          tunnel, sets up DNS, and starts the service automatically.
+        </p>
+
+        <details style="margin-top:16px">
+          <summary class="muted" style="cursor:pointer;font-size:0.9em">
+            Alternative: install with a dashboard token
+          </summary>
+          <div style="padding-top:12px">
+            <div class="field">
+              <label for="tunnel-token">Connector token</label>
+              <p class="muted small">
+                From
+                <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Zero Trust</a>
+                → Networks → Tunnels → Create → Cloudflared.
+              </p>
+              <textarea id="tunnel-token" class="input" rows="3"
+                        placeholder="eyJhIjoiNjQ3..."></textarea>
+            </div>
+            <div class="field">
+              <label for="tunnel-name">Tunnel name</label>
+              <input type="text" id="tunnel-name" class="input"
+                     placeholder="skytrack-baycity"
+                     value="{{ config.cloudflared_tunnel_name or '' }}">
+            </div>
+            <div class="field">
+              <label for="tunnel-host">Public hostname</label>
+              <input type="text" id="tunnel-host" class="input"
+                     placeholder="skytrack-baycity.yourdomain.com"
+                     value="{{ config.cloudflared_hostname or '' }}">
+            </div>
+            <div class="action-row">
+              <button type="button" class="btn btn-lg btn-primary" id="tunnel-install-btn">Install with token</button>
+            </div>
+          </div>
+        </details>
       </div>
 
-      <div class="field">
-        <label for="tunnel-name">Tunnel name (for reference)</label>
-        <input type="text" id="tunnel-name" class="input"
-               placeholder="skytrack-baycity"
-               value="{{ config.cloudflared_tunnel_name or '' }}">
-      </div>
-
-      <div class="field">
-        <label for="tunnel-host">Public hostname (once configured in CF dashboard)</label>
-        <input type="text" id="tunnel-host" class="input"
-               placeholder="skytrack-baycity.yourdomain.com"
-               value="{{ config.cloudflared_hostname or '' }}">
-      </div>
-
-      <div class="action-row" style="gap:10px">
-        <button type="button" class="btn btn-lg btn-primary" id="tunnel-install-btn">Install tunnel</button>
+      {# Controls — visible once tunnel exists #}
+      <div class="action-row" style="gap:10px;margin-top:12px">
         <button type="button" class="btn btn-lg" id="tunnel-start-btn" hidden>Start</button>
         <button type="button" class="btn btn-lg" id="tunnel-stop-btn" hidden>Stop</button>
       </div>
@@ -292,19 +315,23 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       var inst = document.getElementById('tunnel-installed');
       var run = document.getElementById('tunnel-running');
-      var tok = document.getElementById('tunnel-token-set');
+      var nameDisp = document.getElementById('tunnel-name-display');
       var hostRow = document.getElementById('tunnel-hostname-row');
       var hostVal = document.getElementById('tunnel-hostname-value');
       var startBtn = document.getElementById('tunnel-start-btn');
       var stopBtn = document.getElementById('tunnel-stop-btn');
+      var setupForm = document.getElementById('tunnel-setup-form');
       if (inst) inst.textContent = d.installed ? 'installed' : 'not installed';
       if (run) run.textContent = d.running ? 'running' : 'stopped';
-      if (tok) tok.textContent = d.token_set ? 'yes' : 'no';
+      if (nameDisp) nameDisp.textContent = d.tunnel_name || 'not configured';
       if (d.hostname && hostRow && hostVal) {
         hostRow.hidden = false;
         hostVal.textContent = 'https://' + d.hostname;
+        hostVal.href = 'https://' + d.hostname;
       }
-      if (d.token_set && d.installed) {
+      var hasService = d.installed && (d.token_set || d.running);
+      if (setupForm) setupForm.hidden = hasService;
+      if (hasService) {
         if (startBtn) startBtn.hidden = d.running;
         if (stopBtn) stopBtn.hidden = !d.running;
       }
@@ -337,7 +364,7 @@
       }
       if (statusMsg) statusMsg.textContent = d.running
         ? 'Tunnel installed and running!'
-        : 'Tunnel installed but not yet running. Check cloudflared logs.';
+        : 'Tunnel installed but not yet running.';
       pollTunnel();
     }).catch(function (e) {
       installBtn.disabled = false;
