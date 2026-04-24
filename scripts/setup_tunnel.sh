@@ -135,23 +135,31 @@ else
 fi
 
 # --- Step 2: Create the tunnel ---
-# If a tunnel with this name already exists, cloudflared returns non-zero
-# but prints the UUID. We capture it either way.
+# If a tunnel with this name already exists, we look it up instead.
 echo "[tunnel] creating tunnel: $TUNNEL_NAME"
 TUNNEL_UUID=""
-CREATE_OUTPUT=$(cloudflared tunnel create "$TUNNEL_NAME" 2>&1) || true
-echo "$CREATE_OUTPUT"
-
-# Extract UUID from output. cloudflared prints it in various formats:
-#   "Created tunnel <name> with id <uuid>"
-#   "A]tunnel with name <name> already exists. ID: <uuid>"
-TUNNEL_UUID=$(echo "$CREATE_OUTPUT" | grep -oP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
-
-if [[ -z "$TUNNEL_UUID" ]]; then
-  # Try listing to find it
-  TUNNEL_UUID=$(cloudflared tunnel list -o json 2>/dev/null \
-    | python3 -c "import sys,json; tunnels=json.load(sys.stdin); print(next((t['id'] for t in tunnels if t['name']=='$TUNNEL_NAME'),''))" 2>/dev/null || true)
-fi
+CREATE_OUTPUT=$(cloudflared tunnel create "$TUNNEL_NAME" 2>&1) && {
+  echo "$CREATE_OUTPUT"
+  TUNNEL_UUID=$(echo "$CREATE_OUTPUT" | grep -oP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+} || {
+  echo "$CREATE_OUTPUT"
+  echo "[tunnel] tunnel may already exist — looking it up..."
+  # cloudflared tunnel list outputs a table; grab the UUID from the line matching our name
+  LIST_OUTPUT=$(cloudflared tunnel list 2>/dev/null || true)
+  TUNNEL_UUID=$(echo "$LIST_OUTPUT" | grep -i "$TUNNEL_NAME" | grep -oP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+  if [[ -z "$TUNNEL_UUID" ]]; then
+    # Try JSON output as fallback
+    TUNNEL_UUID=$(cloudflared tunnel list -o json 2>/dev/null \
+      | python3 -c "
+import sys, json
+tunnels = json.load(sys.stdin)
+for t in tunnels:
+    if t.get('name','').lower() == '${TUNNEL_NAME}'.lower():
+        print(t['id'])
+        break
+" 2>/dev/null || true)
+  fi
+}
 
 if [[ -z "$TUNNEL_UUID" ]]; then
   echo "[tunnel] FATAL: could not determine tunnel UUID."
