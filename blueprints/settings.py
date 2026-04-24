@@ -246,6 +246,122 @@ def api_general():
 
 
 # ===========================================================================
+# 1b. LOCATION — GPS vs manual address override
+# ===========================================================================
+
+_LOCATION_KEYS = (
+    'latitude', 'longitude', 'map_zoom', 'location_source', 'location_address',
+)
+
+
+@settings_bp.route('/api/settings/location', methods=['GET', 'POST'])
+@ADMIN
+def api_location():
+    cfg = current_app.skytrack_config
+    if request.method == 'GET':
+        with current_app.gps_state_lock:
+            gps_snap = dict(current_app.gps_state)
+        return jsonify({
+            'config': {k: cfg.get(k) for k in _LOCATION_KEYS},
+            'gps': gps_snap,
+        })
+
+    payload = request.get_json(silent=True) or {}
+    updates = _take(payload, _LOCATION_KEYS)
+
+    if 'location_source' in updates:
+        if updates['location_source'] not in ('gps', 'manual'):
+            return _err('location_source must be gps or manual')
+
+    for coord in ('latitude', 'longitude'):
+        if coord in updates:
+            try:
+                updates[coord] = float(updates[coord])
+            except (TypeError, ValueError):
+                return _err(f'Invalid {coord}')
+
+    if 'map_zoom' in updates:
+        try:
+            updates['map_zoom'] = max(1, min(18, int(updates['map_zoom'])))
+        except (TypeError, ValueError):
+            return _err('Invalid map_zoom')
+
+    cfg.update(updates)
+    _persist(updates)
+    logs_svc.log_portal('admin', 'settings_location_update', updates)
+    return _ok({'config': {k: cfg.get(k) for k in _LOCATION_KEYS}})
+
+
+@settings_bp.route('/api/settings/location/geocode', methods=['POST'])
+@ADMIN
+def api_geocode():
+    """Geocode an address string to lat/lon using Nominatim (free, no key)."""
+    payload = request.get_json(silent=True) or {}
+    address = (payload.get('address') or '').strip()
+    if not address:
+        return _err('address is required')
+
+    import urllib.request
+    import urllib.parse
+    import json as _json
+    url = 'https://nominatim.openstreetmap.org/search?' + urllib.parse.urlencode({
+        'q': address, 'format': 'json', 'limit': '1',
+    })
+    req = urllib.request.Request(url, headers={'User-Agent': 'SkyTrack-Appliance/1.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            results = _json.loads(resp.read())
+    except Exception as e:
+        return _err(f'Geocode failed: {e}')
+
+    if not results:
+        return _err('No results found for that address')
+
+    hit = results[0]
+    lat = float(hit['lat'])
+    lon = float(hit['lon'])
+    display = hit.get('display_name', address)
+
+    cfg = current_app.skytrack_config
+    cfg['latitude'] = lat
+    cfg['longitude'] = lon
+    cfg['location_address'] = display
+    cfg['location_source'] = 'manual'
+    _persist({'latitude': lat, 'longitude': lon,
+              'location_address': display, 'location_source': 'manual'})
+    logs_svc.log_portal('admin', 'settings_location_geocode', {
+        'address': address, 'lat': lat, 'lon': lon, 'display': display,
+    })
+    return _ok({'lat': lat, 'lon': lon, 'display_name': display})
+
+
+@settings_bp.route('/api/settings/kiosk-cards', methods=['GET', 'POST'])
+@ADMIN
+def api_kiosk_cards():
+    """Get or set which cards the kiosk carousel shows."""
+    cfg = current_app.skytrack_config
+    if request.method == 'GET':
+        return jsonify({
+            'cards': cfg.get('kiosk_cards', []),
+            'interval': cfg.get('kiosk_carousel_interval', 8),
+            'show_map': cfg.get('kiosk_show_map', True),
+        })
+
+    payload = request.get_json(silent=True) or {}
+    updates = {}
+    if 'cards' in payload:
+        updates['kiosk_cards'] = list(payload['cards'])
+    if 'interval' in payload:
+        updates['kiosk_carousel_interval'] = max(3, min(30, int(payload['interval'])))
+    if 'show_map' in payload:
+        updates['kiosk_show_map'] = bool(payload['show_map'])
+    cfg.update(updates)
+    _persist(updates)
+    logs_svc.log_portal('admin', 'settings_kiosk_cards_update', updates)
+    return _ok(updates)
+
+
+# ===========================================================================
 # 2. DISPLAY
 # ===========================================================================
 

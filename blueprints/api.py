@@ -62,9 +62,9 @@ def api_hardware_summary():
       buzzer.enabled        bool — operator hasn't muted it
       buzzer.last_error     short string
 
-      gps.state             disabled | searching | fix_acquired | stale | error
-                            (placeholder while Phase 6 ships — currently
-                            always 'not_implemented')
+      gps.state             no_fix | fix_acquired | config
+      gps.source            gpsd | modemmanager | config | cached
+      gps.lat / gps.lon     current position (null when no_fix)
 
     Kept here in api.py instead of behind ADMIN so that:
       1. The kiosk page can render the hardware row pre-login.
@@ -73,13 +73,15 @@ def api_hardware_summary():
     sensor_reading = current_app.sensor_svc.read() or {}
     bz = current_app.buzzer
 
-    # GPS isn't implemented yet (Phase 6) — return a stable shape so the
-    # CLI doesn't have to special-case its absence.
+    with current_app.gps_state_lock:
+        gps_snap = dict(current_app.gps_state)
     gps = {
-        'state':       'not_implemented',
-        'source':      None,
-        'fix_age_sec': None,
-        'satellites':  None,
+        'state':       gps_snap.get('state', 'no_fix'),
+        'source':      gps_snap.get('source'),
+        'lat':         gps_snap.get('lat'),
+        'lon':         gps_snap.get('lon'),
+        'accuracy_m':  gps_snap.get('accuracy_m'),
+        'last_fix_utc': gps_snap.get('last_fix_utc'),
     }
 
     src = sensor_reading.get('source') or sensor_reading.get('state') or 'mock'
@@ -100,6 +102,33 @@ def api_hardware_summary():
             'last_error': getattr(bz, 'last_error', '') or '',
         },
         'gps': gps,
+    })
+
+
+@api_bp.route('/api/gps')
+def api_gps():
+    """Current location for the map. Respects location_source setting."""
+    cfg = current_app.skytrack_config
+    if cfg.get('location_source') == 'manual':
+        return jsonify({
+            'state': 'manual',
+            'source': 'manual',
+            'lat': cfg.get('latitude'),
+            'lon': cfg.get('longitude'),
+            'accuracy_m': None,
+            'last_fix_utc': None,
+        })
+    with current_app.gps_state_lock:
+        snap = dict(current_app.gps_state)
+    if snap.get('state') == 'fix_acquired' and snap.get('lat'):
+        return jsonify(snap)
+    return jsonify({
+        'state': 'config',
+        'source': 'config',
+        'lat': cfg.get('latitude'),
+        'lon': cfg.get('longitude'),
+        'accuracy_m': None,
+        'last_fix_utc': None,
     })
 
 

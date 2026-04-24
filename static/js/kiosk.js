@@ -33,12 +33,17 @@
   const ADVANCE_URL = '/api/onboarding/advance';
   const PIN_URL     = '/api/onboarding/pin';
   const SKIP_URL    = '/api/onboarding/skip';
-  const CARDS_URL   = '/api/dashboard/cards';
-  const WEATHER_URL = '/api/weather';
-  const DEVICE_URL  = '/api/device';
-  const HEALTH_URL  = '/healthz';
-  const HOTSPOT_URL = '/api/hotspot/health';
-  const SPLASH_URL  = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
+  const CARDS_URL    = '/api/dashboard/cards';
+  const WEATHER_URL  = '/api/weather';
+  const DEVICE_URL   = '/api/device';
+  const HEALTH_URL   = '/healthz';
+  const HOTSPOT_URL  = '/api/hotspot/health';
+  const SPLASH_URL   = 'file:///opt/skytrack/static/splash/index.html?from=kiosk';
+  const GPS_URL      = '/api/gps';
+  const AIRLINES_URL = '/api/dashboard/airlines';
+  const TREND_URL    = '/api/dashboard/trend';
+  const POS_URL      = '/api/dashboard/positions';
+  const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
 
   // ----- Cadences ------------------------------------------------------
   const ONB_POLL_MS         = 1500;
@@ -421,6 +426,18 @@
   }
 
   // ----- Operational stage -------------------------------------------
+  // ===== CAROUSEL STATE =================================================
+  let carouselPage = 0;
+  let carouselPages = [];         // live NodeList of visible pages
+  let carouselAutoTimer = null;
+  let carouselInterval = 8000;
+  let carouselMap = null;
+  let carouselMarkers = {};
+  let mapInitialized = false;
+  let trendChart = null;
+  // Touch/drag state
+  let dragStartX = 0, dragDx = 0, isDragging = false;
+
   function showOperational() {
     if (visual === 'operational') return;
     visual = 'operational';
@@ -428,11 +445,17 @@
     show($('kiosk-op'));
 
     startClock();
+    initCarousel();
     refreshCards();
     refreshWeather();
     refreshDevice();
+    refreshAirlines();
+    refreshTrend();
+    refreshMap();
 
-    if (!opCardsTimer) opCardsTimer = setInterval(refreshCards,   OP_CARDS_POLL_MS);
+    if (!opCardsTimer) opCardsTimer = setInterval(function () {
+      refreshCards(); refreshAirlines(); refreshTrend(); refreshMap();
+    }, OP_CARDS_POLL_MS);
     if (!opWxTimer)    opWxTimer    = setInterval(refreshWeather, OP_WEATHER_POLL_MS);
     if (!opDevTimer)   opDevTimer   = setInterval(refreshDevice,  OP_DEVICE_POLL_MS);
   }
@@ -442,15 +465,197 @@
     if (opWxTimer)    { clearInterval(opWxTimer);    opWxTimer    = null; }
     if (opDevTimer)   { clearInterval(opDevTimer);   opDevTimer   = null; }
     if (opClockTimer) { clearInterval(opClockTimer); opClockTimer = null; }
+    stopCarouselAuto();
   }
 
+  // ----- Carousel initialization & config --------------------------------
+  function initCarousel() {
+    fetch(KIOSK_CFG_URL, { credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (cfg) {
+        carouselInterval = (cfg.interval || 8) * 1000;
+        buildCarouselPages(cfg.cards || [], cfg.show_map !== false);
+        startCarouselAuto();
+        initSwipe();
+      })
+      .catch(function () {
+        buildCarouselPages([], true);
+        startCarouselAuto();
+        initSwipe();
+      });
+  }
+
+  function buildCarouselPages(enabledCards, showMap) {
+    var track = $('carousel-track');
+    if (!track) return;
+    var allCards = track.querySelectorAll('.op-card[data-card]');
+    var cardMap = {};
+    allCards.forEach(function (c) { cardMap[c.getAttribute('data-card')] = c; });
+
+    // Default if config returns empty
+    if (!enabledCards || !enabledCards.length) {
+      enabledCards = ['aircraft_now','aircraft_today','busiest_hour','last_aircraft',
+                      'weather','top_airlines','activity_trend','device_info'];
+    }
+
+    // Collect enabled card elements in order
+    var enabled = [];
+    enabledCards.forEach(function (id) {
+      if (cardMap[id]) enabled.push(cardMap[id]);
+    });
+
+    // Remove old page containers (except the map page)
+    var oldPages = track.querySelectorAll('.carousel-page:not(.carousel-page-map)');
+    oldPages.forEach(function (p) { p.remove(); });
+
+    // Pair cards into pages of 2
+    for (var i = 0; i < enabled.length; i += 2) {
+      var page = document.createElement('div');
+      page.className = 'carousel-page';
+      page.setAttribute('data-page', 'cards-' + Math.ceil((i + 1) / 2));
+      page.appendChild(enabled[i]);
+      if (enabled[i + 1]) {
+        page.appendChild(enabled[i + 1]);
+      } else {
+        page.classList.add('full-width');
+      }
+      // Insert before map page
+      var mapPage = track.querySelector('.carousel-page-map');
+      if (mapPage) {
+        track.insertBefore(page, mapPage);
+      } else {
+        track.appendChild(page);
+      }
+    }
+
+    // Show/hide map page
+    var mp = track.querySelector('.carousel-page-map');
+    if (mp) mp.style.display = showMap ? '' : 'none';
+
+    // Update live page list
+    carouselPages = track.querySelectorAll('.carousel-page:not([style*="display: none"])');
+    carouselPage = 0;
+    goToPage(0, false);
+    buildDots();
+  }
+
+  function buildDots() {
+    var container = $('carousel-dots');
+    if (!container) return;
+    container.innerHTML = '';
+    for (var i = 0; i < carouselPages.length; i++) {
+      var dot = document.createElement('span');
+      dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+      dot.setAttribute('data-idx', i);
+      dot.addEventListener('click', (function (idx) {
+        return function () { goToPage(idx, true); resetCarouselAuto(); };
+      })(i));
+      container.appendChild(dot);
+    }
+  }
+
+  function goToPage(idx, animate) {
+    if (idx < 0) idx = carouselPages.length - 1;
+    if (idx >= carouselPages.length) idx = 0;
+    carouselPage = idx;
+    var track = $('carousel-track');
+    if (!track) return;
+    if (animate === false) track.classList.add('dragging');
+    track.style.transform = 'translateX(' + (-idx * 100) + '%)';
+    if (animate === false) {
+      // force reflow then remove
+      void track.offsetWidth;
+      track.classList.remove('dragging');
+    }
+    // Update dots
+    var dots = ($('carousel-dots') || {}).children || [];
+    for (var d = 0; d < dots.length; d++) {
+      dots[d].classList.toggle('active', d === idx);
+    }
+    // Init map lazily when map page becomes visible
+    if (carouselPages[idx] && carouselPages[idx].classList.contains('carousel-page-map')) {
+      initMapIfNeeded();
+    }
+  }
+
+  function nextPage() { goToPage(carouselPage + 1, true); }
+
+  function startCarouselAuto() {
+    stopCarouselAuto();
+    carouselAutoTimer = setInterval(nextPage, carouselInterval);
+  }
+  function stopCarouselAuto() {
+    if (carouselAutoTimer) { clearInterval(carouselAutoTimer); carouselAutoTimer = null; }
+  }
+  function resetCarouselAuto() {
+    stopCarouselAuto();
+    startCarouselAuto();
+  }
+
+  // ----- Touch / mouse swipe ---------------------------------------------
+  function initSwipe() {
+    var el = $('op-carousel');
+    if (!el) return;
+    el.addEventListener('touchstart', onDragStart, { passive: true });
+    el.addEventListener('touchmove', onDragMove, { passive: false });
+    el.addEventListener('touchend', onDragEnd, { passive: true });
+    el.addEventListener('mousedown', onDragStart);
+    el.addEventListener('mousemove', onDragMove);
+    el.addEventListener('mouseup', onDragEnd);
+    el.addEventListener('mouseleave', onDragEnd);
+  }
+
+  function clientX(e) {
+    if (e.touches && e.touches.length) return e.touches[0].clientX;
+    return e.clientX;
+  }
+
+  function onDragStart(e) {
+    isDragging = true;
+    dragStartX = clientX(e);
+    dragDx = 0;
+    var track = $('carousel-track');
+    if (track) track.classList.add('dragging');
+    stopCarouselAuto();
+  }
+
+  function onDragMove(e) {
+    if (!isDragging) return;
+    dragDx = clientX(e) - dragStartX;
+    var track = $('carousel-track');
+    if (!track) return;
+    var base = -carouselPage * 100;
+    var el = $('op-carousel');
+    var w = el ? el.offsetWidth : window.innerWidth;
+    var pct = (dragDx / w) * 100;
+    track.style.transform = 'translateX(' + (base + pct) + '%)';
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    var track = $('carousel-track');
+    if (track) track.classList.remove('dragging');
+    var threshold = 50;
+    if (dragDx < -threshold) {
+      goToPage(carouselPage + 1, true);
+    } else if (dragDx > threshold) {
+      goToPage(carouselPage - 1, true);
+    } else {
+      goToPage(carouselPage, true);
+    }
+    resetCarouselAuto();
+  }
+
+  // ----- Clock -----------------------------------------------------------
   function startClock() {
-    const tick = () => {
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
+    var tick = function () {
+      var now = new Date();
+      var hh = String(now.getHours()).padStart(2, '0');
+      var mm = String(now.getMinutes()).padStart(2, '0');
       setText('op-clock-time', hh + ':' + mm);
-      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      var opts = { weekday: 'short', month: 'short', day: 'numeric' };
       try {
         setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
       } catch (_e) {
@@ -466,15 +671,16 @@
     try { return Number(n).toLocaleString(); } catch (_e) { return String(n); }
   }
 
+  // ----- Data refresh ----------------------------------------------------
   async function refreshCards() {
     try {
-      const r = await fetch(CARDS_URL, {
+      var r = await fetch(CARDS_URL, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
       if (!r.ok) return;
-      const data = await r.json();
+      var data = await r.json();
 
       if (data.now) {
         setText('op-now-value', fmtNumber(data.now.count));
@@ -485,36 +691,36 @@
         setText('op-today-sub',   data.today.window || 'today (UTC)');
       }
       if (data.busiest) {
-        const hour = data.busiest.hour;
+        var hour = data.busiest.hour;
         if (hour === null || hour === undefined || hour === '') {
           setText('op-busy-value', '—');
           setText('op-busy-sub',   'last 24 h');
         } else {
-          const h = String(hour).padStart(2, '0') + ':00';
+          var h = String(hour).padStart(2, '0') + ':00';
           setText('op-busy-value', h);
-          const n = data.busiest.count;
+          var n = data.busiest.count;
           setText('op-busy-sub', (n !== undefined && n !== null)
             ? fmtNumber(n) + ' aircraft'
             : 'last 24 h');
         }
       }
       if (data.last) {
-        const last = data.last;
-        const label = (last.callsign && last.callsign.trim())
+        var last = data.last;
+        var label = (last.callsign && last.callsign.trim())
           || (last.icao && last.icao.toUpperCase())
           || null;
         if (label) {
           setText('op-last-value', label);
-          const bits = [];
+          var bits = [];
           if (last.altitude_ft !== null && last.altitude_ft !== undefined) {
-            const ft = Number(last.altitude_ft);
+            var ft = Number(last.altitude_ft);
             if (!isNaN(ft)) {
-              const fl = Math.round(ft / 100);
+              var fl = Math.round(ft / 100);
               bits.push('FL' + String(fl).padStart(3, '0'));
             }
           }
           if (last.speed_kts !== null && last.speed_kts !== undefined) {
-            const kts = Number(last.speed_kts);
+            var kts = Number(last.speed_kts);
             if (!isNaN(kts)) bits.push(Math.round(kts) + ' kt');
           }
           setText('op-last-sub', bits.length ? bits.join(' · ') : 'last 5 min');
@@ -531,37 +737,200 @@
 
   async function refreshWeather() {
     try {
-      const r = await fetch(WEATHER_URL, {
+      var r = await fetch(WEATHER_URL, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
       if (!r.ok) return;
-      const data = await r.json();
-      const cur = (data && data.current) || null;
+      var data = await r.json();
+      var cur = (data && data.current) || null;
       if (!cur) return;
       if (cur.temp_f !== undefined && cur.temp_f !== null) {
-        setText('op-wx-temp', Math.round(Number(cur.temp_f)) + '°');
+        var tempStr = Math.round(Number(cur.temp_f)) + '°';
+        setText('op-wx-temp', tempStr);
+        setText('op-wx-big-temp', tempStr);
       }
       if (cur.condition) {
         setText('op-wx-cond', String(cur.condition));
+        setText('op-wx-big-cond', String(cur.condition));
       }
     } catch (_e) { /* transient */ }
   }
 
   async function refreshDevice() {
     try {
-      const r = await fetch(DEVICE_URL, {
+      var r = await fetch(DEVICE_URL, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
       if (!r.ok) return;
-      const data = await r.json();
+      var data = await r.json();
       if (data && data.radar_url) {
-        const clean = String(data.radar_url).replace(/^https?:\/\//i, '');
+        var clean = String(data.radar_url).replace(/^https?:\/\//i, '');
         setText('op-radar-url', clean);
       }
+      if (data && data.device) {
+        setText('op-device-id', data.device.device_id || '—');
+        var sub = [];
+        if (data.device.short_id) sub.push(data.device.short_id);
+        if (data.radar_url) sub.push(String(data.radar_url).replace(/^https?:\/\//i, ''));
+        setText('op-device-sub', sub.join(' · ') || '—');
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  async function refreshAirlines() {
+    try {
+      var r = await fetch(AIRLINES_URL + '?range=24h', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      if (Array.isArray(data) && data.length) {
+        var lines = data.slice(0, 5).map(function (d) {
+          return (d.airline || d.callsign_prefix || '?') + '  ' + fmtNumber(d.count);
+        });
+        setText('op-airlines-value', lines.join('\n'));
+      } else {
+        setText('op-airlines-value', '—');
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  async function refreshTrend() {
+    try {
+      var canvas = $('op-trend-canvas');
+      if (!canvas) return;
+      var r = await fetch(TREND_URL + '?range=24h', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      if (!Array.isArray(data) || !data.length) return;
+      drawSparkline(canvas, data);
+    } catch (_e) { /* transient */ }
+  }
+
+  function drawSparkline(canvas, data) {
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var w = canvas.width = canvas.parentElement.clientWidth || 400;
+    var h = canvas.height = canvas.parentElement.clientHeight * 0.55 || 140;
+    ctx.clearRect(0, 0, w, h);
+
+    var pts = data.map(function (d) { return d.n || d.count || 0; });
+    var max = Math.max.apply(null, pts) || 1;
+    var pad = 10;
+    var stepX = (w - pad * 2) / Math.max(pts.length - 1, 1);
+
+    // Gradient fill
+    var grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(77, 139, 255, 0.35)');
+    grad.addColorStop(1, 'rgba(77, 139, 255, 0.02)');
+
+    ctx.beginPath();
+    ctx.moveTo(pad, h - pad);
+    for (var i = 0; i < pts.length; i++) {
+      var x = pad + i * stepX;
+      var y = h - pad - ((pts[i] / max) * (h - pad * 2));
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    // Close fill
+    ctx.lineTo(pad + (pts.length - 1) * stepX, h - pad);
+    ctx.lineTo(pad, h - pad);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Stroke line
+    ctx.beginPath();
+    for (var j = 0; j < pts.length; j++) {
+      var x2 = pad + j * stepX;
+      var y2 = h - pad - ((pts[j] / max) * (h - pad * 2));
+      if (j === 0) ctx.moveTo(x2, y2);
+      else ctx.lineTo(x2, y2);
+    }
+    ctx.strokeStyle = 'rgba(77, 139, 255, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // ----- Map (Leaflet, lazy) --------------------------------------------
+  function initMapIfNeeded() {
+    if (mapInitialized) return;
+    if (typeof L === 'undefined') return;
+    var el = $('op-map');
+    if (!el) return;
+    mapInitialized = true;
+
+    fetch(GPS_URL, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (g) {
+        var lat = (g && g.lat) || 44.6;
+        var lon = (g && g.lon) || -92.5;
+        carouselMap = L.map(el, { zoomControl: false, attributionControl: false })
+          .setView([lat, lon], 9);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 18,
+        }).addTo(carouselMap);
+        // Home marker
+        L.circleMarker([lat, lon], {
+          radius: 8, fillColor: '#4d8bff', fillOpacity: 0.85,
+          color: '#fff', weight: 2,
+          className: 'home-pulse',
+        }).addTo(carouselMap).bindPopup('Your location');
+        setTimeout(function () { carouselMap.invalidateSize(); }, 300);
+        refreshMap();
+      })
+      .catch(function () {});
+  }
+
+  async function refreshMap() {
+    if (!carouselMap) return;
+    try {
+      var r = await fetch(POS_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var aircraft = await r.json();
+      if (!Array.isArray(aircraft)) return;
+
+      var seen = {};
+      aircraft.forEach(function (ac) {
+        if (!ac.lat || !ac.lon) return;
+        var key = ac.icao || ac.hex || (ac.lat + ',' + ac.lon);
+        seen[key] = true;
+        if (carouselMarkers[key]) {
+          carouselMarkers[key].setLatLng([ac.lat, ac.lon]);
+        } else {
+          var icon = L.divIcon({
+            className: 'aircraft-marker',
+            html: '<svg viewBox="0 0 24 24" width="22" height="22" style="transform:rotate(' +
+              (ac.track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="#ffae59" stroke="#000" stroke-width="0.5"/></svg>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          });
+          carouselMarkers[key] = L.marker([ac.lat, ac.lon], { icon: icon })
+            .addTo(carouselMap)
+            .bindPopup((ac.callsign || ac.icao || '?') + '<br>' +
+              (ac.altitude_ft ? ac.altitude_ft + ' ft' : ''));
+        }
+      });
+      // Remove stale
+      Object.keys(carouselMarkers).forEach(function (k) {
+        if (!seen[k]) {
+          carouselMap.removeLayer(carouselMarkers[k]);
+          delete carouselMarkers[k];
+        }
+      });
     } catch (_e) { /* transient */ }
   }
 

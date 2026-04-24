@@ -734,6 +734,13 @@ button.topbar-link {
   outline-offset: 2px;
 }
 
+/* ---------- Checkbox grid (kiosk card toggles) ---------- */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 16px;
+}
+
 /* ---------- Switch toggle ---------- */
 .switch-row {
   display: flex; align-items: center; justify-content: space-between;

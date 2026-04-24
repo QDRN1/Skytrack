@@ -31,10 +31,18 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @dashboard_bp.route('/dashboard')
 def index():
     cfg = current_app.skytrack_config
+    lat = cfg.get('latitude')
+    lon = cfg.get('longitude')
+    if cfg.get('location_source', 'gps') == 'gps':
+        with current_app.gps_state_lock:
+            gps = dict(current_app.gps_state)
+        if gps.get('state') == 'fix_acquired' and gps.get('lat'):
+            lat = gps['lat']
+            lon = gps['lon']
     return render_template(
         'dashboard.html',
-        center_lat=cfg.get('latitude'),
-        center_lon=cfg.get('longitude'),
+        center_lat=lat,
+        center_lon=lon,
         map_zoom=cfg.get('map_zoom', 8),
     )
 
@@ -108,6 +116,21 @@ def api_identity():
     return jsonify({
         'device': current_app.identity,
         'radar_url': device_id.radar_url(current_app.identity),
+    })
+
+
+@dashboard_bp.route('/api/dashboard/kiosk-config')
+def api_kiosk_config():
+    """Public — the kiosk needs this before any login."""
+    cfg = current_app.skytrack_config
+    return jsonify({
+        'cards': cfg.get('kiosk_cards', [
+            'aircraft_now', 'aircraft_today', 'busiest_hour',
+            'last_aircraft', 'weather', 'top_airlines',
+            'activity_trend', 'device_info',
+        ]),
+        'interval': cfg.get('kiosk_carousel_interval', 8),
+        'show_map': cfg.get('kiosk_show_map', True),
     })
 
 

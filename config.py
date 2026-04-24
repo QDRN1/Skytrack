@@ -37,6 +37,15 @@ DEFAULT_CONFIG = {
     'latitude': 44.602016,
     'longitude': -92.494604,
     'map_zoom': 8,
+    'location_source': 'gps',           # gps | manual
+    'location_address': '',             # human-readable, set by geocode
+
+    # --- Kiosk carousel ----------------------------------------------------
+    'kiosk_cards': ['aircraft_now', 'aircraft_today', 'busiest_hour',
+                    'last_aircraft', 'weather', 'top_airlines',
+                    'activity_trend', 'device_info'],
+    'kiosk_carousel_interval': 8,       # seconds between auto-rotate
+    'kiosk_show_map': True,
 
     # --- Hardware (DHT + buzzer pins) -----------------------------------
     'dht_pin': 21,

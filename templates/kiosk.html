@@ -586,15 +586,86 @@
       text-overflow: ellipsis;
     }
 
-    /* ----- Main grid ---------------------------------------------------- */
-    .op-main {
+    /* ----- Carousel ------------------------------------------------------ */
+    .op-carousel {
       position: relative;
       flex: 1 1 auto;
+      overflow: hidden;
+      min-height: 0;
+      border-radius: clamp(12px, 2vh, 22px);
+      touch-action: pan-y;
+    }
+    .carousel-track {
+      display: flex;
+      height: 100%;
+      transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    .carousel-track.dragging {
+      transition: none;
+    }
+    .carousel-page {
+      flex: 0 0 100%;
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      grid-template-rows: repeat(2, 1fr);
       gap: clamp(10px, 2vh, 22px);
       min-height: 0;
+      padding: 0 clamp(2px, 0.5vw, 6px);
+    }
+    .carousel-page-map {
+      grid-template-columns: 1fr;
+    }
+    .carousel-page.full-width {
+      grid-template-columns: 1fr;
+    }
+
+    /* Dot indicators */
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: clamp(6px, 1vw, 10px);
+      padding: clamp(4px, 0.8vh, 8px) 0;
+    }
+    .carousel-dot {
+      width: clamp(8px, 1.4vh, 14px);
+      height: clamp(8px, 1.4vh, 14px);
+      border-radius: 50%;
+      background: rgba(120, 160, 255, 0.25);
+      border: 1px solid rgba(120, 160, 255, 0.35);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .carousel-dot.active {
+      background: rgba(77, 139, 255, 0.85);
+      box-shadow: 0 0 12px rgba(77, 139, 255, 0.5);
+      transform: scale(1.2);
+    }
+
+    /* Map */
+    .op-map {
+      width: 100%;
+      height: 100%;
+      border-radius: clamp(12px, 2vh, 22px);
+      background: #0a101c;
+    }
+
+    /* List-style card values (airlines) */
+    .op-list-value {
+      font-size: clamp(1em, 3vh, 1.8em) !important;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+    .op-device-value {
+      font-size: clamp(1em, 3.5vh, 2.2em) !important;
+      color: #ffd49b;
+      text-shadow: 0 0 22px rgba(255, 174, 89, 0.45), 0 2px 16px rgba(0, 0, 0, 0.75);
+    }
+
+    /* Trend canvas */
+    #op-trend-canvas {
+      width: 100%;
+      height: 60%;
+      z-index: 1;
     }
 
     .op-card {
@@ -701,6 +772,26 @@
       white-space: nowrap;
     }
 
+    /* Aircraft markers on the map */
+    .aircraft-marker { background: none; border: none; }
+    .home-pulse {
+      animation: pulse-ring 2s ease-out infinite;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(77, 139, 255, 0.6); }
+      70% { box-shadow: 0 0 0 16px rgba(77, 139, 255, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(77, 139, 255, 0); }
+    }
+    /* Leaflet container overrides for dark theme */
+    .op-map .leaflet-tile-pane { filter: brightness(0.9) contrast(1.1); }
+    .op-map .leaflet-popup-content-wrapper {
+      background: rgba(10, 16, 38, 0.92);
+      color: #e7ebff;
+      border: 1px solid rgba(120, 160, 255, 0.3);
+      border-radius: 8px;
+    }
+    .op-map .leaflet-popup-tip { background: rgba(10, 16, 38, 0.92); }
+
     /* Narrow / short displays — drop the header weather badge to keep the
        main counters legible on 800x480 touchscreens. */
     @media (max-height: 500px), (max-width: 720px) {
@@ -708,6 +799,8 @@
       .op-clock .op-date { display: none; }
     }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet.css') }}">
+  <script src="{{ url_for('static', filename='vendor/leaflet.js') }}"></script>
 </head>
 <body class="kiosk"
       data-configured="{{ '1' if kiosk_configured else '0' }}"
@@ -880,28 +973,75 @@
         </div>
       </header>
 
-      <main class="op-main">
-        <section class="op-card">
-          <div class="label">Aircraft Now</div>
-          <div class="value" id="op-now-value">—</div>
-          <div class="sub" id="op-now-sub">last 5 min</div>
-        </section>
-        <section class="op-card">
-          <div class="label">Aircraft Today</div>
-          <div class="value" id="op-today-value">—</div>
-          <div class="sub" id="op-today-sub">since midnight (UTC)</div>
-        </section>
-        <section class="op-card">
-          <div class="label">Busiest Hour</div>
-          <div class="value" id="op-busy-value">—</div>
-          <div class="sub" id="op-busy-sub">last 24 h</div>
-        </section>
-        <section class="op-card accent-warm">
-          <div class="label">Last Aircraft</div>
-          <div class="value" id="op-last-value">—</div>
-          <div class="sub" id="op-last-sub">awaiting contacts</div>
-        </section>
+      {# ---- Carousel viewport ---- #}
+      <main class="op-carousel" id="op-carousel">
+        <div class="carousel-track" id="carousel-track">
+
+          {# Each .carousel-page holds two cards side-by-side.
+             JS clones/reorders these based on kiosk_cards config.
+             Hidden pages are display:none so swipe math stays simple. #}
+          <div class="carousel-page" data-page="cards-1">
+            <section class="op-card" data-card="aircraft_now">
+              <div class="label">Aircraft Now</div>
+              <div class="value" id="op-now-value">—</div>
+              <div class="sub" id="op-now-sub">last 5 min</div>
+            </section>
+            <section class="op-card" data-card="aircraft_today">
+              <div class="label">Aircraft Today</div>
+              <div class="value" id="op-today-value">—</div>
+              <div class="sub" id="op-today-sub">since midnight (UTC)</div>
+            </section>
+          </div>
+
+          <div class="carousel-page" data-page="cards-2">
+            <section class="op-card" data-card="busiest_hour">
+              <div class="label">Busiest Hour</div>
+              <div class="value" id="op-busy-value">—</div>
+              <div class="sub" id="op-busy-sub">last 24 h</div>
+            </section>
+            <section class="op-card accent-warm" data-card="last_aircraft">
+              <div class="label">Last Aircraft</div>
+              <div class="value" id="op-last-value">—</div>
+              <div class="sub" id="op-last-sub">awaiting contacts</div>
+            </section>
+          </div>
+
+          <div class="carousel-page" data-page="cards-3">
+            <section class="op-card" data-card="weather">
+              <div class="label">Weather</div>
+              <div class="value" id="op-wx-big-temp">—</div>
+              <div class="sub" id="op-wx-big-cond">—</div>
+            </section>
+            <section class="op-card" data-card="top_airlines">
+              <div class="label">Top Airlines</div>
+              <div class="value op-list-value" id="op-airlines-value">—</div>
+              <div class="sub" id="op-airlines-sub">last 24 h</div>
+            </section>
+          </div>
+
+          <div class="carousel-page" data-page="cards-4">
+            <section class="op-card" data-card="activity_trend">
+              <div class="label">Activity</div>
+              <canvas id="op-trend-canvas" width="400" height="180"></canvas>
+              <div class="sub" id="op-trend-sub">last 24 h</div>
+            </section>
+            <section class="op-card" data-card="device_info">
+              <div class="label">Device</div>
+              <div class="value op-device-value" id="op-device-id">—</div>
+              <div class="sub" id="op-device-sub">—</div>
+            </section>
+          </div>
+
+          {# Map page — full width #}
+          <div class="carousel-page carousel-page-map" data-page="map">
+            <div id="op-map" class="op-map"></div>
+          </div>
+
+        </div>{# /carousel-track #}
       </main>
+
+      {# Dot indicators #}
+      <div class="carousel-dots" id="carousel-dots"></div>
 
       <footer class="op-footer">
         <div class="meta-left">

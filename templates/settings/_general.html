@@ -107,4 +107,244 @@
     </form>
   </div>
 
+  {# ---- Location ---- #}
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Location</h2>
+      <p class="muted">Controls where the map centers and which weather station is used.</p>
+    </header>
+
+    <div class="card-body card-form" id="location-card">
+      <div class="field">
+        <label>Source</label>
+        <div class="segmented" role="radiogroup" aria-label="Location source">
+          <label class="seg"><input type="radio" name="location_source" value="gps"
+                 id="loc-src-gps"
+                 {% if (config.location_source or 'gps') == 'gps' %}checked{% endif %}><span>GPS (auto)</span></label>
+          <label class="seg"><input type="radio" name="location_source" value="manual"
+                 id="loc-src-manual"
+                 {% if config.location_source == 'manual' %}checked{% endif %}><span>Manual</span></label>
+        </div>
+      </div>
+
+      <div class="field" id="loc-gps-status">
+        <label>GPS status</label>
+        <div class="readonly-grid">
+          <div class="readonly-row">
+            <span class="ro-label">Fix</span>
+            <code class="ro-value" id="loc-gps-state">checking…</code>
+          </div>
+          <div class="readonly-row">
+            <span class="ro-label">Source</span>
+            <code class="ro-value" id="loc-gps-source">—</code>
+          </div>
+          <div class="readonly-row">
+            <span class="ro-label">Coordinates</span>
+            <code class="ro-value" id="loc-gps-coords">—</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" id="loc-manual-group" {% if (config.location_source or 'gps') != 'manual' %}hidden{% endif %}>
+        <label for="loc-address">Address</label>
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <input type="text" id="loc-address" class="input"
+                 placeholder="123 Main St, Bay City, MI"
+                 value="{{ config.location_address or '' }}"
+                 style="flex:1">
+          <button type="button" class="btn btn-lg btn-primary" id="loc-geocode-btn">Look up</button>
+        </div>
+        <p class="muted small" id="loc-geocode-status">&nbsp;</p>
+      </div>
+
+      <div class="field" id="loc-coords-group" {% if (config.location_source or 'gps') != 'manual' %}hidden{% endif %}>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label for="loc-lat">Latitude</label>
+            <input type="number" step="any" id="loc-lat" name="latitude" class="input"
+                   value="{{ config.latitude }}">
+          </div>
+          <div>
+            <label for="loc-lon">Longitude</label>
+            <input type="number" step="any" id="loc-lon" name="longitude" class="input"
+                   value="{{ config.longitude }}">
+          </div>
+        </div>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" id="loc-cancel">Cancel</button>
+        <button type="button" class="btn btn-lg btn-primary" id="loc-save">Save Location</button>
+      </footer>
+    </div>
+  </div>
+
+  {# ---- Kiosk Carousel Cards ---- #}
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Kiosk display</h2>
+      <p class="muted">Choose which cards the on-device carousel shows and the rotation speed.</p>
+    </header>
+
+    <div class="card-body card-form" id="kiosk-cards-card">
+      <div class="field">
+        <label>Cards</label>
+        <div class="checkbox-grid" id="kiosk-card-toggles">
+          {% set enabled = config.kiosk_cards or ['aircraft_now','aircraft_today','busiest_hour','last_aircraft','weather','top_airlines','activity_trend','device_info'] %}
+          {% for id, lbl in [
+              ('aircraft_now', 'Aircraft Now'),
+              ('aircraft_today', 'Aircraft Today'),
+              ('busiest_hour', 'Busiest Hour'),
+              ('last_aircraft', 'Last Aircraft'),
+              ('weather', 'Weather'),
+              ('top_airlines', 'Top Airlines'),
+              ('activity_trend', 'Activity Trend'),
+              ('device_info', 'Device Info'),
+          ] %}
+          <label class="switch-row">
+            <span>{{ lbl }}</span>
+            <input type="checkbox" name="kiosk_card" value="{{ id }}"
+                   {% if id in enabled %}checked{% endif %}>
+            <span class="switch"></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Show map page</span>
+          <input type="checkbox" id="kiosk-show-map"
+                 {% if config.kiosk_show_map != False %}checked{% endif %}>
+          <span class="switch"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="kiosk-interval">Auto-rotate interval</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="kiosk-interval" min="3" max="30" step="1"
+                 value="{{ config.kiosk_carousel_interval or 8 }}"
+                 class="touch-slider" style="flex:1">
+          <code id="kiosk-interval-label">{{ config.kiosk_carousel_interval or 8 }}s</code>
+        </div>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" id="kiosk-cards-cancel">Cancel</button>
+        <button type="button" class="btn btn-lg btn-primary" id="kiosk-cards-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+<script>
+(function () {
+  // ---- Location source toggle ----
+  document.querySelectorAll('[name="location_source"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      var manual = this.value === 'manual';
+      var mg = document.getElementById('loc-manual-group');
+      var cg = document.getElementById('loc-coords-group');
+      if (mg) mg.hidden = !manual;
+      if (cg) cg.hidden = !manual;
+    });
+  });
+
+  // ---- GPS status poll ----
+  function pollGps() {
+    fetch('/api/settings/location', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      var g = d.gps || {};
+      var el = document.getElementById('loc-gps-state');
+      if (el) el.textContent = g.state || 'no_fix';
+      var src = document.getElementById('loc-gps-source');
+      if (src) src.textContent = g.source || '—';
+      var coords = document.getElementById('loc-gps-coords');
+      if (coords && g.lat && g.lon) {
+        coords.textContent = Number(g.lat).toFixed(5) + ', ' + Number(g.lon).toFixed(5);
+      }
+    }).catch(function () {});
+  }
+  pollGps();
+  setInterval(pollGps, 10000);
+
+  // ---- Geocode ----
+  var geocodeBtn = document.getElementById('loc-geocode-btn');
+  var geocodeStatus = document.getElementById('loc-geocode-status');
+  if (geocodeBtn) geocodeBtn.addEventListener('click', function () {
+    var addr = (document.getElementById('loc-address') || {}).value || '';
+    if (!addr.trim()) return;
+    geocodeBtn.disabled = true;
+    if (geocodeStatus) geocodeStatus.textContent = 'Looking up…';
+    fetch('/api/settings/location/geocode', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ address: addr }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      geocodeBtn.disabled = false;
+      if (d.ok === false) {
+        if (geocodeStatus) geocodeStatus.textContent = d.error || 'Failed';
+        return;
+      }
+      var lat = document.getElementById('loc-lat');
+      var lon = document.getElementById('loc-lon');
+      if (lat) lat.value = d.lat;
+      if (lon) lon.value = d.lon;
+      if (geocodeStatus) geocodeStatus.textContent = d.display_name || 'Found';
+    }).catch(function (e) {
+      geocodeBtn.disabled = false;
+      if (geocodeStatus) geocodeStatus.textContent = 'Error: ' + e.message;
+    });
+  });
+
+  // ---- Save location ----
+  var locSave = document.getElementById('loc-save');
+  if (locSave) locSave.addEventListener('click', function () {
+    var src = (document.querySelector('[name="location_source"]:checked') || {}).value || 'gps';
+    var payload = { location_source: src };
+    if (src === 'manual') {
+      payload.latitude = parseFloat((document.getElementById('loc-lat') || {}).value);
+      payload.longitude = parseFloat((document.getElementById('loc-lon') || {}).value);
+      payload.location_address = (document.getElementById('loc-address') || {}).value || '';
+    }
+    fetch('/api/settings/location', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok === false) alert(d.error || 'Save failed');
+    }).catch(function () {});
+  });
+
+  // ---- Kiosk carousel interval label ----
+  var slider = document.getElementById('kiosk-interval');
+  var label = document.getElementById('kiosk-interval-label');
+  if (slider && label) slider.addEventListener('input', function () {
+    label.textContent = this.value + 's';
+  });
+
+  // ---- Save kiosk cards ----
+  var cardsSave = document.getElementById('kiosk-cards-save');
+  if (cardsSave) cardsSave.addEventListener('click', function () {
+    var boxes = document.querySelectorAll('[name="kiosk_card"]:checked');
+    var cards = [];
+    boxes.forEach(function (b) { cards.push(b.value); });
+    var showMap = (document.getElementById('kiosk-show-map') || {}).checked !== false;
+    var interval = parseInt((document.getElementById('kiosk-interval') || {}).value) || 8;
+    fetch('/api/settings/kiosk-cards', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ cards: cards, show_map: showMap, interval: interval }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok === false) alert(d.error || 'Save failed');
+    }).catch(function () {});
+  });
+})();
+</script>
+
 </section>

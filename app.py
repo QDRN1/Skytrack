@@ -69,6 +69,8 @@ _worker_lock = threading.Lock()
 _enrichment_queue: 'queue.Queue' = queue.Queue()
 _cellular_state: dict = {'state': 'unknown'}
 _cellular_state_lock = threading.Lock()
+_gps_state: dict = {'state': 'no_fix'}
+_gps_state_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +194,7 @@ def create_app(config_overrides: Optional[dict] = None) -> Flask:
     # Build the hardware/data services. Each one accepts the config dict
     # and respects mock_mode internally so DEV_MODE Just Works.
     from buzzer import Buzzer
+    from gps import GPSService
     from health import HealthService
     from ingest import SightingsIngest
     from sensors import SensorService
@@ -200,6 +203,7 @@ def create_app(config_overrides: Optional[dict] = None) -> Flask:
     app.weather_svc = WeatherService(config)
     app.sensor_svc = SensorService(config)
     app.health_svc = HealthService(config)
+    app.gps_svc = GPSService(config)
     app.buzzer = Buzzer(config)
     app.ingest = SightingsIngest(config)
 
@@ -207,6 +211,8 @@ def create_app(config_overrides: Optional[dict] = None) -> Flask:
     app.enrichment_queue = _enrichment_queue
     app.cellular_state = _cellular_state
     app.cellular_state_lock = _cellular_state_lock
+    app.gps_state = _gps_state
+    app.gps_state_lock = _gps_state_lock
 
     # ------------------------------------------------------------------
     # Step 5: Start background services (daemon threads — non-blocking)
@@ -297,7 +303,27 @@ def _start_background_services(app: Flask) -> None:
                 logger.debug('cellular loop error: %s', e)
             time.sleep(30)
 
-    # 4. API enrichment worker — drains an in-memory queue, never polls.
+    # 4. GPS fix loop — polls gpsd / ModemManager every 30s, caches the
+    # latest fix so the dashboard map and /api/gps endpoint always have
+    # a fresh position without blocking on modem I/O.
+    def _gps_loop():
+        while True:
+            try:
+                fix = app.gps_svc.get_fix()
+                with _gps_state_lock:
+                    _gps_state.clear()
+                    if fix:
+                        _gps_state.update(fix)
+                        _gps_state['state'] = 'fix_acquired'
+                    else:
+                        _gps_state['state'] = 'no_fix'
+                if fix:
+                    socketio.emit('gps_update', fix)
+            except Exception as e:
+                logger.debug('gps loop error: %s', e)
+            time.sleep(30)
+
+    # 5. API enrichment worker — drains an in-memory queue, never polls.
     # Producers (the dashboard) push (icao, callsign) tuples onto the
     # queue; the worker calls enrich.enrich_flight() for each one,
     # subject to the budget controls in enrich.py.
@@ -356,6 +382,7 @@ def _start_background_services(app: Flask) -> None:
     workers = [
         ('skytrack-sensor', _sensor_loop),
         ('skytrack-cellular', _cellular_loop),
+        ('skytrack-gps', _gps_loop),
         ('skytrack-enrichment', _enrichment_worker),
         ('skytrack-prune', _prune_loop),
         ('skytrack-dashtick', _dashboard_tick_loop),

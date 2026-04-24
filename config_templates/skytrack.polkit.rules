@@ -123,3 +123,23 @@ polkit.addRule(function (action, subject) {
         return polkit.Result.YES;
     }
 });
+
+// ---------------------------------------------------------------------------
+// 4. ModemManager — GPS location access for the cellular modem
+//
+// The SIM7600G-H modem exposes GPS via ModemManager. Without these grants
+// mmcli --location-enable-gps-raw and --location-get fail with
+// "PolicyKit authorization failed: not authorized for Device.Control".
+// ---------------------------------------------------------------------------
+polkit.addRule(function (action, subject) {
+    if (subject.user !== "skytrack") {
+        return;
+    }
+    var allowed = {
+        "org.freedesktop.ModemManager1.Device.Control":  true,
+        "org.freedesktop.ModemManager1.Location":        true,
+    };
+    if (allowed[action.id]) {
+        return polkit.Result.YES;
+    }
+});
