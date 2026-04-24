@@ -161,19 +161,20 @@ if [[ "$DEV_INSTALL" != true ]]; then
       warn "could not install chromium — kiosk will paint a dark screen until installed"
   fi
 
-  # Cloudflare tunnel daemon (cloudflared) — installed from Cloudflare's
-  # own .deb repo so we always get the latest stable build. Optional: if
-  # the repo add fails (no internet, DNS down) the rest of the installer
-  # continues — the tunnel can be set up later via scripts/setup_tunnel.sh.
+  # Cloudflare tunnel daemon (cloudflared) — direct binary download.
+  # We grab the latest release from GitHub instead of the apt repo because
+  # Cloudflare's repo doesn't support all Debian releases (e.g. Trixie).
   if ! command -v cloudflared >/dev/null 2>&1; then
-    info "installing cloudflared from Cloudflare repo"
-    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-      | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || true
-    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
-      > /etc/apt/sources.list.d/cloudflared.list 2>/dev/null || true
-    apt-get update -qq >> "$LOG_FILE" 2>&1 || true
-    apt-get install -y -qq cloudflared >> "$LOG_FILE" 2>&1 \
-      || warn "cloudflared install failed — tunnel can be set up later"
+    info "installing cloudflared (direct binary download)"
+    CF_ARCH="linux-arm64"
+    case "$(dpkg --print-architecture 2>/dev/null || uname -m)" in
+      armhf|armv7l) CF_ARCH="linux-arm"   ;;
+      amd64|x86_64) CF_ARCH="linux-amd64" ;;
+    esac
+    curl -fsSL -o /usr/local/bin/cloudflared \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${CF_ARCH}" \
+      >> "$LOG_FILE" 2>&1 && chmod +x /usr/local/bin/cloudflared \
+      || warn "cloudflared download failed — tunnel can be set up later"
   else
     info "cloudflared already installed: $(cloudflared --version 2>/dev/null | head -1)"
   fi

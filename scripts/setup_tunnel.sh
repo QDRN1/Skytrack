@@ -54,12 +54,18 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if ! command -v cloudflared >/dev/null 2>&1; then
-  echo "[tunnel] cloudflared not installed. Installing from Cloudflare repo..."
-  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-    | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null
-  echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
-    > /etc/apt/sources.list.d/cloudflared.list
-  apt-get update -qq && apt-get install -y -qq cloudflared
+  echo "[tunnel] cloudflared not installed. Downloading binary..."
+  ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+  case "$ARCH" in
+    arm64|aarch64) CF_ARCH="linux-arm64" ;;
+    armhf|armv7l)  CF_ARCH="linux-arm"   ;;
+    amd64|x86_64)  CF_ARCH="linux-amd64" ;;
+    *)             CF_ARCH="linux-amd64"  ;;
+  esac
+  CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${CF_ARCH}"
+  echo "[tunnel] downloading $CF_URL"
+  curl -fsSL -o /usr/local/bin/cloudflared "$CF_URL"
+  chmod +x /usr/local/bin/cloudflared
   if ! command -v cloudflared >/dev/null 2>&1; then
     echo "[tunnel] FATAL: cloudflared install failed."
     exit 1
