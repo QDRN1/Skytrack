@@ -206,6 +206,8 @@ DEFAULT_CONFIG = {
 
     # --- Cloudflare Tunnel (optional remote access) --------------------
     'cloudflared_enabled': False,
+    'cloudflared_tunnel_name': '',      # display name (e.g. skytrack-baycity)
+    'cloudflared_hostname': '',         # public hostname once configured
 }
 
 

@@ -471,6 +471,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+hdr "cloudflare tunnel (optional)"
+if command -v cloudflared >/dev/null 2>&1; then
+  ok "cloudflared binary: $(cloudflared --version 2>/dev/null | head -1)"
+  if [[ -f /etc/skytrack/tunnel_token ]]; then
+    ok "tunnel token present"
+  else
+    ok "tunnel token not set (optional — use Settings → Network or scripts/setup_tunnel.sh)"
+  fi
+  if systemctl is-active cloudflared >/dev/null 2>&1; then
+    ok "cloudflared service: active"
+  else
+    ok "cloudflared service: inactive (start from Settings → Network when ready)"
+  fi
+else
+  ok "cloudflared not installed (optional — install.sh will add it on next run)"
+fi
+
+# ---------------------------------------------------------------------------
 hdr "summary"
 echo "  passed: $PASS"
 echo "  failed: $FAIL"

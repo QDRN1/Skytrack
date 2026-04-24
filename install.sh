@@ -161,6 +161,23 @@ if [[ "$DEV_INSTALL" != true ]]; then
       warn "could not install chromium — kiosk will paint a dark screen until installed"
   fi
 
+  # Cloudflare tunnel daemon (cloudflared) — installed from Cloudflare's
+  # own .deb repo so we always get the latest stable build. Optional: if
+  # the repo add fails (no internet, DNS down) the rest of the installer
+  # continues — the tunnel can be set up later via scripts/setup_tunnel.sh.
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    info "installing cloudflared from Cloudflare repo"
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+      | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
+      > /etc/apt/sources.list.d/cloudflared.list 2>/dev/null || true
+    apt-get update -qq >> "$LOG_FILE" 2>&1 || true
+    apt-get install -y -qq cloudflared >> "$LOG_FILE" 2>&1 \
+      || warn "cloudflared install failed — tunnel can be set up later"
+  else
+    info "cloudflared already installed: $(cloudflared --version 2>/dev/null | head -1)"
+  fi
+
   # Hotspot-critical packages — verify they actually landed. The bulk
   # apt-get above runs with `|| warn` so a single failed package in the
   # batch (often dnsmasq getting masked by systemd-resolved on a fresh

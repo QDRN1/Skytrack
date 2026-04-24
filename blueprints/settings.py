@@ -640,6 +640,143 @@ def api_wifi_remove():
 
 
 # ===========================================================================
+# 4b. CLOUDFLARE TUNNEL
+# ===========================================================================
+
+_TUNNEL_TOKEN_PATH = '/etc/skytrack/tunnel_token'
+
+@settings_bp.route('/api/settings/tunnel', methods=['GET'])
+@ADMIN
+def api_tunnel_status():
+    """Return tunnel configuration and live status."""
+    cfg = current_app.skytrack_config
+    installed = shutil.which('cloudflared') is not None
+    running = False
+    if installed:
+        try:
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'cloudflared'],
+                capture_output=True, text=True, timeout=5,
+            )
+            running = result.stdout.strip() == 'active'
+        except Exception:
+            pass
+    token_set = os.path.exists(_TUNNEL_TOKEN_PATH)
+    return jsonify({
+        'installed': installed,
+        'running': running,
+        'enabled': cfg.get('cloudflared_enabled', False),
+        'token_set': token_set,
+        'tunnel_name': cfg.get('cloudflared_tunnel_name', ''),
+        'hostname': cfg.get('cloudflared_hostname', ''),
+    })
+
+
+@settings_bp.route('/api/settings/tunnel/install', methods=['POST'])
+@ADMIN
+def api_tunnel_install():
+    """Install a tunnel with a connector token from the CF dashboard."""
+    payload = request.get_json(silent=True) or {}
+    token = (payload.get('token') or '').strip()
+    if not token:
+        return _err('Connector token is required')
+
+    if not shutil.which('cloudflared'):
+        return _err('cloudflared binary not installed — run install.sh first')
+
+    try:
+        subprocess.run(['systemctl', 'stop', 'cloudflared'],
+                       capture_output=True, timeout=10)
+        subprocess.run(['systemctl', 'disable', 'cloudflared'],
+                       capture_output=True, timeout=10)
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(
+            ['cloudflared', 'service', 'install', token],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            err_msg = (result.stderr or result.stdout or '').strip()
+            if 'already' not in err_msg.lower():
+                return _err(f'cloudflared service install failed: {err_msg}')
+    except subprocess.TimeoutExpired:
+        return _err('cloudflared service install timed out')
+    except Exception as e:
+        return _err(f'cloudflared service install error: {e}')
+
+    try:
+        subprocess.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=10)
+        subprocess.run(['systemctl', 'enable', 'cloudflared'], capture_output=True, timeout=10)
+        subprocess.run(['systemctl', 'start', 'cloudflared'], capture_output=True, timeout=10)
+    except Exception:
+        pass
+
+    os.makedirs('/etc/skytrack', exist_ok=True)
+    try:
+        with open(_TUNNEL_TOKEN_PATH, 'w') as f:
+            f.write(token)
+        os.chmod(_TUNNEL_TOKEN_PATH, 0o600)
+    except Exception:
+        pass
+
+    tunnel_name = (payload.get('tunnel_name') or '').strip()
+    hostname = (payload.get('hostname') or '').strip()
+    cfg = current_app.skytrack_config
+    cfg['cloudflared_enabled'] = True
+    updates = {'cloudflared_enabled': True}
+    if tunnel_name:
+        cfg['cloudflared_tunnel_name'] = tunnel_name
+        updates['cloudflared_tunnel_name'] = tunnel_name
+    if hostname:
+        cfg['cloudflared_hostname'] = hostname
+        updates['cloudflared_hostname'] = hostname
+    _persist(updates)
+
+    logs_svc.log_portal('admin', 'tunnel_installed', {
+        'tunnel_name': tunnel_name,
+        'hostname': hostname,
+    })
+
+    time.sleep(2)
+    running = False
+    try:
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'cloudflared'],
+            capture_output=True, text=True, timeout=5,
+        )
+        running = result.stdout.strip() == 'active'
+    except Exception:
+        pass
+
+    return _ok({'running': running, 'tunnel_name': tunnel_name})
+
+
+@settings_bp.route('/api/settings/tunnel/toggle', methods=['POST'])
+@ADMIN
+def api_tunnel_toggle():
+    """Start or stop the tunnel service."""
+    payload = request.get_json(silent=True) or {}
+    enable = bool(payload.get('enabled', True))
+
+    action = 'start' if enable else 'stop'
+    try:
+        subprocess.run(
+            ['systemctl', action, 'cloudflared'],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception as e:
+        return _err(f'Failed to {action} cloudflared: {e}')
+
+    cfg = current_app.skytrack_config
+    cfg['cloudflared_enabled'] = enable
+    _persist({'cloudflared_enabled': enable})
+    logs_svc.log_portal('admin', f'tunnel_{action}ed', {})
+    return _ok({'enabled': enable})
+
+
+# ===========================================================================
 # 5. INTEGRATIONS
 # ===========================================================================
 
