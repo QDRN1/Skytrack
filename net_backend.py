@@ -130,7 +130,21 @@ def backend_info() -> Dict:
 # ---------------------------------------------------------------------------
 
 def _ip_default_interface() -> Optional[str]:
-    """Kernel's answer to 'which link carries the default route' — authoritative."""
+    """Kernel's answer to 'which link carries the default route' — authoritative.
+
+    Uses `ip route get 8.8.8.8` which is the most reliable way to determine
+    which interface would actually carry outbound traffic, especially when
+    multiple default routes exist with different metrics.
+    """
+    r = _run(['ip', 'route', 'get', '8.8.8.8'], timeout=3)
+    if r['ok']:
+        for line in r['stdout'].splitlines():
+            parts = line.split()
+            if 'dev' in parts:
+                i = parts.index('dev')
+                if i + 1 < len(parts):
+                    return parts[i + 1]
+
     r = _run(['ip', '-4', 'route', 'show', 'default'], timeout=3)
     if not r['ok']:
         return None

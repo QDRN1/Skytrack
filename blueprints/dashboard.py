@@ -132,6 +132,7 @@ def api_kiosk_config():
         'interval': cfg.get('kiosk_carousel_interval', 8),
         'map_interval': cfg.get('kiosk_map_interval', 15),
         'show_map': cfg.get('kiosk_show_map', True),
+        'map_zoom': cfg.get('map_zoom', 9),
     })
 
 

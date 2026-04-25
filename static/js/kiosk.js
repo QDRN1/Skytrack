@@ -593,13 +593,17 @@
   }
 
   function nextPage() {
-    goToPage(carouselPage + 1, true);
+    try {
+      goToPage(carouselPage + 1, true);
+    } catch (_e) { /* never break the chain */ }
     scheduleNextAuto();
   }
 
   function scheduleNextAuto() {
     stopCarouselAuto();
-    carouselAutoTimer = setTimeout(nextPage, currentPageInterval());
+    var interval = carouselInterval;
+    try { interval = currentPageInterval(); } catch (_e) {}
+    carouselAutoTimer = setTimeout(nextPage, interval);
   }
 
   function startCarouselAuto() {
@@ -894,8 +898,9 @@
       .then(function (g) {
         var lat = (g && g.lat) || 44.6;
         var lon = (g && g.lon) || -92.5;
+        var zoom = (g && g.map_zoom) || 9;
         carouselMap = L.map(el, { zoomControl: false, attributionControl: false })
-          .setView([lat, lon], 9);
+          .setView([lat, lon], zoom);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
           maxZoom: 18,
         }).addTo(carouselMap);

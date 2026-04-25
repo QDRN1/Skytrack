@@ -109,24 +109,28 @@ def api_hardware_summary():
 def api_gps():
     """Current location for the map. Respects location_source setting."""
     cfg = current_app.skytrack_config
+    zoom = cfg.get('map_zoom', 9)
     if cfg.get('location_source') == 'manual':
         return jsonify({
             'state': 'manual',
             'source': 'manual',
             'lat': cfg.get('latitude'),
             'lon': cfg.get('longitude'),
+            'map_zoom': zoom,
             'accuracy_m': None,
             'last_fix_utc': None,
         })
     with current_app.gps_state_lock:
         snap = dict(current_app.gps_state)
     if snap.get('state') == 'fix_acquired' and snap.get('lat'):
+        snap['map_zoom'] = zoom
         return jsonify(snap)
     return jsonify({
         'state': 'config',
         'source': 'config',
         'lat': cfg.get('latitude'),
         'lon': cfg.get('longitude'),
+        'map_zoom': zoom,
         'accuracy_m': None,
         'last_fix_utc': None,
     })

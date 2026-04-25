@@ -668,6 +668,40 @@
       try { await window.api.post('/api/settings/feeders/dump1090/restart'); toast('dump1090 restarting'); refreshFeederStatus(); }
       catch (_) { toast('Restart failed', true); }
     });
+
+    const inst = $('#btn-install-dump1090');
+    const instOut = $('#dump1090-install-output');
+    if (inst) inst.addEventListener('click', async () => {
+      const ok = await confirmModal(
+        'Install dump1090-fa?',
+        'This will download and install the dump1090-fa package. ' +
+        'The device needs internet access. This may take a few minutes.'
+      );
+      if (!ok) return;
+      inst.disabled = true;
+      inst.textContent = 'Installing…';
+      if (instOut) { instOut.hidden = false; instOut.textContent = 'Starting installation…\n'; }
+      toast('Installing dump1090-fa…');
+      try {
+        const r = await window.api.post('/api/settings/feeders/dump1090/install');
+        if (r && r.ok) {
+          toast('dump1090-fa installed');
+          if (instOut) instOut.textContent += (r.output || 'Installation complete.') + '\n';
+        } else {
+          const msg = (r && r.error) || 'Installation failed';
+          toast(msg, true);
+          if (instOut) instOut.textContent += 'ERROR: ' + msg + '\n';
+        }
+        refreshFeederStatus();
+      } catch (e) {
+        const msg = (e && e.data && e.data.error) || 'Installation failed';
+        toast(msg, true);
+        if (instOut) instOut.textContent += 'ERROR: ' + msg + '\n';
+      } finally {
+        inst.disabled = false;
+        inst.textContent = 'Install dump1090-fa';
+      }
+    });
   }
 
   // ------------------------------------------------------------------

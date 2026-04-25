@@ -1473,10 +1473,42 @@ def api_backup_restore():
     p = _backup_dir() / name
     if not p.exists():
         return _err('backup not found', 404)
-    logs_svc.log_portal('admin', 'backup_restore_requested', {'name': name})
+
+    cfg = current_app.skytrack_config
+    restore_targets = {
+        'config.yaml': os.environ.get(
+            'SKYTRACK_CONFIG',
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.yaml'),
+        ),
+        'auth.json': cfg.get('auth_path', '/etc/skytrack/auth.json'),
+    }
+
+    restored = []
+    try:
+        with tarfile.open(p, 'r:gz') as tf:
+            for member in tf.getmembers():
+                basename = os.path.basename(member.name)
+                if basename in restore_targets:
+                    dest = restore_targets[basename]
+                    dest_dir = os.path.dirname(os.path.abspath(dest))
+                    os.makedirs(dest_dir, exist_ok=True)
+                    bak = dest + '.pre-restore'
+                    if os.path.exists(dest):
+                        shutil.copy2(dest, bak)
+                    with tf.extractfile(member) as src:
+                        if src:
+                            with open(dest, 'wb') as dst:
+                                dst.write(src.read())
+                            restored.append(basename)
+    except Exception as e:
+        return _err(f'restore failed: {e}', 500)
+
+    logs_svc.log_portal('admin', 'backup_restore', {
+        'name': name, 'restored': restored,
+    })
     return _ok({
-        'note': 'Restore must be performed manually via SSH for safety. '
-                'Backup file is preserved at ' + str(p),
+        'restored': restored,
+        'message': f'Restored {len(restored)} file(s). Restart the app to apply.',
     })
 
 
@@ -2060,6 +2092,33 @@ def api_dump1090_restart():
     logs_svc.log_portal('admin', 'dump1090_restart', {})
     ok, msg = _shell(['systemctl', 'restart', 'dump1090-fa'], timeout=15)
     return jsonify({'ok': ok, 'message': msg or 'restart issued'})
+
+
+@settings_bp.route('/api/settings/feeders/dump1090/install', methods=['POST'])
+@ADMIN
+def api_dump1090_install():
+    """Install dump1090-fa via apt. Requires internet access."""
+    logs_svc.log_portal('admin', 'dump1090_install_requested', {})
+    ok, msg = _shell(['dpkg', '-s', 'dump1090-fa'], timeout=5)
+    if ok:
+        return _ok({'message': 'dump1090-fa is already installed', 'output': msg})
+
+    ok1, msg1 = _shell(['apt-get', 'update'], timeout=120)
+    if not ok1:
+        return _err(f'apt-get update failed: {msg1}', 500)
+
+    ok2, msg2 = _shell(
+        ['apt-get', 'install', '-y', 'dump1090-fa'],
+        timeout=300,
+    )
+    if not ok2:
+        return _err(f'Installation failed: {msg2}', 500)
+
+    _shell(['systemctl', 'enable', 'dump1090-fa'], timeout=10)
+    _shell(['systemctl', 'start', 'dump1090-fa'], timeout=15)
+
+    logs_svc.log_portal('admin', 'dump1090_installed', {})
+    return _ok({'message': 'dump1090-fa installed and started', 'output': msg2})
 
 
 # ---------- Data ------------------------------------------------------------

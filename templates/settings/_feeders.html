@@ -32,14 +32,19 @@
         </div>
       </div>
 
+      <div class="action-row" style="margin-top:12px">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-install-dump1090">Install dump1090-fa</button>
+        <button type="button" class="btn btn-lg" id="btn-restart-dump1090">Restart dump1090</button>
+      </div>
+      <pre class="log-pre" id="dump1090-install-output" hidden style="margin-top:12px;padding:12px;font-size:0.85em;max-height:200px;overflow-y:auto"></pre>
+
       <p class="muted small">
         <strong>Honest status:</strong> SkyTrack reads local dump1090 data from
         <code>/run/dump1090-fa/aircraft.json</code>. If that file doesn't exist,
         the dump1090 tile reads <em>not installed</em> and the map falls back
-        to sample data. To enable live ADS-B, install the
-        <code>dump1090-fa</code> package on this Pi. FR24 and PiAware uplinks
-        still need their own packages — the credentials below only matter once
-        those services are installed.
+        to sample data. Tap <em>Install dump1090-fa</em> to install the package
+        on this Pi. FR24 and PiAware uplinks still need their own packages —
+        the credentials below only matter once those services are installed.
       </p>
     </div>
   </div>
