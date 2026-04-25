@@ -218,6 +218,26 @@
     </div>
   </div>
 
+  {# ---- Speed Test ---- #}
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Speed test</h2>
+      <p class="muted">Measure the download and upload speed of the currently active network connection.</p>
+    </header>
+
+    <div class="card-body">
+      <div class="action-row">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-speed-test">Run speed test</button>
+      </div>
+      <pre class="log-pre" id="speed-test-output" hidden style="margin-top:12px;padding:12px;font-size:0.9em"></pre>
+      <p class="muted small">
+        Downloads a test file from Cloudflare and measures throughput. Uses
+        a small amount of data (~2 MB down, ~0.5 MB up). Results depend on
+        current network conditions and which uplink is active.
+      </p>
+    </div>
+  </div>
+
   {# ---- Cloudflare Tunnel ---- #}
   <div class="settings-card">
     <header class="card-header">
@@ -308,6 +328,13 @@
 
 <script>
 (function () {
+  var _toast = window._settingsToast || function (msg, isErr) {
+    var t = document.getElementById('settings-toast');
+    if (!t) { t = document.createElement('div'); t.id = 'settings-toast'; t.className = 'settings-toast'; document.body.appendChild(t); }
+    t.textContent = msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
+    clearTimeout(_toast._t); _toast._t = setTimeout(function () { t.classList.remove('show'); }, 2400);
+  };
+
   function pollTunnel() {
     fetch('/api/settings/tunnel', {
       credentials: 'same-origin',
@@ -344,9 +371,10 @@
   var statusMsg = document.getElementById('tunnel-status-msg');
   if (installBtn) installBtn.addEventListener('click', function () {
     var token = (document.getElementById('tunnel-token') || {}).value || '';
-    if (!token.trim()) { if (statusMsg) statusMsg.textContent = 'Paste the connector token first.'; return; }
+    if (!token.trim()) { if (statusMsg) statusMsg.textContent = 'Paste the connector token first.'; _toast('Paste the connector token first', true); return; }
     installBtn.disabled = true;
     if (statusMsg) statusMsg.textContent = 'Installing tunnel…';
+    _toast('Installing tunnel…');
     fetch('/api/settings/tunnel/install', {
       method: 'POST',
       credentials: 'same-origin',
@@ -360,15 +388,17 @@
       installBtn.disabled = false;
       if (d.ok === false) {
         if (statusMsg) statusMsg.textContent = 'Error: ' + (d.error || 'unknown');
+        _toast(d.error || 'Install failed', true);
         return;
       }
-      if (statusMsg) statusMsg.textContent = d.running
-        ? 'Tunnel installed and running!'
-        : 'Tunnel installed but not yet running.';
+      var msg = d.running ? 'Tunnel installed and running!' : 'Tunnel installed but not yet running.';
+      if (statusMsg) statusMsg.textContent = msg;
+      _toast(msg);
       pollTunnel();
     }).catch(function (e) {
       installBtn.disabled = false;
       if (statusMsg) statusMsg.textContent = 'Network error: ' + e.message;
+      _toast('Install failed', true);
     });
   });
 
@@ -381,24 +411,34 @@
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ enabled: enable }),
     }).then(function (r) { return r.json(); }).then(function (d) {
-      if (statusMsg) statusMsg.textContent = enable
-        ? (d.ok !== false ? 'Tunnel started.' : 'Failed to start: ' + (d.error || ''))
-        : (d.ok !== false ? 'Tunnel stopped.' : 'Failed to stop: ' + (d.error || ''));
+      var ok = d.ok !== false;
+      if (enable) {
+        if (statusMsg) statusMsg.textContent = ok ? 'Tunnel started.' : 'Failed to start: ' + (d.error || '');
+        _toast(ok ? 'Tunnel started' : 'Failed to start tunnel', !ok);
+      } else {
+        if (statusMsg) statusMsg.textContent = ok ? 'Tunnel stopped.' : 'Failed to stop: ' + (d.error || '');
+        _toast(ok ? 'Tunnel stopped' : 'Failed to stop tunnel', !ok);
+      }
       pollTunnel();
     }).catch(function (e) {
       if (statusMsg) statusMsg.textContent = 'Error: ' + e.message;
+      _toast('Tunnel action failed', true);
     });
   }
 
   var startBtn = document.getElementById('tunnel-start-btn');
   var stopBtn = document.getElementById('tunnel-stop-btn');
   if (startBtn) startBtn.addEventListener('click', function () {
-    if (confirm('Start the Cloudflare Tunnel? The device will be reachable from the public URL.')) {
+    if (window.uiModal && window.uiModal.confirm) {
+      window.uiModal.confirm('The device will be reachable from the public URL.', 'Start Cloudflare Tunnel?').then(function (ok) { if (ok) toggleTunnel(true); });
+    } else if (confirm('Start the Cloudflare Tunnel? The device will be reachable from the public URL.')) {
       toggleTunnel(true);
     }
   });
   if (stopBtn) stopBtn.addEventListener('click', function () {
-    if (confirm('Stop the Cloudflare Tunnel? The device will no longer be reachable from the public URL.')) {
+    if (window.uiModal && window.uiModal.confirm) {
+      window.uiModal.confirm('The device will no longer be reachable from the public URL.', 'Stop Cloudflare Tunnel?').then(function (ok) { if (ok) toggleTunnel(false); });
+    } else if (confirm('Stop the Cloudflare Tunnel? The device will no longer be reachable from the public URL.')) {
       toggleTunnel(false);
     }
   });

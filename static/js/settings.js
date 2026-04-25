@@ -1042,6 +1042,181 @@
   function escapeAttr(s) { return escapeHtml(s); }
 
   // ------------------------------------------------------------------
+  // Kiosk display card (lives in Display section)
+  // ------------------------------------------------------------------
+  function bindKioskCards() {
+    const slider = document.getElementById('kiosk-interval');
+    const label = document.getElementById('kiosk-interval-label');
+    if (slider && label) slider.addEventListener('input', () => {
+      label.textContent = slider.value + 's';
+    });
+    const mapSlider = document.getElementById('kiosk-map-interval');
+    const mapLabel = document.getElementById('kiosk-map-interval-label');
+    if (mapSlider && mapLabel) mapSlider.addEventListener('input', () => {
+      mapLabel.textContent = mapSlider.value + 's';
+    });
+
+    const save = document.getElementById('kiosk-cards-save');
+    if (save) save.addEventListener('click', async () => {
+      const boxes = $$('[name="kiosk_card"]:checked');
+      const cards = boxes.map(b => b.value);
+      const showMap = (document.getElementById('kiosk-show-map') || {}).checked !== false;
+      const interval = parseInt((document.getElementById('kiosk-interval') || {}).value) || 8;
+      const mapInterval = parseInt((document.getElementById('kiosk-map-interval') || {}).value) || 15;
+      save.disabled = true;
+      try {
+        const r = await window.api.post('/api/settings/kiosk-cards', {
+          cards, show_map: showMap, interval, map_interval: mapInterval,
+        });
+        if (r && r.ok === false) {
+          toast(r.error || 'Save failed', true);
+        } else {
+          toast('Kiosk display saved');
+        }
+      } catch (e) {
+        toast('Save failed', true);
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Location section (inline save + geocode)
+  // ------------------------------------------------------------------
+  function bindLocationExtras() {
+    // Source toggle
+    $$('[name="location_source"]').forEach(r => {
+      r.addEventListener('change', function () {
+        const manual = this.value === 'manual';
+        const mg = document.getElementById('loc-manual-group');
+        const cg = document.getElementById('loc-coords-group');
+        const gs = document.getElementById('loc-gps-status');
+        if (mg) mg.hidden = !manual;
+        if (cg) cg.hidden = !manual;
+        if (gs) gs.hidden = manual;
+      });
+    });
+    const srcRadio = document.querySelector('[name="location_source"]:checked');
+    if (srcRadio) {
+      const gs = document.getElementById('loc-gps-status');
+      if (gs) gs.hidden = srcRadio.value === 'manual';
+    }
+
+    // GPS status poll
+    async function pollGps() {
+      try {
+        const d = await window.api.get('/api/settings/location');
+        const g = d.gps || {};
+        const el = document.getElementById('loc-gps-state');
+        if (el) el.textContent = g.state || 'no_fix';
+        const src = document.getElementById('loc-gps-source');
+        if (src) src.textContent = g.source || '—';
+        const coords = document.getElementById('loc-gps-coords');
+        if (coords && g.lat && g.lon) {
+          coords.textContent = Number(g.lat).toFixed(5) + ', ' + Number(g.lon).toFixed(5);
+        }
+      } catch (_) {}
+    }
+    if (document.getElementById('loc-gps-state')) {
+      pollGps();
+      setInterval(pollGps, 10000);
+    }
+
+    // Geocode
+    const geocodeBtn = document.getElementById('loc-geocode-btn');
+    const geocodeStatus = document.getElementById('loc-geocode-status');
+    if (geocodeBtn) geocodeBtn.addEventListener('click', async () => {
+      const addr = (document.getElementById('loc-address') || {}).value || '';
+      if (!addr.trim()) return;
+      geocodeBtn.disabled = true;
+      if (geocodeStatus) geocodeStatus.textContent = 'Looking up…';
+      try {
+        const d = await window.api.post('/api/settings/location/geocode', { address: addr });
+        if (d.ok === false) {
+          if (geocodeStatus) geocodeStatus.textContent = d.error || 'Failed';
+          toast(d.error || 'Geocode failed', true);
+        } else {
+          const lat = document.getElementById('loc-lat');
+          const lon = document.getElementById('loc-lon');
+          if (lat) lat.value = d.lat;
+          if (lon) lon.value = d.lon;
+          if (geocodeStatus) geocodeStatus.textContent = d.display_name || 'Found';
+          toast('Address found');
+        }
+      } catch (e) {
+        if (geocodeStatus) geocodeStatus.textContent = 'Error';
+        toast('Geocode failed', true);
+      } finally {
+        geocodeBtn.disabled = false;
+      }
+    });
+
+    // Save location
+    const locSave = document.getElementById('loc-save');
+    if (locSave) locSave.addEventListener('click', async () => {
+      const src = (document.querySelector('[name="location_source"]:checked') || {}).value || 'gps';
+      const payload = { location_source: src };
+      if (src === 'manual') {
+        payload.latitude = parseFloat((document.getElementById('loc-lat') || {}).value);
+        payload.longitude = parseFloat((document.getElementById('loc-lon') || {}).value);
+        payload.location_address = (document.getElementById('loc-address') || {}).value || '';
+      }
+      locSave.disabled = true;
+      try {
+        const d = await window.api.post('/api/settings/location', payload);
+        if (d.ok === false) {
+          toast(d.error || 'Save failed', true);
+        } else {
+          toast('Location saved');
+        }
+      } catch (e) {
+        toast('Save failed', true);
+      } finally {
+        locSave.disabled = false;
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Speed test
+  // ------------------------------------------------------------------
+  function bindSpeedTest() {
+    const btn = $('#btn-speed-test');
+    if (!btn) return;
+    const output = $('#speed-test-output');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Testing…';
+      if (output) { output.hidden = false; output.textContent = 'Running speed test…'; }
+      toast('Speed test started');
+      try {
+        const r = await window.api.post('/api/settings/network/speedtest');
+        if (r && r.ok) {
+          const dl = r.download_mbps != null ? r.download_mbps.toFixed(1) : '—';
+          const ul = r.upload_mbps != null ? r.upload_mbps.toFixed(1) : '—';
+          const ping = r.ping_ms != null ? Math.round(r.ping_ms) : '—';
+          const line = `Download: ${dl} Mbps · Upload: ${ul} Mbps · Ping: ${ping} ms`;
+          if (output) output.textContent = line;
+          toast(`Down: ${dl} Mbps / Up: ${ul} Mbps`);
+        } else {
+          const msg = (r && r.error) || 'Speed test failed';
+          if (output) output.textContent = msg;
+          toast(msg, true);
+        }
+      } catch (e) {
+        const msg = (e && e.data && e.data.error) || 'Speed test failed';
+        if (output) output.textContent = msg;
+        toast(msg, true);
+      } finally {
+        btn.textContent = orig;
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------
   // Boot
   // ------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', () => {
@@ -1055,6 +1230,9 @@
     bindAlertExtras();
     bindUpdateExtras();
     bindDiagnosticsExtras();
+    bindKioskCards();
+    bindLocationExtras();
+    bindSpeedTest();
   });
 
 })();

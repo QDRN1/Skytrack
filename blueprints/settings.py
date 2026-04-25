@@ -1927,6 +1927,71 @@ def api_cellular_apn():
     return jsonify(payload_out)
 
 
+@settings_bp.route('/api/settings/network/speedtest', methods=['POST'])
+@ADMIN
+def api_speedtest():
+    """Run a basic download/upload speed test against Cloudflare."""
+    import urllib.request
+    import urllib.error
+
+    results = {'ok': False, 'download_mbps': None, 'upload_mbps': None, 'ping_ms': None}
+
+    # Ping (TCP connect latency to 1.1.1.1:443)
+    import socket
+    try:
+        t0 = time.time()
+        s = socket.create_connection(('1.1.1.1', 443), timeout=5)
+        ping_ms = (time.time() - t0) * 1000
+        s.close()
+        results['ping_ms'] = round(ping_ms, 1)
+    except Exception:
+        pass
+
+    # Download test (~2 MB from Cloudflare)
+    try:
+        url = 'https://speed.cloudflare.com/__down?bytes=2000000'
+        req = urllib.request.Request(url, headers={'User-Agent': 'SkyTrack-Speedtest/1.0'})
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+        elapsed = time.time() - t0
+        if elapsed > 0:
+            mbps = (len(data) * 8) / (elapsed * 1_000_000)
+            results['download_mbps'] = round(mbps, 2)
+            results['download_bytes'] = len(data)
+            results['download_seconds'] = round(elapsed, 2)
+    except Exception as e:
+        results['download_error'] = str(e)
+
+    # Upload test (~500 KB to Cloudflare)
+    try:
+        url = 'https://speed.cloudflare.com/__up'
+        payload = b'\x00' * 500_000
+        req = urllib.request.Request(
+            url, data=payload, method='POST',
+            headers={'User-Agent': 'SkyTrack-Speedtest/1.0', 'Content-Type': 'application/octet-stream'},
+        )
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+        elapsed = time.time() - t0
+        if elapsed > 0:
+            mbps = (len(payload) * 8) / (elapsed * 1_000_000)
+            results['upload_mbps'] = round(mbps, 2)
+            results['upload_bytes'] = len(payload)
+            results['upload_seconds'] = round(elapsed, 2)
+    except Exception as e:
+        results['upload_error'] = str(e)
+
+    results['ok'] = results['download_mbps'] is not None
+    logs_svc.log_network('speedtest', {
+        'download_mbps': results.get('download_mbps'),
+        'upload_mbps': results.get('upload_mbps'),
+        'ping_ms': results.get('ping_ms'),
+    })
+    return jsonify(results)
+
+
 @settings_bp.route('/api/settings/network/backend', methods=['GET'])
 @ADMIN
 def api_network_backend():

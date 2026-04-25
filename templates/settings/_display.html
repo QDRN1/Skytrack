@@ -88,4 +88,73 @@
     </form>
   </div>
 
+  {# ---- Kiosk Carousel Cards ---- #}
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Kiosk display</h2>
+      <p class="muted">Choose which cards the on-device carousel shows and the rotation speed.</p>
+    </header>
+
+    <div class="card-body card-form" id="kiosk-cards-card">
+      <div class="field">
+        <label>Cards</label>
+        <div class="checkbox-grid" id="kiosk-card-toggles">
+          {% set enabled = config.kiosk_cards or ['aircraft_now','aircraft_today','busiest_hour','last_aircraft','weather','top_airlines','activity_trend','device_info'] %}
+          {% for id, lbl in [
+              ('aircraft_now', 'Aircraft Now'),
+              ('aircraft_today', 'Aircraft Today'),
+              ('busiest_hour', 'Busiest Hour'),
+              ('last_aircraft', 'Last Aircraft'),
+              ('weather', 'Weather'),
+              ('top_airlines', 'Top Airlines'),
+              ('activity_trend', 'Activity Trend'),
+              ('device_info', 'Device Info'),
+          ] %}
+          <label class="switch-row">
+            <span>{{ lbl }}</span>
+            <input type="checkbox" name="kiosk_card" value="{{ id }}"
+                   {% if id in enabled %}checked{% endif %}>
+            <span class="switch"></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Show map page</span>
+          <input type="checkbox" id="kiosk-show-map"
+                 {% if config.kiosk_show_map != False %}checked{% endif %}>
+          <span class="switch"></span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="kiosk-interval">Card rotate interval</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="kiosk-interval" min="3" max="30" step="1"
+                 value="{{ config.kiosk_carousel_interval or 8 }}"
+                 class="touch-slider" style="flex:1">
+          <code id="kiosk-interval-label">{{ config.kiosk_carousel_interval or 8 }}s</code>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="kiosk-map-interval">Map dwell time</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="kiosk-map-interval" min="5" max="60" step="1"
+                 value="{{ config.kiosk_map_interval or 15 }}"
+                 class="touch-slider" style="flex:1">
+          <code id="kiosk-map-interval-label">{{ config.kiosk_map_interval or 15 }}s</code>
+        </div>
+        <p class="muted small">How long the live map page stays on screen before rotating to cards.</p>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" id="kiosk-cards-cancel">Cancel</button>
+        <button type="button" class="btn btn-lg btn-primary" id="kiosk-cards-save">Save Kiosk</button>
+      </footer>
+    </div>
+  </div>
+
 </section>

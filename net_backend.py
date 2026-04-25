@@ -622,12 +622,87 @@ def _radio_state(domain: str) -> bool:
 
 
 def set_radio(domain: str, enabled: bool) -> dict:
-    """Toggle `nmcli radio <domain> on|off`. domain in {wifi, wwan}."""
+    """Toggle a network domain on or off.
+
+    For WiFi we use connection-level management instead of `nmcli radio wifi`
+    because the radio is shared with the hotspot — killing it would lock the
+    operator out. Instead we bring individual wifi-client connections up/down.
+
+    For wwan (cellular), radio-level toggle is safe since the cellular modem
+    has its own dedicated hardware.
+    """
     if detect_backend() != 'nm':
         return {'ok': False, 'error': 'NetworkManager not available'}
+
+    if domain == 'wifi':
+        return _toggle_wifi_client(enabled)
+
     state = 'on' if enabled else 'off'
     r = _run(['nmcli', 'radio', domain, state], timeout=5)
     return {'ok': r['ok'], 'state': state, 'error': r.get('stderr', '')}
+
+
+def _toggle_wifi_client(enabled: bool) -> dict:
+    """Enable or disable WiFi client connections without touching the radio.
+
+    When disabling: disconnect all active wifi-client (non-hotspot) connections.
+    When enabling: ensure the radio is on, then try to activate saved connections.
+    """
+    if not enabled:
+        r = _run(
+            ['nmcli', '-t', '-f', 'NAME,TYPE,DEVICE,STATE', 'connection', 'show', '--active'],
+            timeout=5,
+        )
+        if not r['ok']:
+            return {'ok': False, 'state': 'off', 'error': r.get('stderr', '')}
+
+        disconnected = []
+        for raw in r['stdout'].splitlines():
+            parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
+            if len(parts) < 4:
+                continue
+            name, ctype = parts[0], parts[1]
+            if ctype not in ('802-11-wireless', 'wifi'):
+                continue
+            if 'SkyTrack' in name or 'hotspot' in name.lower():
+                continue
+            dr = _run(['nmcli', 'connection', 'down', name], timeout=10)
+            if dr['ok']:
+                disconnected.append(name)
+                logger.info('WiFi client connection %s disconnected', name)
+
+        return {'ok': True, 'state': 'off', 'disconnected': disconnected, 'error': ''}
+
+    radio = _run(['nmcli', 'radio', 'wifi'], timeout=3)
+    if radio['ok'] and 'disabled' in radio['stdout'].lower():
+        _run(['nmcli', 'radio', 'wifi', 'on'], timeout=5)
+        import time as _time
+        _time.sleep(1)
+
+    r = _run(
+        ['nmcli', '-t', '-f', 'NAME,TYPE,AUTOCONNECT', 'connection', 'show'],
+        timeout=5,
+    )
+    if not r['ok']:
+        return {'ok': True, 'state': 'on', 'error': 'Radio on but could not list connections'}
+
+    activated = []
+    for raw in r['stdout'].splitlines():
+        parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
+        if len(parts) < 3:
+            continue
+        name, ctype = parts[0], parts[1]
+        if ctype not in ('802-11-wireless', 'wifi'):
+            continue
+        if 'SkyTrack' in name or 'hotspot' in name.lower():
+            continue
+        ur = _run(['nmcli', 'connection', 'up', name], timeout=30)
+        if ur['ok']:
+            activated.append(name)
+            logger.info('WiFi client connection %s activated', name)
+            break
+
+    return {'ok': True, 'state': 'on', 'activated': activated, 'error': ''}
 
 
 # ---------------------------------------------------------------------------
