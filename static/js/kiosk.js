@@ -562,12 +562,16 @@
     carouselPage = idx;
     var track = $('carousel-track');
     if (!track) return;
-    if (animate === false) track.classList.add('dragging');
+    if (animate === false) {
+      track.style.transition = 'none';
+    } else {
+      track.style.transition = '';
+    }
     track.style.transform = 'translateX(' + (-idx * 100) + '%)';
     if (animate === false) {
-      // force reflow then remove
-      void track.offsetWidth;
-      track.classList.remove('dragging');
+      requestAnimationFrame(function () {
+        track.style.transition = '';
+      });
     }
     // Update dots
     var dots = ($('carousel-dots') || {}).children || [];
