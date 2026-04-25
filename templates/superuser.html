@@ -39,6 +39,18 @@
       <button class="btn" id="btn-vacuum">Vacuum</button>
     </section>
 
+    <section class="super-block">
+      <h2>Shell</h2>
+      <p class="muted">Execute commands on the device. Use <code>sudo</code> for privileged operations.</p>
+      <div class="shell-terminal" id="shell-terminal">
+        <pre class="shell-output" id="shell-output">SkyTrack shell ready. Type a command below.\n</pre>
+        <form class="shell-input-row" id="form-shell" autocomplete="off">
+          <span class="shell-prompt">$</span>
+          <input type="text" id="shell-cmd" name="command" class="shell-input" placeholder="ls -la" autofocus>
+        </form>
+      </div>
+    </section>
+
     <section class="super-block danger">
       <h2>Factory reset</h2>
       <p class="muted">Wipes <code>auth.json</code> and re-runs the first-boot wizard. Device ID is preserved.</p>

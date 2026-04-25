@@ -10,9 +10,11 @@ Capabilities:
   • Run db.prune()
   • Vacuum the database
   • Wipe / re-seed auth.json (factory reset)
+  • Execute shell commands (SSH-like terminal)
 """
 
 import logging
+import subprocess
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
@@ -114,3 +116,38 @@ def api_factory_reset():
     auth_lib.write_auth(rec)
     logs_svc.log_portal('super', 'factory_reset', {})
     return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Shell — SSH-like command execution
+# ---------------------------------------------------------------------------
+
+@super_bp.route('/api/super/shell', methods=['POST'])
+@auth_lib.login_required(auth_lib.ROLE_SUPER)
+def api_shell():
+    """Execute a shell command and return stdout+stderr."""
+    payload = request.get_json(silent=True) or {}
+    cmd = (payload.get('command') or '').strip()
+    if not cmd:
+        return jsonify({'ok': False, 'error': 'no command'}), 400
+
+    logs_svc.log_portal('super', 'shell_exec', {'command': cmd})
+    try:
+        r = subprocess.run(
+            cmd, shell=True,
+            capture_output=True, text=True,
+            timeout=30,
+            cwd='/opt/skytrack',
+        )
+        output = r.stdout
+        if r.stderr:
+            output += r.stderr
+        return jsonify({
+            'ok': r.returncode == 0,
+            'returncode': r.returncode,
+            'output': output[-8000:] if len(output) > 8000 else output,
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'command timed out (30s limit)'}), 408
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500

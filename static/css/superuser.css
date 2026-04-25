@@ -44,3 +44,13 @@
 .super-shell .btn.warn { background: #ffae00; color: #000; border-color: #ffae00; }
 .super-shell .btn.danger { background: #ff3344; color: #000; border-color: #ff3344; }
 .super-shell .log-pre { background: #001408; color: #00ff88; border: 1px solid #00ff88; }
+
+/* Shell terminal */
+.shell-terminal { border: 1px solid #00ff88; border-radius: 4px; background: #000; max-height: 60vh; display: flex; flex-direction: column; }
+.shell-output { flex: 1; overflow-y: auto; padding: 12px; margin: 0; font-size: 13px; line-height: 1.5; color: #00ff88; white-space: pre-wrap; word-break: break-all; max-height: 50vh; }
+.shell-input-row { display: flex; align-items: center; border-top: 1px solid #00ff8844; padding: 6px 12px; background: #001408; }
+.shell-prompt { color: #00ff88; margin-right: 8px; font-weight: bold; }
+.shell-input { flex: 1; background: transparent; color: #00ff88; border: none; outline: none; font: inherit; font-size: 14px; padding: 6px 0; }
+.shell-input::placeholder { color: #00ff8855; }
+.shell-cmd-echo { color: #88ffbb; }
+.shell-cmd-error { color: #ff5566; }

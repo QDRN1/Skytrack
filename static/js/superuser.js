@@ -84,6 +84,54 @@
         }
       });
     }
+
+    // Shell terminal
+    const shellForm = document.getElementById('form-shell');
+    const shellOutput = document.getElementById('shell-output');
+    const shellCmd = document.getElementById('shell-cmd');
+    const shellHistory = [];
+    let historyIdx = -1;
+
+    if (shellForm && shellOutput && shellCmd) {
+      shellForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const cmd = shellCmd.value.trim();
+        if (!cmd) return;
+        shellHistory.push(cmd);
+        historyIdx = shellHistory.length;
+        shellOutput.textContent += '$ ' + cmd + '\n';
+        shellCmd.value = '';
+        shellCmd.disabled = true;
+        try {
+          const r = await fetch('/api/super/shell', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ command: cmd }),
+          });
+          const data = await r.json();
+          if (data.output) shellOutput.textContent += data.output;
+          if (data.error) shellOutput.textContent += data.error + '\n';
+          if (!data.output && !data.error) shellOutput.textContent += '\n';
+        } catch (err) {
+          shellOutput.textContent += 'error: ' + (err.message || 'request failed') + '\n';
+        }
+        shellCmd.disabled = false;
+        shellCmd.focus();
+        shellOutput.scrollTop = shellOutput.scrollHeight;
+      });
+
+      shellCmd.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (historyIdx > 0) { historyIdx--; shellCmd.value = shellHistory[historyIdx]; }
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (historyIdx < shellHistory.length - 1) { historyIdx++; shellCmd.value = shellHistory[historyIdx]; }
+          else { historyIdx = shellHistory.length; shellCmd.value = ''; }
+        }
+      });
+    }
   });
 
   function bind(sel, fn) {

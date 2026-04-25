@@ -19,12 +19,11 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=skytrack-app
 
-# Hardening (we still need /var/lib/skytrack and /var/log/skytrack writable)
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=true
+# Hardening — relaxed for appliance mode.  The app needs sudo for
+# package installs, service restarts, reboots, and hotspot management.
+# Security on this single-purpose device comes from physical access
+# control and network isolation, not process sandboxing.
 PrivateTmp=true
-ReadWritePaths=/var/lib/skytrack /var/log/skytrack
 
 [Install]
 WantedBy=multi-user.target
