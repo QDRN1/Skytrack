@@ -607,16 +607,17 @@
     .carousel-page {
       flex: 0 0 100%;
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
       gap: clamp(10px, 2vh, 22px);
       min-height: 0;
       padding: 0 clamp(2px, 0.5vw, 6px);
     }
     .carousel-page-map {
-      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
     }
     .carousel-page.full-width {
-      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
     }
 
     /* Dot indicators */
