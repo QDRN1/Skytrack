@@ -52,5 +52,5 @@
 .shell-prompt { color: #00ff88; margin-right: 8px; font-weight: bold; }
 .shell-input { flex: 1; background: transparent; color: #00ff88; border: none; outline: none; font: inherit; font-size: 14px; padding: 6px 0; }
 .shell-input::placeholder { color: #00ff8855; }
-.shell-cmd-echo { color: #88ffbb; }
-.shell-cmd-error { color: #ff5566; }
+.shell-cmd-echo { color: #88ffbb; font-weight: bold; }
+.shell-cmd-error { color: #ff5566; font-style: italic; }

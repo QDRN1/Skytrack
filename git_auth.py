@@ -148,5 +148,5 @@ def describe(config: dict) -> Dict:
         }.get(mode, mode),
         'repo': redact_url(url),
         'remote': config.get('ota_remote') or 'origin',
-        'branch': config.get('ota_branch') or 'main',
+        'branch': config.get('ota_branch') or 'claude/skytrack-adsb-tracker-N8p6u',
     }

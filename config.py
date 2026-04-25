@@ -129,7 +129,7 @@ DEFAULT_CONFIG = {
     # repo there without a .git directory). On apply we rsync the workspace
     # into /opt/skytrack and restart skytrack-app.
     'ota_remote': 'origin',
-    'ota_branch': 'main',
+    'ota_branch': 'claude/skytrack-adsb-tracker-N8p6u',
     'ota_enabled': True,
     'ota_auto_check': True,
     'ota_channel': 'stable',        # stable | beta

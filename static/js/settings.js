@@ -989,6 +989,53 @@
       }
     });
 
+    // Changelog loader
+    const clBtn = $('#btn-changelog-load');
+    if (clBtn) clBtn.addEventListener('click', async () => {
+      clBtn.disabled = true;
+      clBtn.textContent = 'Loading…';
+      try {
+        const r = await fetch('/api/settings/updates/changelog', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        }).then(x => x.json());
+        if (!r.ok) { toast('Could not load changelog', true); return; }
+
+        function renderList(items, el) {
+          el.innerHTML = '';
+          if (!items || !items.length) {
+            el.innerHTML = '<li class="muted">None.</li>';
+            return;
+          }
+          items.forEach(c => {
+            const li = document.createElement('li');
+            li.className = 'changelog-entry';
+            const d = c.date ? new Date(c.date).toLocaleDateString() : '';
+            li.innerHTML =
+              '<code class="cl-hash">' + escapeHtml(c.short) + '</code> ' +
+              '<span class="cl-msg">' + escapeHtml(c.message) + '</span>' +
+              '<span class="cl-meta muted"> — ' + escapeHtml(c.author) + ', ' + escapeHtml(d) + '</span>';
+            el.appendChild(li);
+          });
+        }
+
+        const avail = r.available || [];
+        const cur = r.current || [];
+        const availSection = $('#changelog-available');
+        const curSection = $('#changelog-current');
+        if (availSection) {
+          renderList(avail, $('#changelog-available-list'));
+          availSection.style.display = avail.length ? '' : 'none';
+        }
+        if (curSection) {
+          renderList(cur, $('#changelog-current-list'));
+          curSection.style.display = cur.length ? '' : 'none';
+        }
+        if (!avail.length && !cur.length) toast('No changelog data available.');
+      } catch (_) { toast('Changelog load failed', true); }
+      finally { clBtn.disabled = false; clBtn.textContent = 'Load changelog'; }
+    });
+
     // Power buttons — toast the actual server response so a failed
     // reboot doesn't leave the operator looking at a green "Rebooting…"
     // for ten minutes. Backend returns {ok, message} from _power_action,

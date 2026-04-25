@@ -17,8 +17,14 @@ fi
 FA_LIST="/etc/apt/sources.list.d/flightaware.list"
 if [[ ! -f "$FA_LIST" ]]; then
   echo "Adding FlightAware APT repository…"
-  # Detect distribution
+  # Detect distribution — FlightAware only publishes repos for certain
+  # Debian/Raspbian releases. Fall back to bookworm for unsupported ones.
   CODENAME="$(lsb_release -cs 2>/dev/null || echo bookworm)"
+  case "$CODENAME" in
+    buster|bullseye|bookworm) ;;  # supported by FlightAware
+    *) echo "Codename '$CODENAME' not supported by FlightAware repo, using bookworm."
+       CODENAME="bookworm" ;;
+  esac
   echo "deb http://flightaware.com/adsb/piaware/files/packages/${CODENAME} ${CODENAME} flightaware" \
     > "$FA_LIST"
 

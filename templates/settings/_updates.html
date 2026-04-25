@@ -7,7 +7,7 @@
       <p class="muted">
         SkyTrack keeps itself up to date from
         <code>{{ config.ota_repo_url or 'github.com/QDRN1/Skytrack' }}</code>
-        (branch <code>{{ config.ota_branch or 'main' }}</code>). <em>Check for
+        (branch <code>{{ config.ota_branch or 'claude/skytrack-adsb-tracker-N8p6u' }}</code>). <em>Check for
         updates</em> is always safe and non-destructive. <em>Apply updates</em>
         copies the new code into <code>/opt/skytrack</code> and restarts the
         app — expect about 10–30 seconds of downtime, then the page reloads
@@ -71,6 +71,26 @@
         </button>
       </div>
       <pre class="log-pre" id="update-output">No update checked yet.</pre>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Changelog</h2>
+      <p class="muted">Recent changes applied to this device and new changes available upstream.</p>
+    </header>
+    <div class="card-body">
+      <button type="button" class="btn btn-lg" id="btn-changelog-load">Load changelog</button>
+
+      <div id="changelog-available" style="display:none; margin-top: 16px;">
+        <h3 style="margin: 0 0 8px;">Available updates</h3>
+        <ul class="changelog-list" id="changelog-available-list"></ul>
+      </div>
+
+      <div id="changelog-current" style="display:none; margin-top: 16px;">
+        <h3 style="margin: 0 0 8px;">Recent changes (installed)</h3>
+        <ul class="changelog-list" id="changelog-current-list"></ul>
+      </div>
     </div>
   </div>
 

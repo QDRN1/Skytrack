@@ -1331,7 +1331,7 @@ def api_updates_check():
                             {'ok': False, 'phase': 'workspace', 'tail': msg[-200:]})
         return jsonify({'ok': False, 'message': msg[-400:]})
     remote = cfg.get('ota_remote', 'origin') or 'origin'
-    branch = cfg.get('ota_branch', 'main') or 'main'
+    branch = cfg.get('ota_branch', 'claude/skytrack-adsb-tracker-N8p6u') or 'claude/skytrack-adsb-tracker-N8p6u'
     ok, msg = _git_in_workspace(
         ['fetch', '--depth', '50', remote, branch], timeout=90,
     )
@@ -1371,7 +1371,7 @@ def api_updates_apply():
                             {'ok': False, 'phase': 'workspace', 'tail': msg[-200:]})
         return jsonify({'ok': False, 'message': msg[-400:]})
     remote = cfg.get('ota_remote', 'origin') or 'origin'
-    branch = cfg.get('ota_branch', 'main') or 'main'
+    branch = cfg.get('ota_branch', 'claude/skytrack-adsb-tracker-N8p6u') or 'claude/skytrack-adsb-tracker-N8p6u'
     # Fetch then hard-reset — never merge, never leave stray files behind
     # from an aborted apply.
     ok, msg = _git_in_workspace(
@@ -1417,6 +1417,61 @@ def api_updates_apply():
         'ok': True,
         'message': 'Update applied. The service is restarting — the page '
                    'will reload in a few seconds.',
+    })
+
+
+@settings_bp.route('/api/settings/updates/changelog', methods=['GET'])
+@ADMIN
+def api_changelog():
+    """Return recent git log entries from the OTA workspace (or local repo)."""
+    cfg = current_app.skytrack_config
+    ws = _ota_workspace()
+    git_dir = os.path.join(ws, '.git')
+    repo_dir = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + '/..')
+    cwd = ws if os.path.isdir(git_dir) else repo_dir
+    count = min(int(request.args.get('count', 30)), 100)
+    remote = cfg.get('ota_remote', 'origin') or 'origin'
+    branch = cfg.get('ota_branch', 'claude/skytrack-adsb-tracker-N8p6u') or 'claude/skytrack-adsb-tracker-N8p6u'
+
+    fmt = '%H%n%h%n%s%n%an%n%aI'
+    env = _ota_env()
+    current = []
+    ok, out = _shell(
+        ['git', '-C', cwd, 'log', f'--format={fmt}', f'-{count}', '--'],
+        timeout=15, env=env,
+    )
+    if ok and out.strip():
+        lines = out.strip().split('\n')
+        for i in range(0, len(lines) - 4, 5):
+            current.append({
+                'hash': lines[i],
+                'short': lines[i + 1],
+                'message': lines[i + 2],
+                'author': lines[i + 3],
+                'date': lines[i + 4],
+            })
+
+    available = []
+    ref = f'{remote}/{branch}'
+    ok2, out2 = _shell(
+        ['git', '-C', cwd, 'log', f'--format={fmt}', f'-{count}', f'HEAD..{ref}', '--'],
+        timeout=15, env=env,
+    )
+    if ok2 and out2.strip():
+        lines = out2.strip().split('\n')
+        for i in range(0, len(lines) - 4, 5):
+            available.append({
+                'hash': lines[i],
+                'short': lines[i + 1],
+                'message': lines[i + 2],
+                'author': lines[i + 3],
+                'date': lines[i + 4],
+            })
+
+    return jsonify({
+        'ok': True,
+        'current': current,
+        'available': available,
     })
 
 

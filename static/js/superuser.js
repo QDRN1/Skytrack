@@ -93,13 +93,21 @@
     let historyIdx = -1;
 
     if (shellForm && shellOutput && shellCmd) {
+      function shellAppend(text, cls) {
+        const span = document.createElement('span');
+        if (cls) span.className = cls;
+        span.textContent = text;
+        shellOutput.appendChild(span);
+        shellOutput.scrollTop = shellOutput.scrollHeight;
+      }
+
       shellForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const cmd = shellCmd.value.trim();
         if (!cmd) return;
         shellHistory.push(cmd);
         historyIdx = shellHistory.length;
-        shellOutput.textContent += '$ ' + cmd + '\n';
+        shellAppend('$ ' + cmd + '\n', 'shell-cmd-echo');
         shellCmd.value = '';
         shellCmd.disabled = true;
         try {
@@ -110,11 +118,14 @@
             body: JSON.stringify({ command: cmd }),
           });
           const data = await r.json();
-          if (data.output) shellOutput.textContent += data.output;
-          if (data.error) shellOutput.textContent += data.error + '\n';
-          if (!data.output && !data.error) shellOutput.textContent += '\n';
+          if (data.output) shellAppend(data.output, '');
+          if (data.error) shellAppend(data.error + '\n', 'shell-cmd-error');
+          if (!data.output && !data.error) shellAppend('\n', '');
+          if (typeof data.returncode === 'number' && data.returncode !== 0) {
+            shellAppend('[exit ' + data.returncode + ']\n', 'shell-cmd-error');
+          }
         } catch (err) {
-          shellOutput.textContent += 'error: ' + (err.message || 'request failed') + '\n';
+          shellAppend('error: ' + (err.message || 'request failed') + '\n', 'shell-cmd-error');
         }
         shellCmd.disabled = false;
         shellCmd.focus();
