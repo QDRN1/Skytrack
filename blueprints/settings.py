@@ -2236,11 +2236,11 @@ def api_dump1090_install():
     combined = (out1 or '') + '\n' + (out2 or '')
     if ok1 and ok2:
         logs_svc.log_portal('admin', 'adsb_installed', {})
-        return _ok({'message': 'dump1090-fa + piaware installed', 'output': combined})
+        return jsonify({'ok': True, 'message': 'dump1090-fa + piaware installed', 'output': combined})
     if ok1:
         logs_svc.log_portal('admin', 'dump1090_installed_piaware_failed', {})
-        return _ok({'message': 'dump1090-fa installed; piaware failed (see log)', 'output': combined})
-    return _err(f'Installation failed: {combined}', 500)
+        return jsonify({'ok': True, 'message': 'dump1090-fa installed; piaware failed (see log)', 'output': combined})
+    return jsonify({'ok': False, 'error': 'Installation failed', 'output': combined})
 
 
 @settings_bp.route('/api/settings/feeders/fr24/install', methods=['POST'])
@@ -2251,8 +2251,8 @@ def api_fr24_install():
     ok, output = _run_installer('fr24feed')
     if ok:
         logs_svc.log_portal('admin', 'fr24_installed', {})
-        return _ok({'message': 'fr24feed installed', 'output': output})
-    return _err(f'Installation failed: {output}', 500)
+        return jsonify({'ok': True, 'message': 'fr24feed installed', 'output': output})
+    return jsonify({'ok': False, 'error': 'Installation failed', 'output': output})
 
 
 @settings_bp.route('/api/settings/software/install', methods=['POST'])

@@ -721,19 +721,24 @@
         toast('Installing ' + label + '…');
         try {
           const r = await window.api.post(url);
+          if (out && r.output) out.textContent = r.output;
           if (r && r.ok) {
-            toast(label + ' installed');
-            if (out) out.textContent += (r.output || 'Installation complete.') + '\n';
+            toast(r.message || label + ' installed');
           } else {
-            const msg = (r && r.error) || 'Installation failed';
-            toast(msg, true);
-            if (out) out.textContent += 'ERROR: ' + msg + '\n';
+            toast(r.error || 'Installation failed', true);
+            if (out && !r.output) out.textContent += 'ERROR: ' + (r.error || 'Unknown error') + '\n';
           }
           refreshFeederStatus();
         } catch (e) {
-          const msg = (e && e.data && e.data.error) || 'Installation failed';
+          const data = e && e.data;
+          const msg = (data && data.error) || e.message || 'Installation failed';
+          if (out && data && data.output) {
+            out.textContent = data.output;
+          } else if (out) {
+            out.textContent += 'ERROR: ' + msg + '\n';
+          }
           toast(msg, true);
-          if (out) out.textContent += 'ERROR: ' + msg + '\n';
+          refreshFeederStatus();
         } finally {
           btn.disabled = false;
           btn.textContent = 'Install ' + label;
