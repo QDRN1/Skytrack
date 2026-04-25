@@ -1,0 +1,80 @@
+#!/bin/bash
+# skytrack-installer — secure wrapper for package installations.
+#
+# Installed to /usr/local/bin/skytrack-installer by install.sh.
+# The skytrack user can run this via sudo without a password (sudoers rule).
+#
+# Usage:  sudo /usr/local/bin/skytrack-installer <package-name>
+#
+# Only packages listed in the WHITELIST are allowed. Each whitelisted
+# package maps to a modular install script under /opt/skytrack/installers/.
+
+set -euo pipefail
+
+INSTALL_DIR="/opt/skytrack/installers"
+LOG_DIR="/var/log/skytrack"
+
+WHITELIST=(
+  dump1090
+  fr24feed
+  piaware
+)
+
+log() {
+  local ts
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  echo "[$ts] $*" | tee -a "$LOG_DIR/installer.log"
+}
+
+usage() {
+  echo "Usage: skytrack-installer <package>"
+  echo "Allowed packages: ${WHITELIST[*]}"
+  exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+  usage
+fi
+
+PACKAGE="$1"
+
+# Validate against whitelist
+ALLOWED=false
+for pkg in "${WHITELIST[@]}"; do
+  if [[ "$pkg" == "$PACKAGE" ]]; then
+    ALLOWED=true
+    break
+  fi
+done
+
+if [[ "$ALLOWED" != "true" ]]; then
+  log "REJECTED: '$PACKAGE' is not in the whitelist"
+  echo "Error: '$PACKAGE' is not an allowed package." >&2
+  echo "Allowed packages: ${WHITELIST[*]}" >&2
+  exit 1
+fi
+
+SCRIPT="$INSTALL_DIR/${PACKAGE}.sh"
+
+if [[ ! -f "$SCRIPT" ]]; then
+  log "ERROR: install script not found: $SCRIPT"
+  echo "Error: install script for '$PACKAGE' not found at $SCRIPT" >&2
+  exit 1
+fi
+
+if [[ ! -x "$SCRIPT" ]]; then
+  log "ERROR: install script not executable: $SCRIPT"
+  echo "Error: install script for '$PACKAGE' is not executable" >&2
+  exit 1
+fi
+
+mkdir -p "$LOG_DIR"
+log "START: Installing $PACKAGE"
+
+if bash "$SCRIPT" 2>&1 | tee -a "$LOG_DIR/installer.log"; then
+  log "SUCCESS: $PACKAGE installed"
+  exit 0
+else
+  log "FAILED: $PACKAGE installation returned non-zero"
+  exit 1
+fi

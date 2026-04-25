@@ -104,6 +104,18 @@
       </p>
 
       <div class="field">
+        <label for="al-devtemp">Device temperature alarm (°C)</label>
+        <input id="al-devtemp" name="device_temp_alarm_c" type="number"
+               min="50" max="100" step="1"
+               value="{{ config.device_temp_alarm_c or 80 }}">
+        <p class="muted small">
+          Triggers the buzzer alarm pattern and a red overlay on the kiosk when
+          the CPU/SoC temperature exceeds this value. The alarm auto-clears when
+          the temp drops 5°C below the threshold. Set to 100 to effectively disable.
+        </p>
+      </div>
+
+      <div class="field">
         <label for="al-noac">No aircraft for how long? (minutes)</label>
         <input id="al-noac" name="alert_no_aircraft_minutes" type="number"
                min="0" max="1440" value="{{ config.alert_no_aircraft_minutes or 30 }}">

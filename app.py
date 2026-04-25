@@ -200,12 +200,15 @@ def create_app(config_overrides: Optional[dict] = None) -> Flask:
     from sensors import SensorService
     from weather import WeatherService
 
+    from device_temp_alarm import DeviceTempAlarm
+
     app.weather_svc = WeatherService(config)
     app.sensor_svc = SensorService(config)
     app.health_svc = HealthService(config)
     app.gps_svc = GPSService(config)
     app.buzzer = Buzzer(config)
     app.ingest = SightingsIngest(config)
+    app.device_temp_alarm = DeviceTempAlarm(config, app.buzzer)
 
     # Shared state surfaces consumed by blueprints
     app.enrichment_queue = _enrichment_queue
@@ -265,6 +268,12 @@ def _start_background_services(app: Flask) -> None:
         app.sensor_svc.start()
     except Exception as e:
         logger.warning('sensor poller start failed: %s', e)
+
+    # 2a-bis. Device temperature alarm — monitors CPU/SoC temp.
+    try:
+        app.device_temp_alarm.start()
+    except Exception as e:
+        logger.warning('device temp alarm start failed: %s', e)
 
     # 2b. Sensor emit loop — runs at app cadence, READS THE CACHE, never
     # touches the GPIO. Hammering the DHT22 from N HTTP endpoints +

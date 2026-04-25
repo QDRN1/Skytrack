@@ -807,6 +807,47 @@
       .op-weather { display: none; }
       .op-clock .op-date { display: none; }
     }
+
+    /* ---- Device temp alarm overlay ---- */
+    .temp-alarm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(180, 0, 0, 0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: alarm-pulse 2s ease-in-out infinite;
+    }
+    @keyframes alarm-pulse {
+      0%, 100% { background: rgba(180, 0, 0, 0.92); }
+      50% { background: rgba(220, 0, 0, 0.96); }
+    }
+    .temp-alarm-content {
+      text-align: center;
+      color: #fff;
+      max-width: 80vw;
+    }
+    .temp-alarm-icon {
+      font-size: clamp(4em, 12vh, 8em);
+      line-height: 1;
+      margin-bottom: 0.3em;
+    }
+    .temp-alarm-content h1 {
+      font-size: clamp(1.4em, 4vh, 2.6em);
+      font-weight: 700;
+      margin: 0 0 0.4em;
+    }
+    .temp-alarm-detail {
+      font-size: clamp(1em, 2.5vh, 1.6em);
+      opacity: 0.9;
+      margin: 0 0 0.6em;
+    }
+    .temp-alarm-sub {
+      font-size: clamp(0.8em, 1.8vh, 1.1em);
+      opacity: 0.7;
+      margin: 0;
+    }
   </style>
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet.css') }}">
   <script src="{{ url_for('static', filename='vendor/leaflet.js') }}"></script>
@@ -1062,6 +1103,16 @@
           <span class="meta-value" id="op-radar-url">—</span>
         </div>
       </footer>
+    </div>
+
+    {# ---- DEVICE TEMP ALARM OVERLAY ---- #}
+    <div class="temp-alarm-overlay" id="temp-alarm-overlay" hidden>
+      <div class="temp-alarm-content">
+        <div class="temp-alarm-icon">⚠</div>
+        <h1>CRITICAL: Device Overheating</h1>
+        <p class="temp-alarm-detail" id="temp-alarm-detail">CPU temperature exceeds safe limit</p>
+        <p class="temp-alarm-sub">Power down and allow the device to cool before continuing</p>
+      </div>
     </div>
 
   </div>

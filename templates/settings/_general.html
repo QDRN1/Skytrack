@@ -1,6 +1,14 @@
 {# Settings → General #}
 <section class="settings-section active" data-section-pane="general">
 
+  {# System status banner — clickable to jump to Diagnostics #}
+  <div class="system-status-banner" id="system-status-banner" data-jump-section="diagnostics">
+    <span class="status-dot" id="sys-status-dot"></span>
+    <span class="status-label" id="sys-status-label">Checking system health…</span>
+    <span class="status-items" id="sys-status-items"></span>
+    <span class="status-arrow">→</span>
+  </div>
+
   <div class="settings-card">
     <header class="card-header">
       <h2>General</h2>
@@ -60,23 +68,6 @@
           <label class="seg"><input type="radio" name="clock_format" value="24h"
                  {% if config.clock_format == '24h' %}checked{% endif %}><span>24 hour</span></label>
         </div>
-      </div>
-
-      <div class="field">
-        <label>Portal theme (default)</label>
-        <div class="segmented" role="radiogroup" aria-label="Portal theme default">
-          <label class="seg"><input type="radio" name="default_theme" value="light"
-                 {% if config.default_theme == 'light' %}checked{% endif %}><span>Light</span></label>
-          <label class="seg"><input type="radio" name="default_theme" value="dark"
-                 {% if config.default_theme == 'dark' %}checked{% endif %}><span>Dark</span></label>
-          <label class="seg"><input type="radio" name="default_theme" value="auto"
-                 {% if config.default_theme == 'auto' %}checked{% endif %}><span>Auto</span></label>
-        </div>
-        <p class="muted small">
-          Default theme for the admin portal (Dashboard / Settings / Network / Logs).
-          Each browser can still override with the ◐ button in the top bar. The
-          on-appliance kiosk display is always dark and is not affected.
-        </p>
       </div>
 
       <div class="field">

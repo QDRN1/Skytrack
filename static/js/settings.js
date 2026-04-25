@@ -87,12 +87,14 @@
     function show(name) {
       buttons.forEach(b => b.classList.toggle('active', b.dataset.section === name));
       panes.forEach(p => p.classList.toggle('active', p.dataset.sectionPane === name));
+      window.scrollTo(0, 0);
       try {
         const u = new URL(window.location.href);
         u.hash = name;
         history.replaceState(null, '', u.toString());
       } catch (_) {}
       // Lazy refresh hooks: kick off live data when a section becomes visible.
+      if (name === 'general')       refreshSystemStatus();
       if (name === 'network')      refreshNetworkStatus();
       if (name === 'feeders')      refreshFeederStatus();
       if (name === 'diagnostics')  refreshDiagnostics();
@@ -1002,6 +1004,18 @@
     power('btn-restart-network', '/api/settings/updates/restart-network', 'Network restarting');
     power('btn-reboot',          '/api/settings/updates/reboot',          'Rebooting');
     power('btn-shutdown',        '/api/settings/updates/shutdown',        'Shutting down');
+
+    // Restart-app special handling: wait for healthz then reload
+    const restartBtn = $('#btn-restart-app');
+    if (restartBtn) {
+      const origHandler = restartBtn.onclick;
+      restartBtn.addEventListener('click', () => {
+        setTimeout(async () => {
+          const up = await waitForHealthz(30, 1000);
+          if (up) location.reload();
+        }, 2000);
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -1074,6 +1088,36 @@
     }[c]));
   }
   function escapeAttr(s) { return escapeHtml(s); }
+
+  // ------------------------------------------------------------------
+  // System status banner (General section)
+  // ------------------------------------------------------------------
+  async function refreshSystemStatus() {
+    const banner = $('#system-status-banner');
+    if (!banner) return;
+    try {
+      const r = await window.api.get('/api/settings/system-status');
+      banner.dataset.level = r.overall || 'green';
+      const label = $('#sys-status-label');
+      const items = $('#sys-status-items');
+      const labels = { green: 'All systems nominal', amber: 'Attention needed', red: 'Critical issue' };
+      if (label) label.textContent = labels[r.overall] || 'Unknown';
+      if (items && Array.isArray(r.checks)) {
+        const parts = r.checks
+          .filter(c => c.level !== 'green')
+          .map(c => c.name + ': ' + c.detail);
+        if (parts.length) {
+          items.textContent = parts.join(' · ');
+        } else {
+          items.textContent = r.checks.map(c => c.name + ': ' + c.detail).join(' · ');
+        }
+      }
+    } catch (_) {
+      banner.dataset.level = '';
+      const label = $('#sys-status-label');
+      if (label) label.textContent = 'Could not check system health';
+    }
+  }
 
   // ------------------------------------------------------------------
   // Kiosk display card (lives in Display section)
@@ -1215,6 +1259,36 @@
   // ------------------------------------------------------------------
   // Speed test
   // ------------------------------------------------------------------
+  async function refreshSpeedTestHistory() {
+    const list = $('#speed-test-history');
+    if (!list) return;
+    try {
+      const r = await window.api.get('/api/settings/network/speedtest/history');
+      const items = (r && r.results) || [];
+      if (!items.length) {
+        list.innerHTML = '<li class="muted">No speed tests yet.</li>';
+        return;
+      }
+      list.innerHTML = '';
+      items.forEach(t => {
+        const li = document.createElement('li');
+        li.className = 'saved-wifi-item';
+        const dl = t.download_mbps != null ? t.download_mbps.toFixed(1) : '—';
+        const ul = t.upload_mbps != null ? t.upload_mbps.toFixed(1) : '—';
+        const ping = t.ping_ms != null ? Math.round(t.ping_ms) : '—';
+        const iface = t.interface || '?';
+        const ts = t.ts || '';
+        li.innerHTML = `
+          <span class="sw-ssid">${escapeHtml(ts)}</span>
+          <span class="muted small">${escapeHtml(iface)}${t.ip ? ' · ' + escapeHtml(t.ip) : ''}</span>
+          <span class="muted small">↓${dl} ↑${ul} Mbps · ${ping}ms</span>`;
+        list.appendChild(li);
+      });
+    } catch (_) {
+      list.innerHTML = '<li class="muted">Could not load history.</li>';
+    }
+  }
+
   function bindSpeedTest() {
     const btn = $('#btn-speed-test');
     if (!btn) return;
@@ -1231,9 +1305,11 @@
           const dl = r.download_mbps != null ? r.download_mbps.toFixed(1) : '—';
           const ul = r.upload_mbps != null ? r.upload_mbps.toFixed(1) : '—';
           const ping = r.ping_ms != null ? Math.round(r.ping_ms) : '—';
-          const line = `Download: ${dl} Mbps · Upload: ${ul} Mbps · Ping: ${ping} ms`;
+          const iface = r.interface || 'unknown';
+          const line = `Download: ${dl} Mbps · Upload: ${ul} Mbps · Ping: ${ping} ms · via ${iface}`;
           if (output) output.textContent = line;
-          toast(`Down: ${dl} Mbps / Up: ${ul} Mbps`);
+          toast(`Down: ${dl} / Up: ${ul} Mbps via ${iface}`);
+          refreshSpeedTestHistory();
         } else {
           const msg = (r && r.error) || 'Speed test failed';
           if (output) output.textContent = msg;
@@ -1248,6 +1324,8 @@
         btn.disabled = false;
       }
     });
+
+    refreshSpeedTestHistory();
   }
 
   // ------------------------------------------------------------------
@@ -1267,6 +1345,7 @@
     bindKioskCards();
     bindLocationExtras();
     bindSpeedTest();
+    refreshSystemStatus();
   });
 
 })();

@@ -1965,11 +1965,30 @@ def api_speedtest():
     """Run a basic download/upload speed test against Cloudflare."""
     import urllib.request
     import urllib.error
+    import socket
 
     results = {'ok': False, 'download_mbps': None, 'upload_mbps': None, 'ping_ms': None}
 
+    # Detect active interface
+    iface = None
+    ip_addr = None
+    try:
+        r = subprocess.run(
+            ['ip', 'route', 'get', '8.8.8.8'],
+            capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            parts = r.stdout.split()
+            for i, tok in enumerate(parts):
+                if tok == 'dev' and i + 1 < len(parts):
+                    iface = parts[i + 1]
+                if tok == 'src' and i + 1 < len(parts):
+                    ip_addr = parts[i + 1]
+    except Exception:
+        pass
+    results['interface'] = iface
+    results['ip'] = ip_addr
+
     # Ping (TCP connect latency to 1.1.1.1:443)
-    import socket
     try:
         t0 = time.time()
         s = socket.create_connection(('1.1.1.1', 443), timeout=5)
@@ -2020,8 +2039,53 @@ def api_speedtest():
         'download_mbps': results.get('download_mbps'),
         'upload_mbps': results.get('upload_mbps'),
         'ping_ms': results.get('ping_ms'),
+        'interface': iface,
     })
+
+    # Persist to SQLite (keep last 10)
+    try:
+        import db as _db
+        conn = _db.get_conn()
+        conn.execute('''CREATE TABLE IF NOT EXISTS speed_tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            interface TEXT,
+            ip TEXT,
+            download_mbps REAL,
+            upload_mbps REAL,
+            ping_ms REAL
+        )''')
+        conn.execute(
+            'INSERT INTO speed_tests (interface, ip, download_mbps, upload_mbps, ping_ms) VALUES (?,?,?,?,?)',
+            (iface, ip_addr, results.get('download_mbps'), results.get('upload_mbps'), results.get('ping_ms')))
+        conn.execute('''DELETE FROM speed_tests WHERE id NOT IN (
+            SELECT id FROM speed_tests ORDER BY id DESC LIMIT 10)''')
+        conn.commit()
+    except Exception as e:
+        logger.warning('speed test db write failed: %s', e)
+
     return jsonify(results)
+
+
+@settings_bp.route('/api/settings/network/speedtest/history', methods=['GET'])
+@ADMIN
+def api_speedtest_history():
+    """Return the last 10 speed test results."""
+    try:
+        import db as _db
+        conn = _db.get_conn()
+        conn.execute('''CREATE TABLE IF NOT EXISTS speed_tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            interface TEXT, ip TEXT,
+            download_mbps REAL, upload_mbps REAL, ping_ms REAL
+        )''')
+        rows = conn.execute(
+            'SELECT ts, interface, ip, download_mbps, upload_mbps, ping_ms FROM speed_tests ORDER BY id DESC LIMIT 10'
+        ).fetchall()
+        return jsonify({'ok': True, 'results': [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e), 'results': []})
 
 
 @settings_bp.route('/api/settings/network/backend', methods=['GET'])
@@ -2097,28 +2161,40 @@ def api_dump1090_restart():
 @settings_bp.route('/api/settings/feeders/dump1090/install', methods=['POST'])
 @ADMIN
 def api_dump1090_install():
-    """Install dump1090-fa via apt. Requires internet access."""
+    """Install dump1090-fa via the secure installer framework."""
     logs_svc.log_portal('admin', 'dump1090_install_requested', {})
-    ok, msg = _shell(['dpkg', '-s', 'dump1090-fa'], timeout=5)
+    ok, output = _run_installer('dump1090')
     if ok:
-        return _ok({'message': 'dump1090-fa is already installed', 'output': msg})
+        logs_svc.log_portal('admin', 'dump1090_installed', {})
+        return _ok({'message': 'dump1090-fa installed', 'output': output})
+    return _err(f'Installation failed: {output}', 500)
 
-    ok1, msg1 = _shell(['apt-get', 'update'], timeout=120)
-    if not ok1:
-        return _err(f'apt-get update failed: {msg1}', 500)
 
-    ok2, msg2 = _shell(
-        ['apt-get', 'install', '-y', 'dump1090-fa'],
-        timeout=300,
-    )
-    if not ok2:
-        return _err(f'Installation failed: {msg2}', 500)
+@settings_bp.route('/api/settings/software/install', methods=['POST'])
+@ADMIN
+def api_software_install():
+    """Generic package install via the secure installer framework."""
+    package = (request.json or {}).get('package', '').strip()
+    if not package:
+        return _err('No package specified', 400)
+    logs_svc.log_portal('admin', 'software_install_requested', {'package': package})
+    ok, output = _run_installer(package)
+    if ok:
+        logs_svc.log_portal('admin', 'software_installed', {'package': package})
+        return _ok({'message': f'{package} installed', 'output': output})
+    return _err(f'Installation failed: {output}', 500)
 
-    _shell(['systemctl', 'enable', 'dump1090-fa'], timeout=10)
-    _shell(['systemctl', 'start', 'dump1090-fa'], timeout=15)
 
-    logs_svc.log_portal('admin', 'dump1090_installed', {})
-    return _ok({'message': 'dump1090-fa installed and started', 'output': msg2})
+def _run_installer(package):
+    """Run a whitelisted package through the secure installer wrapper."""
+    wrapper = '/usr/local/bin/skytrack-installer'
+    if not os.path.isfile(wrapper):
+        return False, (
+            'Installer framework not deployed. '
+            'Run install.sh on the Pi to set it up.'
+        )
+    ok, output = _shell(['sudo', wrapper, package], timeout=600)
+    return ok, output
 
 
 # ---------- Data ------------------------------------------------------------
@@ -2315,6 +2391,122 @@ def api_updates_reboot():
 @ADMIN
 def api_updates_shutdown():
     return api_shutdown()
+
+
+# ---------- System status banner ---------------------------------------------
+
+@settings_bp.route('/api/settings/system-status', methods=['GET'])
+@ADMIN
+def api_system_status():
+    """Priority-based health summary for the General page status banner."""
+    checks = []
+
+    # CPU temperature
+    cpu_temp = None
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp') as f:
+            cpu_temp = int(f.read().strip()) / 1000.0
+    except Exception:
+        pass
+    if cpu_temp is not None:
+        if cpu_temp > 80:
+            checks.append({'name': 'CPU temp', 'level': 'red',
+                           'detail': f'{cpu_temp:.0f}°C — critical'})
+        elif cpu_temp > 70:
+            checks.append({'name': 'CPU temp', 'level': 'amber',
+                           'detail': f'{cpu_temp:.0f}°C — warm'})
+        else:
+            checks.append({'name': 'CPU temp', 'level': 'green',
+                           'detail': f'{cpu_temp:.0f}°C'})
+
+    # Disk usage
+    try:
+        st = os.statvfs('/opt/skytrack')
+        total = st.f_blocks * st.f_frsize
+        free = st.f_bavail * st.f_frsize
+        used_pct = round(100 * (1 - free / total), 1) if total else 0
+        if used_pct > 95:
+            checks.append({'name': 'Disk', 'level': 'red',
+                           'detail': f'{used_pct}% used'})
+        elif used_pct > 85:
+            checks.append({'name': 'Disk', 'level': 'amber',
+                           'detail': f'{used_pct}% used'})
+        else:
+            checks.append({'name': 'Disk', 'level': 'green',
+                           'detail': f'{used_pct}% used'})
+    except Exception:
+        checks.append({'name': 'Disk', 'level': 'amber', 'detail': 'unknown'})
+
+    # Memory
+    try:
+        info = {}
+        with open('/proc/meminfo') as f:
+            for line in f:
+                k, _, v = line.partition(':')
+                info[k.strip()] = int(v.strip().split()[0]) * 1024
+        total = info.get('MemTotal', 0)
+        avail = info.get('MemAvailable', info.get('MemFree', 0))
+        used_pct = round(100 * (total - avail) / total, 1) if total else 0
+        if used_pct > 90:
+            checks.append({'name': 'Memory', 'level': 'red',
+                           'detail': f'{used_pct}% used'})
+        elif used_pct > 80:
+            checks.append({'name': 'Memory', 'level': 'amber',
+                           'detail': f'{used_pct}% used'})
+        else:
+            checks.append({'name': 'Memory', 'level': 'green',
+                           'detail': f'{used_pct}% used'})
+    except Exception:
+        checks.append({'name': 'Memory', 'level': 'amber', 'detail': 'unknown'})
+
+    # Internet
+    try:
+        r = subprocess.run(
+            ['ip', 'route', 'get', '8.8.8.8'],
+            capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            checks.append({'name': 'Internet', 'level': 'green',
+                           'detail': 'reachable'})
+        else:
+            checks.append({'name': 'Internet', 'level': 'red',
+                           'detail': 'no route'})
+    except Exception:
+        checks.append({'name': 'Internet', 'level': 'red',
+                       'detail': 'check failed'})
+
+    # dump1090
+    dump_json = Path('/run/dump1090-fa/aircraft.json')
+    if dump_json.exists():
+        checks.append({'name': 'dump1090', 'level': 'green',
+                       'detail': 'running'})
+    elif Path('/usr/bin/dump1090-fa').exists():
+        checks.append({'name': 'dump1090', 'level': 'amber',
+                       'detail': 'installed but no data'})
+    else:
+        checks.append({'name': 'dump1090', 'level': 'amber',
+                       'detail': 'not installed'})
+
+    # GPS
+    with current_app.gps_state_lock:
+        gps = dict(current_app.gps_state)
+    gps_state = gps.get('state', 'no_fix')
+    if gps_state == 'fix_acquired':
+        checks.append({'name': 'GPS', 'level': 'green', 'detail': 'fix acquired'})
+    elif current_app.skytrack_config.get('location_source') == 'manual':
+        checks.append({'name': 'GPS', 'level': 'green', 'detail': 'manual location set'})
+    else:
+        checks.append({'name': 'GPS', 'level': 'amber', 'detail': 'no fix'})
+
+    # Overall level: worst of all checks
+    levels = [c['level'] for c in checks]
+    if 'red' in levels:
+        overall = 'red'
+    elif 'amber' in levels:
+        overall = 'amber'
+    else:
+        overall = 'green'
+
+    return jsonify({'overall': overall, 'checks': checks})
 
 
 # ---------- Diagnostics -----------------------------------------------------

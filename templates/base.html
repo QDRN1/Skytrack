@@ -54,6 +54,12 @@
   </div>
   {% endblock %}
 
+  {# Critical device temp alarm banner #}
+  <div class="critical-banner" id="critical-temp-banner" hidden>
+    <span class="critical-icon">⚠</span>
+    <span class="critical-text" id="critical-temp-text">Device overheating — check cooling</span>
+  </div>
+
   <main class="content">
     {% block content %}{% endblock %}
   </main>

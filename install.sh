@@ -465,6 +465,25 @@ if [[ "$DEV_INSTALL" != true ]]; then
   elif [[ ! -d /etc/polkit-1/rules.d ]]; then
     warn "/etc/polkit-1/rules.d missing — restart buttons may fail until polkit is installed"
   fi
+
+  # Secure installer framework — wrapper + sudoers rule.
+  # The wrapper validates packages against a whitelist and delegates to
+  # modular scripts under /opt/skytrack/installers/.
+  log "step 11b/14: installer framework"
+  install -m 0755 -o root -g root \
+    "$REPO_DIR/scripts/skytrack-installer" \
+    /usr/local/bin/skytrack-installer
+  info "installed /usr/local/bin/skytrack-installer"
+
+  chmod 0755 "$REPO_DIR/installers/"*.sh 2>/dev/null || true
+
+  SUDOERS_FILE="/etc/sudoers.d/skytrack-installer"
+  SUDOERS_LINE="$SKYTRACK_USER ALL=(root) NOPASSWD: /usr/local/bin/skytrack-installer"
+  if [[ ! -f "$SUDOERS_FILE" ]] || ! grep -qF "$SUDOERS_LINE" "$SUDOERS_FILE" 2>/dev/null; then
+    echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
+    chmod 0440 "$SUDOERS_FILE"
+    info "installed sudoers rule → $SUDOERS_FILE"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,11 @@
-{# Settings → Display #}
+{# Settings → Display Preferences #}
 <section class="settings-section" data-section-pane="display">
 
+  {# ---- Card 1: Kiosk (on-device screen) ---- #}
   <div class="settings-card">
     <header class="card-header">
-      <h2>Display</h2>
-      <p class="muted">Settings for the on-device kiosk screen (HDMI / touchscreen).</p>
+      <h2>Kiosk display</h2>
+      <p class="muted">Settings for the on-device screen (HDMI / touchscreen) and the carousel rotation.</p>
     </header>
 
     <form class="card-body card-form" id="form-display"
@@ -46,25 +47,6 @@
         </p>
       </div>
 
-      <div class="field">
-        <label>Background animations</label>
-        <div class="segmented" role="radiogroup" aria-label="Animation level">
-          {% for v, lbl in [('full','Full'),('reduced','Reduced'),('off','Off')] %}
-          <label class="seg"><input type="radio" name="display_animation_level" value="{{ v }}"
-                 {% if (config.display_animation_level or 'full') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
-          {% endfor %}
-        </div>
-        <p class="muted small">Controls the floating particle background on the dashboard.
-          Set to <em>Reduced</em> or <em>Off</em> if the Pi feels sluggish.</p>
-      </div>
-
-      <div class="field">
-        <label for="d-particles">Particle density <output class="slider-out" id="d-particles-out">{{ config.display_particle_density or 80 }}</output>%</label>
-        <input id="d-particles" name="display_particle_density" type="range" class="touch-slider"
-               min="0" max="100" step="5" value="{{ config.display_particle_density or 80 }}">
-        <p class="muted small">How many background particles to draw. Lower = less CPU on a Pi.</p>
-      </div>
-
       <div class="field" data-reboot-field="display_fullscreen_on_boot">
         <label class="switch-row">
           <span>Start kiosk in fullscreen</span>
@@ -83,21 +65,14 @@
 
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save Display</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Kiosk Screen</button>
       </footer>
     </form>
-  </div>
 
-  {# ---- Kiosk Carousel Cards ---- #}
-  <div class="settings-card">
-    <header class="card-header">
-      <h2>Kiosk display</h2>
-      <p class="muted">Choose which cards the on-device carousel shows and the rotation speed.</p>
-    </header>
-
+    {# Carousel card selection (not a separate form — custom JS save) #}
     <div class="card-body card-form" id="kiosk-cards-card">
+      <h3 style="margin:0 0 8px">Carousel cards</h3>
       <div class="field">
-        <label>Cards</label>
         <div class="checkbox-grid" id="kiosk-card-toggles">
           {% set enabled = config.kiosk_cards or ['aircraft_now','aircraft_today','busiest_hour','last_aircraft','weather','top_airlines','activity_trend','device_info'] %}
           {% for id, lbl in [
@@ -152,9 +127,62 @@
 
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" id="kiosk-cards-cancel">Cancel</button>
-        <button type="button" class="btn btn-lg btn-primary" id="kiosk-cards-save">Save Kiosk</button>
+        <button type="button" class="btn btn-lg btn-primary" id="kiosk-cards-save">Save Carousel</button>
       </footer>
     </div>
+  </div>
+
+  {# ---- Card 2: Web Portal appearance ---- #}
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Web portal appearance</h2>
+      <p class="muted">Theme and visual settings for the browser-based admin portal (Dashboard, Settings, Logs).</p>
+    </header>
+
+    <form class="card-body card-form" id="form-portal-appearance"
+          data-endpoint="/api/settings/general"
+          data-section="display">
+
+      <div class="field">
+        <label>Portal theme</label>
+        <div class="segmented" role="radiogroup" aria-label="Portal theme default">
+          <label class="seg"><input type="radio" name="default_theme" value="light"
+                 {% if config.default_theme == 'light' %}checked{% endif %}><span>Light</span></label>
+          <label class="seg"><input type="radio" name="default_theme" value="dark"
+                 {% if config.default_theme == 'dark' %}checked{% endif %}><span>Dark</span></label>
+          <label class="seg"><input type="radio" name="default_theme" value="auto"
+                 {% if config.default_theme == 'auto' %}checked{% endif %}><span>Auto</span></label>
+        </div>
+        <p class="muted small">
+          Each browser can still override with the theme button in the top bar. The
+          on-device kiosk display is always dark and is not affected.
+        </p>
+      </div>
+
+      <div class="field">
+        <label>Background animations</label>
+        <div class="segmented" role="radiogroup" aria-label="Animation level">
+          {% for v, lbl in [('full','Full'),('reduced','Reduced'),('off','Off')] %}
+          <label class="seg"><input type="radio" name="display_animation_level" value="{{ v }}"
+                 {% if (config.display_animation_level or 'full') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+        <p class="muted small">Controls the floating particle background on the dashboard.
+          Set to <em>Reduced</em> or <em>Off</em> if the Pi feels sluggish.</p>
+      </div>
+
+      <div class="field">
+        <label for="d-particles">Particle density <output class="slider-out" id="d-particles-out">{{ config.display_particle_density or 80 }}</output>%</label>
+        <input id="d-particles" name="display_particle_density" type="range" class="touch-slider"
+               min="0" max="100" step="5" value="{{ config.display_particle_density or 80 }}">
+        <p class="muted small">How many background particles to draw. Lower = less CPU on a Pi.</p>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Appearance</button>
+      </footer>
+    </form>
   </div>
 
 </section>

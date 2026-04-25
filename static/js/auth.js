@@ -229,6 +229,7 @@
         el.addEventListener('click', (ev) => {
           if (state.status && state.status.is_admin) return; // already in
           ev.preventDefault();
+          toast('Sign in required', 'warn');
           requireAdmin({ next: href, retry: () => { window.location.href = href; } })
             .catch(() => {});
         });
@@ -237,6 +238,7 @@
       // <button> — just open the modal; a separate handler can resume work
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
+        toast('Sign in required', 'warn');
         const next = el.dataset.authNext || null;
         requireAdmin({
           next,
@@ -274,6 +276,7 @@
       // Don't loop on the login/status endpoints themselves
       const url = (typeof input === 'string') ? input : (input && input.url) || '';
       if (url.indexOf('/api/auth/') >= 0) return resp;
+      toast('Sign in required', 'warn');
       try {
         await requireAdmin({
           retry: null,

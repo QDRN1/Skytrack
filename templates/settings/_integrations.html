@@ -1,9 +1,9 @@
-{# Settings → Integrations #}
+{# Settings → API Integrations #}
 <section class="settings-section" data-section-pane="integrations">
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Integrations</h2>
+      <h2>API Integrations</h2>
       <p class="muted">
         SkyTrack can enrich aircraft data and fetch weather from outside services.
         Each one lists its own requirements below — nothing is turned on by default,
@@ -203,6 +203,42 @@
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
         <button type="submit" class="btn btn-lg btn-primary">Save Integrations</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Radar publishing</h2>
+      <p class="muted">Register this SkyTrack with <code>radar.qdrn.io</code> so it appears on the public fleet map.</p>
+    </header>
+
+    <form class="card-body card-form" id="form-radar"
+          data-endpoint="/api/settings/radar"
+          data-section="integrations">
+
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Your radar URL</span>
+          <a class="ro-value" href="{{ radar_url }}" target="_blank" rel="noopener">{{ radar_url }}</a>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="switch-row">
+          <span>Publish this device to radar.qdrn.io</span>
+          <span class="switch">
+            <input type="checkbox" name="radar_publish_enabled"
+                   {% if config.radar_publish_enabled %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
+        </label>
+        <p class="muted small">No real publishing happens yet — this just stores your intent.</p>
+      </div>
+
+      <footer class="card-footer">
+        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save Radar</button>
       </footer>
     </form>
   </div>

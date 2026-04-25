@@ -163,6 +163,33 @@
       });
     }
 
+    // Device temp alarm banner poll
+    const critBanner = document.getElementById('critical-temp-banner');
+    const critText = document.getElementById('critical-temp-text');
+    if (critBanner) {
+      const checkAlarm = async () => {
+        try {
+          const r = await fetch('/api/device-temp-alarm', {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+            cache: 'no-store',
+          });
+          if (!r.ok) return;
+          const d = await r.json();
+          if (d.active) {
+            critBanner.hidden = false;
+            if (critText && d.cpu_temp_c != null) {
+              critText.textContent = 'Device overheating: CPU ' + d.cpu_temp_c.toFixed(0) + '°C (limit: ' + (d.threshold_c || 80) + '°C)';
+            }
+          } else {
+            critBanner.hidden = true;
+          }
+        } catch (_e) { /* transient */ }
+      };
+      checkAlarm();
+      setInterval(checkAlarm, 15000);
+    }
+
     // Sign-in button is wired by auth.js via [data-auth-trigger="admin"].
 
     // 5-tap or long-press super-user shortcut on the topbar logo

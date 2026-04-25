@@ -139,3 +139,12 @@ def api_gps():
 @api_bp.route('/api/weather')
 def api_weather():
     return jsonify(current_app.weather_svc.get_weather())
+
+
+@api_bp.route('/api/device-temp-alarm')
+def api_device_temp_alarm():
+    """Public — kiosk needs this for the critical overlay."""
+    alarm = getattr(current_app, 'device_temp_alarm', None)
+    if alarm:
+        return jsonify(alarm.status())
+    return jsonify({'active': False, 'cpu_temp_c': None, 'threshold_c': 80})

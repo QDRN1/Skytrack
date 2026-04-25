@@ -44,6 +44,7 @@
   const TREND_URL    = '/api/dashboard/trend';
   const POS_URL      = '/api/dashboard/positions';
   const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
+  const TEMP_ALARM_URL = '/api/device-temp-alarm';
 
   // ----- Cadences ------------------------------------------------------
   const ONB_POLL_MS         = 1500;
@@ -453,6 +454,7 @@
     refreshAirlines();
     refreshTrend();
     refreshMap();
+    startTempAlarmPoll();
 
     if (!opCardsTimer) opCardsTimer = setInterval(function () {
       refreshCards(); refreshAirlines(); refreshTrend(); refreshMap();
@@ -467,6 +469,7 @@
     if (opDevTimer)   { clearInterval(opDevTimer);   opDevTimer   = null; }
     if (opClockTimer) { clearInterval(opClockTimer); opClockTimer = null; }
     stopCarouselAuto();
+    stopTempAlarmPoll();
   }
 
   // ----- Carousel initialization & config --------------------------------
@@ -477,12 +480,12 @@
         carouselInterval = (cfg.interval || 8) * 1000;
         carouselMapInterval = (cfg.map_interval || 15) * 1000;
         buildCarouselPages(cfg.cards || [], cfg.show_map !== false);
-        startCarouselAuto();
+        setTimeout(startCarouselAuto, 500);
         initSwipe();
       })
       .catch(function () {
         buildCarouselPages([], true);
-        startCarouselAuto();
+        setTimeout(startCarouselAuto, 500);
         initSwipe();
       });
   }
@@ -675,19 +678,22 @@
   // ----- Clock -----------------------------------------------------------
   function startClock() {
     var tick = function () {
-      var now = new Date();
-      var hh = String(now.getHours()).padStart(2, '0');
-      var mm = String(now.getMinutes()).padStart(2, '0');
-      setText('op-clock-time', hh + ':' + mm);
-      var opts = { weekday: 'short', month: 'short', day: 'numeric' };
       try {
-        setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
-      } catch (_e) {
-        setText('op-clock-date', '');
-      }
+        var now = new Date();
+        var hh = String(now.getHours()).padStart(2, '0');
+        var mm = String(now.getMinutes()).padStart(2, '0');
+        setText('op-clock-time', hh + ':' + mm);
+        var opts = { weekday: 'short', month: 'short', day: 'numeric' };
+        try {
+          setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
+        } catch (_e) {
+          setText('op-clock-date', '');
+        }
+      } catch (_e) { /* never let the tick die */ }
     };
     tick();
-    if (!opClockTimer) opClockTimer = setInterval(tick, 15 * 1000);
+    if (opClockTimer) clearInterval(opClockTimer);
+    opClockTimer = setInterval(tick, 15 * 1000);
   }
 
   function fmtNumber(n) {
@@ -957,6 +963,40 @@
         }
       });
     } catch (_e) { /* transient */ }
+  }
+
+  // ----- Device temp alarm poll ----------------------------------------
+  let tempAlarmTimer = null;
+  async function checkTempAlarm() {
+    try {
+      var r = await fetch(TEMP_ALARM_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      var overlay = $('temp-alarm-overlay');
+      if (!overlay) return;
+      if (data.active) {
+        var detail = $('temp-alarm-detail');
+        if (detail && data.cpu_temp_c != null) {
+          detail.textContent = 'CPU temperature: ' + data.cpu_temp_c.toFixed(0) + '°C (limit: ' + (data.threshold_c || 80) + '°C)';
+        }
+        overlay.hidden = false;
+      } else {
+        overlay.hidden = true;
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  function startTempAlarmPoll() {
+    if (tempAlarmTimer) return;
+    checkTempAlarm();
+    tempAlarmTimer = setInterval(checkTempAlarm, 10000);
+  }
+  function stopTempAlarmPoll() {
+    if (tempAlarmTimer) { clearInterval(tempAlarmTimer); tempAlarmTimer = null; }
   }
 
   // ----- Onboarding state polling ------------------------------------

@@ -22,38 +22,35 @@
       <button class="rail-btn active" data-section="general">
         <span class="rail-icon">⚙</span><span class="rail-label">General</span>
       </button>
-      <button class="rail-btn" data-section="location">
-        <span class="rail-icon">📍</span><span class="rail-label">Location</span>
-      </button>
       <button class="rail-btn" data-section="display">
         <span class="rail-icon">🖥</span><span class="rail-label">Display</span>
       </button>
-      <button class="rail-btn" data-section="access">
-        <span class="rail-icon">🔐</span><span class="rail-label">Access</span>
+      <button class="rail-btn" data-section="location">
+        <span class="rail-icon">📍</span><span class="rail-label">Location</span>
       </button>
       <button class="rail-btn" data-section="network">
         <span class="rail-icon">📡</span><span class="rail-label">Network</span>
       </button>
-      <button class="rail-btn" data-section="integrations">
-        <span class="rail-icon">🔗</span><span class="rail-label">Integrations</span>
-      </button>
-      <button class="rail-btn" data-section="feeders">
-        <span class="rail-icon">📥</span><span class="rail-label">Feeders</span>
-      </button>
-      <button class="rail-btn" data-section="data">
-        <span class="rail-icon">📊</span><span class="rail-label">Data</span>
-      </button>
       <button class="rail-btn" data-section="alerts">
         <span class="rail-icon">🔔</span><span class="rail-label">Alerts</span>
       </button>
-      <button class="rail-btn" data-section="updates">
-        <span class="rail-icon">⬆</span><span class="rail-label">Updates &amp; Backup</span>
+      <button class="rail-btn" data-section="integrations">
+        <span class="rail-icon">🔗</span><span class="rail-label">API Integrations</span>
+      </button>
+      <button class="rail-btn" data-section="feeders">
+        <span class="rail-icon">📦</span><span class="rail-label">Software</span>
+      </button>
+      <button class="rail-btn" data-section="data">
+        <span class="rail-icon">📊</span><span class="rail-label">Data Storage</span>
+      </button>
+      <button class="rail-btn" data-section="access">
+        <span class="rail-icon">🔐</span><span class="rail-label">Access Control</span>
       </button>
       <button class="rail-btn" data-section="diagnostics">
         <span class="rail-icon">🩺</span><span class="rail-label">Diagnostics</span>
       </button>
-      <button class="rail-btn" data-section="radar">
-        <span class="rail-icon">🛰</span><span class="rail-label">Radar</span>
+      <button class="rail-btn" data-section="updates">
+        <span class="rail-icon">🔧</span><span class="rail-label">Maintenance</span>
       </button>
     </nav>
 
@@ -61,17 +58,16 @@
     <div class="settings-panes" id="settings-panes">
 
       {% include 'settings/_general.html'      ignore missing %}
-      {% include 'settings/_location.html'    ignore missing %}
       {% include 'settings/_display.html'      ignore missing %}
-      {% include 'settings/_access.html'       ignore missing %}
+      {% include 'settings/_location.html'    ignore missing %}
       {% include 'settings/_network.html'      ignore missing %}
+      {% include 'settings/_alerts.html'       ignore missing %}
       {% include 'settings/_integrations.html' ignore missing %}
       {% include 'settings/_feeders.html'      ignore missing %}
       {% include 'settings/_data.html'         ignore missing %}
-      {% include 'settings/_alerts.html'       ignore missing %}
-      {% include 'settings/_updates.html'      ignore missing %}
+      {% include 'settings/_access.html'       ignore missing %}
       {% include 'settings/_diagnostics.html'  ignore missing %}
-      {% include 'settings/_radar.html'        ignore missing %}
+      {% include 'settings/_updates.html'      ignore missing %}
 
     </div>
   </div>
