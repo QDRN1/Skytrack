@@ -1,15 +1,14 @@
-{# Settings → Software #}
+{# Settings → Receiver & Feeders #}
 <section class="settings-section" data-section-pane="feeders">
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Receiver &amp; software packages</h2>
+      <h2>ADS-B receiver</h2>
       <p class="muted">
-        Feeders are <strong>optional</strong>. They share this SkyTrack's ADS-B
-        data with third parties (FlightRadar24, FlightAware) in exchange for
-        their services. A tile reading <em>not installed</em> just means the
-        corresponding package isn't on this Pi yet — it is not an error.
-        SkyTrack itself works whether or not any feeder is installed.
+        The ADS-B stack installs <strong>dump1090-fa</strong> (the radio
+        decoder) and <strong>PiAware</strong> (the FlightAware feeder)
+        together. SkyTrack reads aircraft data from dump1090's local
+        output — without it the map shows sample data only.
       </p>
     </header>
 
@@ -20,11 +19,6 @@
           <span class="st-value" id="feed-dump-value">…</span>
           <span class="st-sub muted" id="feed-dump-sub">checking</span>
         </div>
-        <div class="status-tile" id="feed-fr24-tile" title="FlightRadar24 feeder">
-          <span class="st-label">FlightRadar24</span>
-          <span class="st-value" id="feed-fr24-value">…</span>
-          <span class="st-sub muted" id="feed-fr24-sub">checking</span>
-        </div>
         <div class="status-tile" id="feed-pia-tile" title="FlightAware PiAware feeder">
           <span class="st-label">PiAware</span>
           <span class="st-value" id="feed-pia-value">…</span>
@@ -33,31 +27,49 @@
       </div>
 
       <div class="action-row" style="margin-top:12px">
-        <button type="button" class="btn btn-lg btn-primary" id="btn-install-dump1090">Install dump1090-fa</button>
+        <button type="button" class="btn btn-lg btn-primary" id="btn-install-adsb">Install ADS-B stack</button>
         <button type="button" class="btn btn-lg" id="btn-restart-dump1090">Restart dump1090</button>
       </div>
-      <pre class="log-pre" id="dump1090-install-output" hidden style="margin-top:12px;padding:12px;font-size:0.85em;max-height:200px;overflow-y:auto"></pre>
-
-      <p class="muted small">
-        <strong>Honest status:</strong> SkyTrack reads local dump1090 data from
-        <code>/run/dump1090-fa/aircraft.json</code>. If that file doesn't exist,
-        the dump1090 tile reads <em>not installed</em> and the map falls back
-        to sample data. Tap <em>Install dump1090-fa</em> to install the package
-        on this Pi. FR24 and PiAware uplinks still need their own packages —
-        the credentials below only matter once those services are installed.
-      </p>
+      <pre class="log-pre" id="adsb-install-output" hidden style="margin-top:12px;padding:12px;font-size:0.85em;max-height:300px;overflow-y:auto"></pre>
     </div>
   </div>
 
   <div class="settings-card">
     <header class="card-header">
-      <h2>Feeder uplink credentials</h2>
+      <h2>FlightRadar24 <span class="muted small">(optional add-on)</span></h2>
       <p class="muted">
-        If you share ADS-B data with FlightRadar24, PiAware, or FlightAware,
-        paste your IDs here. These are stored encrypted in
-        <code>/var/lib/skytrack/auth.json</code> and never committed to git.
-        Saving a value here does <em>not</em> install the feeder package —
-        the credentials just sit idle until you install it on the Pi.
+        FR24 is a separate feeder that shares your ADS-B data with
+        FlightRadar24. It reads from the dump1090 output — install the
+        ADS-B stack above first. After installing, you may need to run
+        <code>sudo fr24feed --signup</code> via the super admin shell
+        to complete the initial FR24 setup.
+      </p>
+    </header>
+
+    <div class="card-body">
+      <div class="status-grid">
+        <div class="status-tile" id="feed-fr24-tile" title="FlightRadar24 feeder">
+          <span class="st-label">FlightRadar24</span>
+          <span class="st-value" id="feed-fr24-value">…</span>
+          <span class="st-sub muted" id="feed-fr24-sub">checking</span>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top:12px">
+        <button type="button" class="btn btn-lg btn-primary" id="btn-install-fr24">Install FR24 feeder</button>
+        <button type="button" class="btn btn-lg" id="btn-restart-feeders">Restart feeders</button>
+      </div>
+      <pre class="log-pre" id="fr24-install-output" hidden style="margin-top:12px;padding:12px;font-size:0.85em;max-height:300px;overflow-y:auto"></pre>
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Feeder credentials</h2>
+      <p class="muted">
+        Paste your sharing keys and feeder IDs here. These are stored
+        encrypted and never committed to git. Saving credentials does
+        <em>not</em> install any package — install the feeder first.
       </p>
     </header>
 
@@ -71,7 +83,6 @@
         </label>
         <input id="f-fr24" name="fr24_key" type="password" autocomplete="off"
                placeholder="{% if secrets_set.fr24_key %}••• leave blank to keep •••{% else %}paste sharing key…{% endif %}">
-        <p class="muted small">Obtain from fr24feed first-run; only used when the fr24feed service is installed.</p>
       </div>
 
       <div class="field">
@@ -101,7 +112,7 @@
             <span class="switch-track"></span>
           </span>
         </label>
-        <p class="muted small">Off by default — feeders can chew through metered data fast.</p>
+        <p class="muted small">Off by default — feeders can use data quickly on metered connections.</p>
       </div>
 
       <div class="field">
@@ -117,21 +128,9 @@
 
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save Feeders</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save</button>
       </footer>
     </form>
-  </div>
-
-  <div class="settings-card subtle">
-    <header class="card-header">
-      <h2>Service controls</h2>
-      <p class="muted">Restart the local dump1090 service if the receiver gets stuck.</p>
-    </header>
-    <div class="card-body">
-      <div class="action-row">
-        <button type="button" class="btn btn-lg btn-warn" id="btn-restart-dump1090">Restart dump1090</button>
-      </div>
-    </div>
   </div>
 
 </section>

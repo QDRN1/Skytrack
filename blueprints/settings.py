@@ -2229,12 +2229,29 @@ def api_dump1090_restart():
 @settings_bp.route('/api/settings/feeders/dump1090/install', methods=['POST'])
 @ADMIN
 def api_dump1090_install():
-    """Install dump1090-fa via the secure installer framework."""
-    logs_svc.log_portal('admin', 'dump1090_install_requested', {})
-    ok, output = _run_installer('dump1090')
+    """Install dump1090-fa + piaware together as the ADS-B stack."""
+    logs_svc.log_portal('admin', 'adsb_install_requested', {})
+    ok1, out1 = _run_installer('dump1090')
+    ok2, out2 = _run_installer('piaware')
+    combined = (out1 or '') + '\n' + (out2 or '')
+    if ok1 and ok2:
+        logs_svc.log_portal('admin', 'adsb_installed', {})
+        return _ok({'message': 'dump1090-fa + piaware installed', 'output': combined})
+    if ok1:
+        logs_svc.log_portal('admin', 'dump1090_installed_piaware_failed', {})
+        return _ok({'message': 'dump1090-fa installed; piaware failed (see log)', 'output': combined})
+    return _err(f'Installation failed: {combined}', 500)
+
+
+@settings_bp.route('/api/settings/feeders/fr24/install', methods=['POST'])
+@ADMIN
+def api_fr24_install():
+    """Install fr24feed (FlightRadar24 feeder)."""
+    logs_svc.log_portal('admin', 'fr24_install_requested', {})
+    ok, output = _run_installer('fr24feed')
     if ok:
-        logs_svc.log_portal('admin', 'dump1090_installed', {})
-        return _ok({'message': 'dump1090-fa installed', 'output': output})
+        logs_svc.log_portal('admin', 'fr24_installed', {})
+        return _ok({'message': 'fr24feed installed', 'output': output})
     return _err(f'Installation failed: {output}', 500)
 
 

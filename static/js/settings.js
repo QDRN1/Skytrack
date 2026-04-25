@@ -688,47 +688,63 @@
   }
 
   function bindFeederExtras() {
-    const r = $('#btn-restart-dump1090');
-    if (r) r.addEventListener('click', async () => {
+    const restartDump = $('#btn-restart-dump1090');
+    if (restartDump) restartDump.addEventListener('click', async () => {
       const ok = await confirmModal('Restart dump1090?', 'The receiver will drop its current aircraft list briefly.');
       if (!ok) return;
       try { await window.api.post('/api/settings/feeders/dump1090/restart'); toast('dump1090 restarting'); refreshFeederStatus(); }
       catch (_) { toast('Restart failed', true); }
     });
 
-    const inst = $('#btn-install-dump1090');
-    const instOut = $('#dump1090-install-output');
-    if (inst) inst.addEventListener('click', async () => {
-      const ok = await confirmModal(
-        'Install dump1090-fa?',
-        'This will download and install the dump1090-fa package. ' +
-        'The device needs internet access. This may take a few minutes.'
-      );
+    const restartFeeders = $('#btn-restart-feeders');
+    if (restartFeeders) restartFeeders.addEventListener('click', async () => {
+      const ok = await confirmModal('Restart feeders?', 'PiAware and FR24 will briefly disconnect and reconnect.');
       if (!ok) return;
-      inst.disabled = true;
-      inst.textContent = 'Installing…';
-      if (instOut) { instOut.hidden = false; instOut.textContent = 'Starting installation…\n'; }
-      toast('Installing dump1090-fa…');
-      try {
-        const r = await window.api.post('/api/settings/feeders/dump1090/install');
-        if (r && r.ok) {
-          toast('dump1090-fa installed');
-          if (instOut) instOut.textContent += (r.output || 'Installation complete.') + '\n';
-        } else {
-          const msg = (r && r.error) || 'Installation failed';
-          toast(msg, true);
-          if (instOut) instOut.textContent += 'ERROR: ' + msg + '\n';
-        }
-        refreshFeederStatus();
-      } catch (e) {
-        const msg = (e && e.data && e.data.error) || 'Installation failed';
-        toast(msg, true);
-        if (instOut) instOut.textContent += 'ERROR: ' + msg + '\n';
-      } finally {
-        inst.disabled = false;
-        inst.textContent = 'Install dump1090-fa';
-      }
+      try { await window.api.post('/api/settings/feeders/restart'); toast('Feeders restarting'); refreshFeederStatus(); }
+      catch (_) { toast('Restart failed', true); }
     });
+
+    function bindInstall(btnId, outId, url, label) {
+      const btn = $('#' + btnId);
+      const out = $('#' + outId);
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        const ok = await confirmModal(
+          'Install ' + label + '?',
+          'This will download and install packages. The device needs internet access. ' +
+          'On Trixie this builds from source and may take several minutes.'
+        );
+        if (!ok) return;
+        btn.disabled = true;
+        btn.textContent = 'Installing…';
+        if (out) { out.hidden = false; out.textContent = 'Starting installation…\n'; }
+        toast('Installing ' + label + '…');
+        try {
+          const r = await window.api.post(url);
+          if (r && r.ok) {
+            toast(label + ' installed');
+            if (out) out.textContent += (r.output || 'Installation complete.') + '\n';
+          } else {
+            const msg = (r && r.error) || 'Installation failed';
+            toast(msg, true);
+            if (out) out.textContent += 'ERROR: ' + msg + '\n';
+          }
+          refreshFeederStatus();
+        } catch (e) {
+          const msg = (e && e.data && e.data.error) || 'Installation failed';
+          toast(msg, true);
+          if (out) out.textContent += 'ERROR: ' + msg + '\n';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Install ' + label;
+        }
+      });
+    }
+
+    bindInstall('btn-install-adsb', 'adsb-install-output',
+                '/api/settings/feeders/dump1090/install', 'ADS-B stack');
+    bindInstall('btn-install-fr24', 'fr24-install-output',
+                '/api/settings/feeders/fr24/install', 'FR24 feeder');
   }
 
   // ------------------------------------------------------------------
