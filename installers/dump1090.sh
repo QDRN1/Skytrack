@@ -8,42 +8,59 @@ set -euo pipefail
 
 echo "=== dump1090-fa installer ==="
 
-# Check if already installed
 if dpkg -s dump1090-fa >/dev/null 2>&1; then
   echo "dump1090-fa is already installed, upgrading if available…"
 fi
 
-# Resolve supported codename — FlightAware only publishes repos for
+# Resolve supported codename — FlightAware publishes repos for
 # buster, bullseye, and bookworm. Fall back to bookworm for anything else.
 CODENAME="$(lsb_release -cs 2>/dev/null || echo bookworm)"
 case "$CODENAME" in
   buster|bullseye|bookworm) ;;
-  *) echo "Codename '$CODENAME' not supported by FlightAware repo, using bookworm."
+  *) echo "Codename '$CODENAME' not in FlightAware repo, using bookworm."
      CODENAME="bookworm" ;;
 esac
 
-# Install the FlightAware repo package for GPG keys (if not already present).
-# The .deb creates its own .list file, but we overwrite it below with the
-# correct HTTPS URL and codename.
+# ── GPG key via the official repo .deb ──
+# Try both known pool paths; FlightAware has moved files between them.
 if ! dpkg -s flightaware-apt-repository >/dev/null 2>&1; then
-  echo "Installing FlightAware APT repository package…"
-  curl -fsSL "https://flightaware.com/adsb/piaware/files/packages/pool/all/f/flightaware-apt-repository/flightaware-apt-repository_1.2_all.deb" \
-    -o /tmp/fa-repo.deb \
-    && dpkg -i /tmp/fa-repo.deb \
-    && rm -f /tmp/fa-repo.deb \
-    || echo "Warning: could not install FlightAware repo package"
+  echo "Installing FlightAware GPG key…"
+  FA_DEB=""
+  for path in \
+    "pool/piaware/f/flightaware-apt-repository/flightaware-apt-repository_1.2_all.deb" \
+    "pool/piaware/f/flightaware-apt-repository/flightaware-apt-repository_1.1_all.deb" \
+    "pool/all/f/flightaware-apt-repository/flightaware-apt-repository_1.2_all.deb" \
+    "pool/all/f/flightaware-apt-repository/flightaware-apt-repository_1.1_all.deb"; do
+    url="https://www.flightaware.com/adsb/piaware/files/packages/${path}"
+    if curl -fsSL "$url" -o /tmp/fa-repo.deb 2>/dev/null; then
+      FA_DEB="/tmp/fa-repo.deb"
+      break
+    fi
+  done
+  if [[ -n "$FA_DEB" ]]; then
+    dpkg -i "$FA_DEB" && rm -f "$FA_DEB" \
+      || echo "Warning: dpkg -i of FA repo package failed"
+  else
+    echo "Warning: could not download FlightAware repo package (GPG key)"
+  fi
 fi
 
-# Write the repo source with HTTPS (HTTP is broken/unsigned) and the
-# correct codename. Always overwrite to fix stale entries from prior runs.
+# ── Write the correct sources.list entry ──
+# Correct format (verified against the live Release file):
+#   URL:       https://www.flightaware.com/adsb/piaware/files/packages
+#   Dist:      bookworm  (no codename in the URL path!)
+#   Component: piaware   (not "flightaware")
 FA_LIST="/etc/apt/sources.list.d/flightaware-apt-repository.list"
-FA_LIST_ALT="/etc/apt/sources.list.d/flightaware.list"
-FA_LINE="deb https://flightaware.com/adsb/piaware/files/packages/${CODENAME} ${CODENAME} flightaware"
+FA_LINE="deb https://www.flightaware.com/adsb/piaware/files/packages ${CODENAME} piaware"
 
-echo "Setting FlightAware repo → HTTPS / ${CODENAME}"
+echo "Setting FlightAware repo: ${FA_LINE}"
 echo "$FA_LINE" > "$FA_LIST"
-# Remove any stale alternate-name list file from prior installer versions
-[[ -f "$FA_LIST_ALT" ]] && rm -f "$FA_LIST_ALT"
+
+# Remove stale list files from prior installer versions
+for stale in \
+  /etc/apt/sources.list.d/flightaware.list; do
+  [[ -f "$stale" ]] && rm -f "$stale" && echo "Removed stale $stale"
+done
 
 # Fix Cloudflare repo if it references an unsupported codename
 CF_LIST="/etc/apt/sources.list.d/cloudflared.list"
@@ -62,7 +79,6 @@ echo "Enabling and starting dump1090-fa service…"
 systemctl enable dump1090-fa || true
 systemctl restart dump1090-fa || true
 
-# Verify
 if systemctl is-active --quiet dump1090-fa; then
   echo "dump1090-fa is running."
 else
