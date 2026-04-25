@@ -149,13 +149,24 @@
       </div>
 
       <div class="field">
-        <label for="kiosk-interval">Auto-rotate interval</label>
+        <label for="kiosk-interval">Card rotate interval</label>
         <div style="display:flex;align-items:center;gap:12px">
           <input type="range" id="kiosk-interval" min="3" max="30" step="1"
                  value="{{ config.kiosk_carousel_interval or 8 }}"
                  class="touch-slider" style="flex:1">
           <code id="kiosk-interval-label">{{ config.kiosk_carousel_interval or 8 }}s</code>
         </div>
+      </div>
+
+      <div class="field">
+        <label for="kiosk-map-interval">Map dwell time</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="kiosk-map-interval" min="5" max="60" step="1"
+                 value="{{ config.kiosk_map_interval or 15 }}"
+                 class="touch-slider" style="flex:1">
+          <code id="kiosk-map-interval-label">{{ config.kiosk_map_interval or 15 }}s</code>
+        </div>
+        <p class="muted small">How long the live map page stays on screen before rotating to cards.</p>
       </div>
 
       <footer class="card-footer">
@@ -167,11 +178,16 @@
 
 <script>
 (function () {
-  // ---- Kiosk carousel interval label ----
+  // ---- Kiosk carousel interval labels ----
   var slider = document.getElementById('kiosk-interval');
   var label = document.getElementById('kiosk-interval-label');
   if (slider && label) slider.addEventListener('input', function () {
     label.textContent = this.value + 's';
+  });
+  var mapSlider = document.getElementById('kiosk-map-interval');
+  var mapLabel = document.getElementById('kiosk-map-interval-label');
+  if (mapSlider && mapLabel) mapSlider.addEventListener('input', function () {
+    mapLabel.textContent = this.value + 's';
   });
 
   // ---- Save kiosk cards ----
@@ -182,11 +198,12 @@
     boxes.forEach(function (b) { cards.push(b.value); });
     var showMap = (document.getElementById('kiosk-show-map') || {}).checked !== false;
     var interval = parseInt((document.getElementById('kiosk-interval') || {}).value) || 8;
+    var mapInterval = parseInt((document.getElementById('kiosk-map-interval') || {}).value) || 15;
     fetch('/api/settings/kiosk-cards', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ cards: cards, show_map: showMap, interval: interval }),
+      body: JSON.stringify({ cards: cards, show_map: showMap, interval: interval, map_interval: mapInterval }),
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.ok === false) alert(d.error || 'Save failed');
     }).catch(function () {});

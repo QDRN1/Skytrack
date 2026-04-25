@@ -621,6 +621,15 @@ def _radio_state(domain: str) -> bool:
     return r['stdout'].strip().lower() == 'enabled'
 
 
+def set_radio(domain: str, enabled: bool) -> dict:
+    """Toggle `nmcli radio <domain> on|off`. domain in {wifi, wwan}."""
+    if detect_backend() != 'nm':
+        return {'ok': False, 'error': 'NetworkManager not available'}
+    state = 'on' if enabled else 'off'
+    r = _run(['nmcli', 'radio', domain, state], timeout=5)
+    return {'ok': r['ok'], 'state': state, 'error': r.get('stderr', '')}
+
+
 # ---------------------------------------------------------------------------
 # Normalized network state — the SINGLE source of truth for the UI.
 #

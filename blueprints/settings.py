@@ -361,6 +361,7 @@ def api_kiosk_cards():
         return jsonify({
             'cards': cfg.get('kiosk_cards', []),
             'interval': cfg.get('kiosk_carousel_interval', 8),
+            'map_interval': cfg.get('kiosk_map_interval', 15),
             'show_map': cfg.get('kiosk_show_map', True),
         })
 
@@ -370,6 +371,8 @@ def api_kiosk_cards():
         updates['kiosk_cards'] = list(payload['cards'])
     if 'interval' in payload:
         updates['kiosk_carousel_interval'] = max(3, min(30, int(payload['interval'])))
+    if 'map_interval' in payload:
+        updates['kiosk_map_interval'] = max(5, min(60, int(payload['map_interval'])))
     if 'show_map' in payload:
         updates['kiosk_show_map'] = bool(payload['show_map'])
     cfg.update(updates)
@@ -546,6 +549,14 @@ def api_network():
         and updates['cellular_apn']
         and updates['cellular_apn'] != (cfg.get('cellular_apn') or '')
     )
+    wifi_changed = (
+        'wifi_client_enabled' in updates
+        and bool(updates['wifi_client_enabled']) != bool(cfg.get('wifi_client_enabled'))
+    )
+    cell_changed = (
+        'cellular_enabled' in updates
+        and bool(updates['cellular_enabled']) != bool(cfg.get('cellular_enabled'))
+    )
     cfg.update(updates)
     _persist(updates)
     # Push APN to NetworkManager alongside config persistence so operators
@@ -557,6 +568,16 @@ def api_network():
             'apn': updates['cellular_apn'],
             'ok': bool(apn_result.get('ok')),
             'backend': apn_result.get('backend'),
+        })
+    if wifi_changed:
+        network_svc.set_wifi_radio(bool(updates['wifi_client_enabled']))
+        logs_svc.log_network('wifi_radio_toggle', {
+            'enabled': bool(updates['wifi_client_enabled']),
+        })
+    if cell_changed:
+        network_svc.set_cellular_radio(bool(updates['cellular_enabled']))
+        logs_svc.log_network('cellular_radio_toggle', {
+            'enabled': bool(updates['cellular_enabled']),
         })
     logs_svc.log_portal('admin', 'settings_network_update', updates)
     return _ok({

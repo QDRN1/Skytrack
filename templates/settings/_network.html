@@ -373,18 +373,35 @@
   });
 
   function toggleTunnel(enable) {
+    var statusMsg = document.getElementById('tunnel-status-msg');
+    if (statusMsg) statusMsg.textContent = enable ? 'Starting tunnel…' : 'Stopping tunnel…';
     fetch('/api/settings/tunnel/toggle', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ enabled: enable }),
-    }).then(function () { pollTunnel(); }).catch(function () {});
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (statusMsg) statusMsg.textContent = enable
+        ? (d.ok !== false ? 'Tunnel started.' : 'Failed to start: ' + (d.error || ''))
+        : (d.ok !== false ? 'Tunnel stopped.' : 'Failed to stop: ' + (d.error || ''));
+      pollTunnel();
+    }).catch(function (e) {
+      if (statusMsg) statusMsg.textContent = 'Error: ' + e.message;
+    });
   }
 
   var startBtn = document.getElementById('tunnel-start-btn');
   var stopBtn = document.getElementById('tunnel-stop-btn');
-  if (startBtn) startBtn.addEventListener('click', function () { toggleTunnel(true); });
-  if (stopBtn) stopBtn.addEventListener('click', function () { toggleTunnel(false); });
+  if (startBtn) startBtn.addEventListener('click', function () {
+    if (confirm('Start the Cloudflare Tunnel? The device will be reachable from the public URL.')) {
+      toggleTunnel(true);
+    }
+  });
+  if (stopBtn) stopBtn.addEventListener('click', function () {
+    if (confirm('Stop the Cloudflare Tunnel? The device will no longer be reachable from the public URL.')) {
+      toggleTunnel(false);
+    }
+  });
 })();
 </script>
 

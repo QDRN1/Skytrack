@@ -51,6 +51,14 @@ def set_cellular_apn(apn: str) -> dict:
     return net_backend.set_apn(apn)
 
 
+def set_wifi_radio(enabled: bool) -> dict:
+    return net_backend.set_radio('wifi', enabled)
+
+
+def set_cellular_radio(enabled: bool) -> dict:
+    return net_backend.set_radio('wwan', enabled)
+
+
 def backend_info() -> dict:
     return net_backend.backend_info()
 

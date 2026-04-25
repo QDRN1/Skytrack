@@ -431,6 +431,7 @@
   let carouselPages = [];         // live NodeList of visible pages
   let carouselAutoTimer = null;
   let carouselInterval = 8000;
+  let carouselMapInterval = 15000;
   let carouselMap = null;
   let carouselMarkers = {};
   let mapInitialized = false;
@@ -474,6 +475,7 @@
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
         carouselInterval = (cfg.interval || 8) * 1000;
+        carouselMapInterval = (cfg.map_interval || 15) * 1000;
         buildCarouselPages(cfg.cards || [], cfg.show_map !== false);
         startCarouselAuto();
         initSwipe();
@@ -578,18 +580,32 @@
     }
   }
 
-  function nextPage() { goToPage(carouselPage + 1, true); }
+  function currentPageInterval() {
+    if (carouselPages[carouselPage] &&
+        carouselPages[carouselPage].classList.contains('carousel-page-map')) {
+      return carouselMapInterval;
+    }
+    return carouselInterval;
+  }
+
+  function nextPage() {
+    goToPage(carouselPage + 1, true);
+    scheduleNextAuto();
+  }
+
+  function scheduleNextAuto() {
+    stopCarouselAuto();
+    carouselAutoTimer = setTimeout(nextPage, currentPageInterval());
+  }
 
   function startCarouselAuto() {
-    stopCarouselAuto();
-    carouselAutoTimer = setInterval(nextPage, carouselInterval);
+    scheduleNextAuto();
   }
   function stopCarouselAuto() {
-    if (carouselAutoTimer) { clearInterval(carouselAutoTimer); carouselAutoTimer = null; }
+    if (carouselAutoTimer) { clearTimeout(carouselAutoTimer); carouselAutoTimer = null; }
   }
   function resetCarouselAuto() {
-    stopCarouselAuto();
-    startCarouselAuto();
+    scheduleNextAuto();
   }
 
   // ----- Touch / mouse swipe ---------------------------------------------

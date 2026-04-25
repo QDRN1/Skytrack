@@ -130,6 +130,7 @@ def api_kiosk_config():
             'activity_trend', 'device_info',
         ]),
         'interval': cfg.get('kiosk_carousel_interval', 8),
+        'map_interval': cfg.get('kiosk_map_interval', 15),
         'show_map': cfg.get('kiosk_show_map', True),
     })
 

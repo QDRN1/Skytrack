@@ -44,7 +44,8 @@ DEFAULT_CONFIG = {
     'kiosk_cards': ['aircraft_now', 'aircraft_today', 'busiest_hour',
                     'last_aircraft', 'weather', 'top_airlines',
                     'activity_trend', 'device_info'],
-    'kiosk_carousel_interval': 8,       # seconds between auto-rotate
+    'kiosk_carousel_interval': 8,       # seconds between card auto-rotate
+    'kiosk_map_interval': 15,           # seconds the map page stays visible
     'kiosk_show_map': True,
 
     # --- Hardware (DHT + buzzer pins) -----------------------------------
