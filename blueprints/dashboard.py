@@ -133,6 +133,7 @@ def api_kiosk_config():
         'map_interval': cfg.get('kiosk_map_interval', 15),
         'show_map': cfg.get('kiosk_show_map', True),
         'map_zoom': cfg.get('map_zoom', 9),
+        'sleep_minutes': cfg.get('display_sleep_minutes', 0),
     })
 
 

@@ -92,4 +92,15 @@
     );
     btn.setAttribute('aria-label', 'Portal theme: ' + LABELS[mode]);
   }
+
+  // Expose API so settings.js can sync the theme when the operator saves
+  // a new default_theme in Display Preferences.
+  window.portalTheme = {
+    getMode: getMode,
+    setMode: function (mode) {
+      setMode(mode);
+      var btn = document.getElementById('theme-toggle');
+      if (btn) refreshButton(btn);
+    },
+  };
 })();

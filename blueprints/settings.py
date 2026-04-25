@@ -1028,7 +1028,7 @@ _ALERT_KEYS = (
     # --- New touch-shell alert keys ---
     'alerts_enabled', 'alert_military', 'alert_emergency', 'alert_heavy',
     'alert_watchlist', 'alert_radius_nm', 'alert_cooldown_minutes',
-    'alert_delivery', 'alert_volume',
+    'alert_delivery', 'alert_volume', 'device_temp_alarm_c',
 )
 _VALID_ALERT_DELIVERY = {'toast', 'sound', 'both', 'off'}
 
@@ -1080,6 +1080,11 @@ def api_alerts():
                 updates[k] = float(updates[k])
             except (TypeError, ValueError):
                 return _err(f'{k} must be a number')
+    if 'device_temp_alarm_c' in updates:
+        try:
+            updates['device_temp_alarm_c'] = max(50, min(100, int(updates['device_temp_alarm_c'])))
+        except (TypeError, ValueError):
+            return _err('device_temp_alarm_c must be 50-100')
     cfg.update(updates)
     if 'buzzer_volume' in updates:
         current_app.buzzer.set_volume(int(updates['buzzer_volume']))
@@ -2185,15 +2190,29 @@ def api_software_install():
     return _err(f'Installation failed: {output}', 500)
 
 
+_INSTALL_WHITELIST = {'dump1090', 'fr24feed', 'piaware'}
+
+
 def _run_installer(package):
-    """Run a whitelisted package through the secure installer wrapper."""
+    """Run a whitelisted package install.
+
+    Prefers the deployed wrapper at /usr/local/bin/skytrack-installer.
+    Falls back to running the bundled installer script directly when the
+    wrapper hasn't been deployed yet (first deploy before install.sh).
+    """
+    if package not in _INSTALL_WHITELIST:
+        return False, f'Package {package!r} is not in the install whitelist.'
+
     wrapper = '/usr/local/bin/skytrack-installer'
-    if not os.path.isfile(wrapper):
-        return False, (
-            'Installer framework not deployed. '
-            'Run install.sh on the Pi to set it up.'
-        )
-    ok, output = _shell(['sudo', wrapper, package], timeout=600)
+    if os.path.isfile(wrapper):
+        ok, output = _shell(['sudo', wrapper, package], timeout=600)
+        return ok, output
+
+    script = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                          'installers', f'{package}.sh')
+    if not os.path.isfile(script):
+        return False, f'No installer script found for {package!r}.'
+    ok, output = _shell(['sudo', 'bash', script], timeout=600)
     return ok, output
 
 

@@ -482,6 +482,7 @@
         buildCarouselPages(cfg.cards || [], cfg.show_map !== false);
         setTimeout(startCarouselAuto, 500);
         initSwipe();
+        startIdleWatch(cfg.sleep_minutes || 0);
       })
       .catch(function () {
         buildCarouselPages([], true);
@@ -609,11 +610,23 @@
     carouselAutoTimer = setTimeout(nextPage, interval);
   }
 
+  var carouselHeartbeat = null;
+
   function startCarouselAuto() {
     scheduleNextAuto();
+    // Heartbeat: if the setTimeout chain ever breaks (browser throttling,
+    // transient error), restart it automatically.
+    if (!carouselHeartbeat) {
+      carouselHeartbeat = setInterval(function () {
+        if (visual === 'operational' && !carouselAutoTimer && carouselPages.length > 1) {
+          scheduleNextAuto();
+        }
+      }, 12000);
+    }
   }
   function stopCarouselAuto() {
     if (carouselAutoTimer) { clearTimeout(carouselAutoTimer); carouselAutoTimer = null; }
+    if (carouselHeartbeat) { clearInterval(carouselHeartbeat); carouselHeartbeat = null; }
   }
   function resetCarouselAuto() {
     scheduleNextAuto();
@@ -693,7 +706,7 @@
     };
     tick();
     if (opClockTimer) clearInterval(opClockTimer);
-    opClockTimer = setInterval(tick, 15 * 1000);
+    opClockTimer = setInterval(tick, 1000);
   }
 
   function fmtNumber(n) {
@@ -963,6 +976,33 @@
         }
       });
     } catch (_e) { /* transient */ }
+  }
+
+  // ----- Screen dim after idle -----------------------------------------
+  var idleTimer = null;
+  var idleDimmed = false;
+  var idleMinutes = 0;  // 0 = disabled
+
+  function resetIdle() {
+    if (idleDimmed) {
+      document.body.style.opacity = '';
+      idleDimmed = false;
+    }
+    if (idleMinutes <= 0) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      document.body.style.opacity = '0.15';
+      idleDimmed = true;
+    }, idleMinutes * 60 * 1000);
+  }
+
+  function startIdleWatch(minutes) {
+    idleMinutes = minutes || 0;
+    if (idleMinutes <= 0) return;
+    ['touchstart', 'touchmove', 'mousemove', 'mousedown', 'keydown'].forEach(function (evt) {
+      document.addEventListener(evt, resetIdle, { passive: true });
+    });
+    resetIdle();
   }
 
   // ----- Device temp alarm poll ----------------------------------------

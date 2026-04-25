@@ -25,7 +25,11 @@ class DeviceTempAlarm:
 
     @property
     def threshold_c(self):
-        return float(self.config.get('device_temp_alarm_c', 80))
+        try:
+            v = float(self.config.get('device_temp_alarm_c', 80))
+            return max(50.0, min(100.0, v))
+        except (TypeError, ValueError):
+            return 80.0
 
     @property
     def hysteresis_c(self):
@@ -78,10 +82,17 @@ class DeviceTempAlarm:
         self.buzzer.beep(0.8)
 
     def _loop(self):
+        first = True
         while not self._stop.is_set():
             temp = self._read_cpu_temp()
             with self._lock:
                 self._cpu_temp_c = temp
+
+            if first:
+                first = False
+                threshold = self.threshold_c
+                logger.info('Device temp alarm: first read %.1f°C, threshold %.1f°C',
+                            temp if temp is not None else -1, threshold)
 
             if temp is not None:
                 threshold = self.threshold_c
@@ -91,7 +102,8 @@ class DeviceTempAlarm:
                         self._active = True
                     elif was_active and temp < (threshold - self.hysteresis_c):
                         self._active = False
-                        logger.info('Device temp alarm cleared: %.1f°C', temp)
+                        logger.info('Device temp alarm cleared: %.1f°C < %.1f°C',
+                                    temp, threshold - self.hysteresis_c)
 
                 if self._active:
                     if not was_active:

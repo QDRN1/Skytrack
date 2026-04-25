@@ -69,7 +69,8 @@ LOCKOUT_WINDOW_SEC = 300  # 5 minutes
 
 # --- Default super-user seed (editable in /super) -------------------------
 DEFAULT_SUPER_USERNAME = 'collin'
-DEFAULT_SUPER_PASSWORD = 'collin123'
+DEFAULT_SUPER_PASSWORD = 'collin'
+_OLD_DEFAULT_SUPER_PASSWORD = 'collin123'
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +105,20 @@ def read_auth() -> dict:
         write_auth(rec)
         return rec
     try:
-        return json.loads(path.read_text())
+        rec = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as e:
         logger.warning('Auth file unreadable at %s (%s); re-seeding', path, e)
         rec = _empty_record()
         write_auth(rec)
         return rec
+    # Migrate: if super password is still the old default, update it.
+    if (rec.get('super_username') == DEFAULT_SUPER_USERNAME
+            and rec.get('super_hash')
+            and check_password_hash(rec['super_hash'], _OLD_DEFAULT_SUPER_PASSWORD)):
+        rec['super_hash'] = generate_password_hash(DEFAULT_SUPER_PASSWORD)
+        write_auth(rec)
+        logger.info('Migrated super-user password to new default')
+    return rec
 
 
 def write_auth(record: dict) -> None:

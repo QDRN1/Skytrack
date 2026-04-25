@@ -257,6 +257,14 @@
           const sec = form.dataset.section;
           if (sec === 'network')     refreshNetworkStatus();
           if (sec === 'diagnostics') refreshDiagnostics();
+          // Apply theme + animation changes immediately so the operator
+          // sees the result without reloading.
+          if (payload.default_theme && window.portalTheme) {
+            window.portalTheme.setMode(payload.default_theme);
+          }
+          if (payload.display_animation_level != null || payload.display_particle_density != null) {
+            applyDisplaySettingsLive(payload);
+          }
           // Offer a reboot if the user touched anything flagged as
           // apply-on-reboot in this form.
           await maybeOfferReboot(form);
@@ -282,6 +290,23 @@
       s.addEventListener('input', sync);
       sync();
     });
+  }
+
+  // ------------------------------------------------------------------
+  // Apply display/animation settings live (no reload required)
+  // ------------------------------------------------------------------
+  function applyDisplaySettingsLive(payload) {
+    var root = document.documentElement;
+    if (payload.display_animation_level != null) {
+      root.setAttribute('data-anim', payload.display_animation_level);
+    }
+    if (payload.display_particle_density != null) {
+      root.setAttribute('data-particle-density', String(payload.display_particle_density));
+    }
+    // Particles module reads data-* once at boot. Reload to re-init with new values.
+    if (payload.display_animation_level != null || payload.display_particle_density != null) {
+      setTimeout(function () { location.reload(); }, 600);
+    }
   }
 
   // ------------------------------------------------------------------
