@@ -1,39 +1,82 @@
-{# Settings → Maintenance #}
+{# Settings → Software Updates #}
 <section class="settings-section" data-section-pane="updates">
 
+  {# ── Current Version ── #}
   <div class="settings-card">
     <header class="card-header">
-      <h2>Software updates</h2>
+      <h2>Current version</h2>
+    </header>
+    <div class="card-body">
+      <div class="release-header">
+        <span class="release-version">v{{ app_version }}</span>
+        <span class="release-date muted" id="current-release-date"></span>
+      </div>
+      <div id="current-release-notes" class="release-notes">
+        <p class="muted">Loading release notes…</p>
+      </div>
+    </div>
+  </div>
+
+  {# ── Latest Available ── #}
+  <div class="settings-card" id="card-latest-available">
+    <header class="card-header">
+      <h2>Latest available</h2>
       <p class="muted">
-        SkyTrack keeps itself up to date from
-        <code>{{ config.ota_repo_url or 'github.com/QDRN1/Skytrack' }}</code>
-        (branch <code>{{ config.ota_branch or 'claude/skytrack-adsb-tracker-N8p6u' }}</code>). <em>Check for
-        updates</em> is always safe and non-destructive. <em>Apply updates</em>
-        copies the new code into <code>/opt/skytrack</code> and restarts the
-        app — expect about 10–30 seconds of downtime, then the page reloads
-        automatically. Your config, PIN, database, and backups are preserved.
+        <em>Check for updates</em> is safe and non-destructive.
+        <em>Apply</em> copies new code to the device and restarts — about
+        10–30 seconds of downtime. Your config, PIN, database, and backups
+        are preserved.
       </p>
     </header>
+    <div class="card-body">
+      <div class="action-row" style="margin-bottom: 12px;">
+        <button type="button" class="btn btn-lg" id="btn-update-check">Check for updates</button>
+      </div>
 
-    <form class="card-body card-form" id="form-updates"
-          data-endpoint="/api/settings/updates"
-          data-section="updates">
+      <div id="latest-status" class="release-status">
+        <p class="muted" id="upd-status-text">
+          Last checked: {{ config.ota_last_check or 'never' }}
+        </p>
+      </div>
 
-      <div class="readonly-grid">
-        <div class="readonly-row">
-          <span class="ro-label">Current version</span>
-          <code class="ro-value">{{ app_version }}</code>
+      <div id="latest-available-block" style="display: none;">
+        <div class="release-header">
+          <span class="release-version" id="latest-version"></span>
+          <span class="release-date muted" id="latest-date"></span>
+          <span class="release-badge" id="latest-badge"></span>
         </div>
-        <div class="readonly-row">
-          <span class="ro-label">Last check</span>
-          <code class="ro-value" id="upd-last-check">{{ config.ota_last_check or 'never' }}</code>
-        </div>
-        <div class="readonly-row">
-          <span class="ro-label">Latest available</span>
-          <code class="ro-value" id="upd-latest">—</code>
+        <div id="latest-release-notes" class="release-notes"></div>
+        <div class="action-row" style="margin-top: 14px;">
+          <button type="button" class="btn btn-lg btn-primary" id="btn-update-apply"
+                  data-confirm-title="Apply updates?"
+                  data-confirm-body="SkyTrack will pull the latest code, copy it into /opt/skytrack, and restart the app. The page will reload automatically. ~10–30 s downtime.">
+            Apply update
+          </button>
         </div>
       </div>
 
+      <pre class="log-pre" id="update-output" style="display: none;"></pre>
+    </div>
+  </div>
+
+  {# ── Release History ── #}
+  <div class="settings-card" id="card-release-history" style="display: none;">
+    <header class="card-header">
+      <h2>Release history</h2>
+    </header>
+    <div class="card-body">
+      <div id="release-history-list"></div>
+    </div>
+  </div>
+
+  {# ── Update Policy ── #}
+  <div class="settings-card subtle">
+    <header class="card-header">
+      <h2>Update policy</h2>
+    </header>
+    <form class="card-body card-form" id="form-updates"
+          data-endpoint="/api/settings/updates"
+          data-section="updates">
       <div class="field">
         <label class="switch-row">
           <span>Auto-check for updates</span>
@@ -44,7 +87,6 @@
           </span>
         </label>
       </div>
-
       <div class="field">
         <label>Update channel</label>
         <div class="segmented" role="radiogroup" aria-label="Update channel">
@@ -54,46 +96,14 @@
           {% endfor %}
         </div>
       </div>
-
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save Update Policy</button>
+        <button type="submit" class="btn btn-lg btn-primary">Save</button>
       </footer>
     </form>
-
-    <div class="card-body">
-      <div class="action-row">
-        <button type="button" class="btn btn-lg" id="btn-update-check">Check for updates</button>
-        <button type="button" class="btn btn-lg btn-primary" id="btn-update-apply"
-                data-confirm-title="Apply updates?"
-                data-confirm-body="SkyTrack will pull the latest code into its workspace, copy it into /opt/skytrack, and restart the app. The page will reload automatically. ~10–30 seconds of downtime.">
-          Apply updates
-        </button>
-      </div>
-      <pre class="log-pre" id="update-output">No update checked yet.</pre>
-    </div>
   </div>
 
-  <div class="settings-card">
-    <header class="card-header">
-      <h2>Changelog</h2>
-      <p class="muted">Recent changes applied to this device and new changes available upstream.</p>
-    </header>
-    <div class="card-body">
-      <button type="button" class="btn btn-lg" id="btn-changelog-load">Load changelog</button>
-
-      <div id="changelog-available" style="display:none; margin-top: 16px;">
-        <h3 style="margin: 0 0 8px;">Available updates</h3>
-        <ul class="changelog-list" id="changelog-available-list"></ul>
-      </div>
-
-      <div id="changelog-current" style="display:none; margin-top: 16px;">
-        <h3 style="margin: 0 0 8px;">Recent changes (installed)</h3>
-        <ul class="changelog-list" id="changelog-current-list"></ul>
-      </div>
-    </div>
-  </div>
-
+  {# ── Backup & Restore ── #}
   <div class="settings-card">
     <header class="card-header">
       <h2>Backup &amp; restore</h2>
@@ -103,7 +113,6 @@
     <form class="card-body card-form" id="form-backup"
           data-endpoint="/api/settings/updates/backup-policy"
           data-section="updates">
-
       <div class="field">
         <label>Auto-backup frequency</label>
         <div class="segmented seg-grid-2" role="radiogroup" aria-label="Backup frequency">
@@ -113,13 +122,11 @@
           {% endfor %}
         </div>
       </div>
-
       <div class="field">
         <label for="bk-keep">Snapshots to keep</label>
         <input id="bk-keep" name="backup_keep" type="number"
                min="1" max="50" value="{{ config.backup_keep or 5 }}">
       </div>
-
       <footer class="card-footer">
         <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
         <button type="submit" class="btn btn-lg btn-primary">Save Backup Policy</button>
@@ -130,13 +137,13 @@
       <div class="action-row">
         <button type="button" class="btn btn-lg btn-primary" id="btn-backup-now">Create backup now</button>
       </div>
-
       <ul class="saved-wifi-list" id="backup-list">
         <li class="muted">No backups yet.</li>
       </ul>
     </div>
   </div>
 
+  {# ── Power & Restart ── #}
   <div class="settings-card subtle">
     <header class="card-header">
       <h2>Power &amp; restart</h2>

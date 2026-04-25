@@ -21,6 +21,7 @@ box without the right binaries they return a clear error instead of
 crashing.
 """
 
+import json
 import logging
 import os
 import shutil
@@ -39,7 +40,7 @@ import git_auth
 import hotspot
 import logs_svc
 import network_svc
-from _version import __version__ as SKYTRACK_VERSION
+from _version import __version__ as SKYTRACK_VERSION, __version_base__
 from config import save_user_config
 
 logger = logging.getLogger('skytrack.settings_bp')
@@ -1189,6 +1190,27 @@ def _backup_dir() -> Path:
     return p
 
 
+_RELEASES_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'releases.json')
+
+
+def _load_releases(path=None):
+    """Load releases.json, return list of release dicts (newest first)."""
+    p = path or _RELEASES_PATH
+    try:
+        with open(p, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _current_release():
+    """Return the release entry matching the running version base."""
+    for r in _load_releases():
+        if r.get('version') == __version_base__:
+            return r
+    return None
+
+
 @settings_bp.route('/api/settings/updates', methods=['GET', 'POST'])
 @ADMIN
 def api_updates():
@@ -1197,6 +1219,8 @@ def api_updates():
         return jsonify({
             'config': {k: cfg.get(k) for k in _UPDATE_KEYS},
             'app_version': SKYTRACK_VERSION,
+            'app_version_base': __version_base__,
+            'current_release': _current_release(),
             'backups': _list_backups(),
         })
     payload = request.get_json(silent=True) or {}
@@ -1348,16 +1372,55 @@ def api_updates_check():
             behind = int(ahead_msg.strip())
         except (TypeError, ValueError):
             behind = None
+
+    remote_version = None
+    remote_version_base = None
+    remote_releases = []
+    ref = f'{remote}/{branch}'
+    ok3, ver_raw = _git_in_workspace(
+        ['show', f'{ref}:_version.py'], timeout=10,
+    )
+    if ok3 and ver_raw:
+        for line in ver_raw.splitlines():
+            if line.strip().startswith('__version_base__'):
+                try:
+                    remote_version_base = line.split('=', 1)[1].strip().strip('"').strip("'")
+                except Exception:
+                    pass
+    ok4, rel_raw = _git_in_workspace(
+        ['show', f'{ref}:releases.json'], timeout=10,
+    )
+    if ok4 and rel_raw:
+        try:
+            remote_releases = json.loads(rel_raw)
+        except Exception:
+            remote_releases = []
+
+    latest_release = None
+    if remote_releases:
+        latest_release = remote_releases[0]
+        remote_version = latest_release.get('version')
+
+    ok5, date_raw = _git_in_workspace(
+        ['log', '-1', '--format=%aI', ref, '--'], timeout=10,
+    )
+    latest_date = date_raw.strip() if ok5 and date_raw.strip() else None
+
     stamp = datetime.utcnow().isoformat() + 'Z'
     cfg['ota_last_check'] = stamp
     _persist({'ota_last_check': stamp})
     logs_svc.log_portal('admin', 'ota_check',
-                        {'ok': True, 'behind': behind})
+                        {'ok': True, 'behind': behind,
+                         'remote_version': remote_version})
     return jsonify({
         'ok': True,
         'message': msg[-400:] or ('up to date' if behind == 0 else 'fetched'),
         'behind': behind,
         'checked_at': stamp,
+        'remote_version': remote_version or remote_version_base,
+        'remote_date': latest_date,
+        'latest_release': latest_release,
+        'all_releases': remote_releases,
     })
 
 
@@ -1417,61 +1480,6 @@ def api_updates_apply():
         'ok': True,
         'message': 'Update applied. The service is restarting — the page '
                    'will reload in a few seconds.',
-    })
-
-
-@settings_bp.route('/api/settings/updates/changelog', methods=['GET'])
-@ADMIN
-def api_changelog():
-    """Return recent git log entries from the OTA workspace (or local repo)."""
-    cfg = current_app.skytrack_config
-    ws = _ota_workspace()
-    git_dir = os.path.join(ws, '.git')
-    repo_dir = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + '/..')
-    cwd = ws if os.path.isdir(git_dir) else repo_dir
-    count = min(int(request.args.get('count', 30)), 100)
-    remote = cfg.get('ota_remote', 'origin') or 'origin'
-    branch = cfg.get('ota_branch', 'claude/skytrack-adsb-tracker-N8p6u') or 'claude/skytrack-adsb-tracker-N8p6u'
-
-    fmt = '%H%n%h%n%s%n%an%n%aI'
-    env = _ota_env()
-    current = []
-    ok, out = _shell(
-        ['git', '-C', cwd, 'log', f'--format={fmt}', f'-{count}', '--'],
-        timeout=15, env=env,
-    )
-    if ok and out.strip():
-        lines = out.strip().split('\n')
-        for i in range(0, len(lines) - 4, 5):
-            current.append({
-                'hash': lines[i],
-                'short': lines[i + 1],
-                'message': lines[i + 2],
-                'author': lines[i + 3],
-                'date': lines[i + 4],
-            })
-
-    available = []
-    ref = f'{remote}/{branch}'
-    ok2, out2 = _shell(
-        ['git', '-C', cwd, 'log', f'--format={fmt}', f'-{count}', f'HEAD..{ref}', '--'],
-        timeout=15, env=env,
-    )
-    if ok2 and out2.strip():
-        lines = out2.strip().split('\n')
-        for i in range(0, len(lines) - 4, 5):
-            available.append({
-                'hash': lines[i],
-                'short': lines[i + 1],
-                'message': lines[i + 2],
-                'author': lines[i + 3],
-                'date': lines[i + 4],
-            })
-
-    return jsonify({
-        'ok': True,
-        'current': current,
-        'available': available,
     })
 
 

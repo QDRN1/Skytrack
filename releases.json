@@ -1,0 +1,64 @@
+[
+  {
+    "version": "2.8.0",
+    "date": "2026-04-25",
+    "title": "Reliability & Admin Tools",
+    "notes": [
+      "Fixed dump1090 ADS-B decoder installation on Debian Trixie (Debian 13)",
+      "Software updates now connect to the correct branch automatically",
+      "Added super admin shell terminal for direct device access",
+      "Improved temperature alarm — threshold now saves correctly between reboots",
+      "Fixed kiosk clock updating and card carousel rotation reliability",
+      "Portal theme toggle and display settings now apply instantly",
+      "Screen dim after idle now works as configured",
+      "Added changelog to Software Updates so you can see what changed",
+      "Installer framework no longer blocked by system security restrictions"
+    ]
+  },
+  {
+    "version": "2.7.0",
+    "date": "2026-04-20",
+    "title": "Cloudflare Tunnel & GPS",
+    "notes": [
+      "Cloudflare Tunnel integration for secure remote access",
+      "Kiosk carousel with rotating dashboard cards",
+      "GPS location detection and settings",
+      "Toast notifications for user feedback",
+      "Speed test tool in diagnostics",
+      "WiFi and cellular radio toggle improvements"
+    ]
+  },
+  {
+    "version": "2.6.0",
+    "date": "2026-04-15",
+    "title": "Hotspot & Onboarding",
+    "notes": [
+      "Redesigned hotspot management with live status updates",
+      "Welcome screen and guided onboarding flow",
+      "Admin-gated factory reset during setup",
+      "Improved network detection and connection reliability"
+    ]
+  },
+  {
+    "version": "2.5.0",
+    "date": "2026-04-10",
+    "title": "Kiosk Display & First Boot",
+    "notes": [
+      "First-boot setup wizard displayed directly on the kiosk screen",
+      "Branded splash screen with automatic app detection",
+      "Fixed white-screen issue on initial device boot",
+      "DHT22 temperature and humidity sensor support"
+    ]
+  },
+  {
+    "version": "2.4.0",
+    "date": "2026-04-05",
+    "title": "Hardware & Sensors",
+    "notes": [
+      "Hardware monitoring dashboard with CPU temperature and usage",
+      "Buzzer alert support for proximity warnings",
+      "Hotspot and cellular status improvements",
+      "Operator verification scripts for deployment testing"
+    ]
+  }
+]

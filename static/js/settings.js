@@ -917,48 +917,134 @@
     } catch (_) { list.innerHTML = '<li class="muted">Could not load backups.</li>'; }
   }
 
+  function renderReleaseNotes(release, container) {
+    if (!container) return;
+    if (!release || !release.notes || !release.notes.length) {
+      container.innerHTML = '<p class="muted">No release notes available.</p>';
+      return;
+    }
+    let html = '';
+    if (release.title) html += '<p style="margin:0 0 6px;font-weight:600;">' + escapeHtml(release.title) + '</p>';
+    html += '<ul>';
+    release.notes.forEach(n => { html += '<li>' + escapeHtml(n) + '</li>'; });
+    html += '</ul>';
+    container.innerHTML = html;
+  }
+
+  function renderReleaseHistory(releases, container) {
+    if (!container) return;
+    if (!releases || !releases.length) { container.innerHTML = '<p class="muted">No history available.</p>'; return; }
+    let html = '';
+    releases.forEach(rel => {
+      const d = rel.date ? new Date(rel.date + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      html += '<div class="release-history-entry">';
+      html += '<div class="release-header">';
+      html += '<span class="release-version">v' + escapeHtml(rel.version) + '</span>';
+      if (rel.title) html += '<span class="release-title">' + escapeHtml(rel.title) + '</span>';
+      if (d) html += '<span class="release-date muted">' + escapeHtml(d) + '</span>';
+      html += '</div>';
+      if (rel.notes && rel.notes.length) {
+        html += '<div class="release-notes"><ul>';
+        rel.notes.forEach(n => { html += '<li>' + escapeHtml(n) + '</li>'; });
+        html += '</ul></div>';
+      }
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  }
+
   function bindUpdateExtras() {
     const out = $('#update-output');
-    const setOut = t => { if (out) out.textContent = t; };
+    const setOut = (t, show) => {
+      if (!out) return;
+      out.textContent = t;
+      out.style.display = show ? '' : 'none';
+    };
+
+    // Load current release notes on page load
+    (async function loadCurrentRelease() {
+      try {
+        const r = await window.api.get('/api/settings/updates');
+        if (r && r.current_release) {
+          renderReleaseNotes(r.current_release, $('#current-release-notes'));
+          const dateEl = $('#current-release-date');
+          if (dateEl && r.current_release.date) {
+            dateEl.textContent = new Date(r.current_release.date + 'T00:00:00').toLocaleDateString(
+              undefined, { year: 'numeric', month: 'long', day: 'numeric' }
+            );
+          }
+        }
+      } catch (_) {}
+    })();
 
     const check = $('#btn-update-check');
     if (check) check.addEventListener('click', async () => {
-      setOut('Checking…');
+      check.disabled = true;
+      check.textContent = 'Checking…';
+      setOut('', false);
       try {
         const r = await window.api.post('/api/settings/updates/check');
-        let line;
         if (!r.ok) {
-          line = r.message || 'Check failed';
-        } else if (typeof r.behind === 'number') {
-          line = r.behind === 0
-            ? 'Up to date.'
-            : `${r.behind} update${r.behind === 1 ? '' : 's'} available.`;
+          setOut(r.message || 'Check failed.', true);
+          $('#upd-status-text').textContent = r.message || 'Check failed.';
         } else {
-          line = r.message || 'Check complete.';
+          const statusEl = $('#upd-status-text');
+          const checkedTime = r.checked_at
+            ? new Date(r.checked_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+            : 'just now';
+
+          if (r.behind === 0) {
+            if (statusEl) statusEl.textContent = 'You are up to date. Checked ' + checkedTime;
+            const block = $('#latest-available-block');
+            if (block) block.style.display = 'none';
+          } else {
+            if (statusEl) statusEl.textContent = 'Update available! Checked ' + checkedTime;
+            const block = $('#latest-available-block');
+            if (block) block.style.display = '';
+
+            const verEl = $('#latest-version');
+            if (verEl) verEl.textContent = r.remote_version ? 'v' + r.remote_version : 'New version';
+
+            const dateEl = $('#latest-date');
+            if (dateEl && r.remote_date) {
+              dateEl.textContent = new Date(r.remote_date).toLocaleDateString(
+                undefined, { year: 'numeric', month: 'long', day: 'numeric' }
+              );
+            }
+
+            const badgeEl = $('#latest-badge');
+            if (badgeEl && r.behind) {
+              badgeEl.className = 'release-badge new';
+              badgeEl.textContent = r.behind + ' update' + (r.behind === 1 ? '' : 's');
+            }
+
+            renderReleaseNotes(r.latest_release, $('#latest-release-notes'));
+          }
+
+          // Show full release history if available
+          if (r.all_releases && r.all_releases.length > 1) {
+            const histCard = $('#card-release-history');
+            if (histCard) histCard.style.display = '';
+            renderReleaseHistory(r.all_releases, $('#release-history-list'));
+          }
         }
-        if (r.checked_at) line += `  (checked ${new Date(r.checked_at).toLocaleTimeString()})`;
-        setOut(line);
-        const lt = $('#upd-latest');
-        if (lt && r.latest) lt.textContent = r.latest;
-      } catch (_) { setOut('Check failed'); }
+      } catch (_) { setOut('Check failed — connection error.', true); }
+      finally { check.disabled = false; check.textContent = 'Check for updates'; }
     });
 
     const apply = $('#btn-update-apply');
     if (apply) apply.addEventListener('click', async () => {
       const ok = await confirmModal(apply.dataset.confirmTitle || 'Apply updates?', apply.dataset.confirmBody || '');
       if (!ok) return;
-      setOut('Applying…');
+      setOut('Applying update…', true);
       try {
         const r = await window.api.post('/api/settings/updates/apply');
-        setOut(r.message || (r.ok ? 'Update applied — service restarting.' : 'Apply failed'));
+        setOut(r.message || (r.ok ? 'Update applied — service restarting.' : 'Apply failed'), true);
         if (r.ok) {
-          // The restart will drop our socket; poll /healthz then reload.
           setTimeout(() => waitForHealthz().then(() => location.reload()), 1500);
         }
       } catch (_) {
-        // A dropped connection is actually the expected success path when
-        // skytrack-app restarts itself while we're waiting on the response.
-        setOut('Service restarting — reloading page…');
+        setOut('Service restarting — reloading page…', true);
         setTimeout(() => waitForHealthz().then(() => location.reload()), 1500);
       }
     });
@@ -987,53 +1073,6 @@
         try { await window.api.post('/api/settings/updates/backup/delete', { name }); toast('Deleted'); refreshBackups(); }
         catch (_) { toast('Delete failed', true); }
       }
-    });
-
-    // Changelog loader
-    const clBtn = $('#btn-changelog-load');
-    if (clBtn) clBtn.addEventListener('click', async () => {
-      clBtn.disabled = true;
-      clBtn.textContent = 'Loading…';
-      try {
-        const r = await fetch('/api/settings/updates/changelog', {
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' },
-        }).then(x => x.json());
-        if (!r.ok) { toast('Could not load changelog', true); return; }
-
-        function renderList(items, el) {
-          el.innerHTML = '';
-          if (!items || !items.length) {
-            el.innerHTML = '<li class="muted">None.</li>';
-            return;
-          }
-          items.forEach(c => {
-            const li = document.createElement('li');
-            li.className = 'changelog-entry';
-            const d = c.date ? new Date(c.date).toLocaleDateString() : '';
-            li.innerHTML =
-              '<code class="cl-hash">' + escapeHtml(c.short) + '</code> ' +
-              '<span class="cl-msg">' + escapeHtml(c.message) + '</span>' +
-              '<span class="cl-meta muted"> — ' + escapeHtml(c.author) + ', ' + escapeHtml(d) + '</span>';
-            el.appendChild(li);
-          });
-        }
-
-        const avail = r.available || [];
-        const cur = r.current || [];
-        const availSection = $('#changelog-available');
-        const curSection = $('#changelog-current');
-        if (availSection) {
-          renderList(avail, $('#changelog-available-list'));
-          availSection.style.display = avail.length ? '' : 'none';
-        }
-        if (curSection) {
-          renderList(cur, $('#changelog-current-list'));
-          curSection.style.display = cur.length ? '' : 'none';
-        }
-        if (!avail.length && !cur.length) toast('No changelog data available.');
-      } catch (_) { toast('Changelog load failed', true); }
-      finally { clBtn.disabled = false; clBtn.textContent = 'Load changelog'; }
     });
 
     // Power buttons — toast the actual server response so a failed
