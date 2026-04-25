@@ -2230,15 +2230,26 @@ def api_dump1090_restart():
 @ADMIN
 def api_dump1090_install():
     """Install dump1090-fa + piaware together as the ADS-B stack."""
+    logger.info('ADS-B install endpoint called')
     logs_svc.log_portal('admin', 'adsb_install_requested', {})
-    ok1, out1 = _run_installer('dump1090')
-    ok2, out2 = _run_installer('piaware')
+    try:
+        ok1, out1 = _run_installer('dump1090')
+        logger.info('dump1090 installer returned ok=%s, output_len=%d', ok1, len(out1 or ''))
+    except Exception as e:
+        logger.exception('dump1090 installer crashed')
+        return jsonify({'ok': False, 'error': f'dump1090 installer crashed: {e}', 'output': ''})
+    try:
+        ok2, out2 = _run_installer('piaware')
+        logger.info('piaware installer returned ok=%s, output_len=%d', ok2, len(out2 or ''))
+    except Exception as e:
+        logger.exception('piaware installer crashed')
+        combined = (out1 or '') + '\npiaware installer crashed: ' + str(e)
+        return jsonify({'ok': ok1, 'error': f'piaware crashed: {e}', 'output': combined})
     combined = (out1 or '') + '\n' + (out2 or '')
     if ok1 and ok2:
         logs_svc.log_portal('admin', 'adsb_installed', {})
         return jsonify({'ok': True, 'message': 'dump1090-fa + piaware installed', 'output': combined})
     if ok1:
-        logs_svc.log_portal('admin', 'dump1090_installed_piaware_failed', {})
         return jsonify({'ok': True, 'message': 'dump1090-fa installed; piaware failed (see log)', 'output': combined})
     return jsonify({'ok': False, 'error': 'Installation failed', 'output': combined})
 
@@ -2285,14 +2296,19 @@ def _run_installer(package):
 
     wrapper = '/usr/local/bin/skytrack-installer'
     if os.path.isfile(wrapper):
-        ok, output = _shell(['sudo', wrapper, package], timeout=600)
+        logger.info('Running installer wrapper: %s %s', wrapper, package)
+        ok, output = _shell(['sudo', wrapper, package], timeout=900)
+        logger.info('Installer wrapper returned ok=%s, len=%d', ok, len(output or ''))
         return ok, output
 
     script = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                           'installers', f'{package}.sh')
     if not os.path.isfile(script):
+        logger.warning('No installer script found: %s', script)
         return False, f'No installer script found for {package!r}.'
-    ok, output = _shell(['sudo', 'bash', script], timeout=600)
+    logger.info('Running installer script directly: %s', script)
+    ok, output = _shell(['sudo', 'bash', script], timeout=900)
+    logger.info('Installer script returned ok=%s, len=%d', ok, len(output or ''))
     return ok, output
 
 

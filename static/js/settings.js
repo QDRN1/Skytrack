@@ -705,11 +705,11 @@
     });
 
     function bindInstall(btnId, outId, url, label) {
-      const btn = $('#' + btnId);
-      const out = $('#' + outId);
+      var btn = $('#' + btnId);
+      var out = $('#' + outId);
       if (!btn) return;
-      btn.addEventListener('click', async () => {
-        const ok = await confirmModal(
+      btn.addEventListener('click', async function () {
+        var ok = await confirmModal(
           'Install ' + label + '?',
           'This will download and install packages. The device needs internet access. ' +
           'On Trixie this builds from source and may take several minutes.'
@@ -717,29 +717,53 @@
         if (!ok) return;
         btn.disabled = true;
         btn.textContent = 'Installing…';
-        if (out) { out.hidden = false; out.textContent = 'Starting installation…\n'; }
-        toast('Installing ' + label + '…');
+        if (out) { out.hidden = false; out.textContent = 'Starting installation… waiting for server response.\n'; }
+        toast('Installing ' + label + '… (this may take several minutes)');
+
+        var t0 = Date.now();
+        var timer = setInterval(function () {
+          if (!out) return;
+          var secs = Math.round((Date.now() - t0) / 1000);
+          var dots = '.'.repeat((secs % 3) + 1);
+          out.textContent = 'Installing — ' + secs + 's elapsed' + dots + '\n(builds from source may take 5-10 minutes)\n';
+        }, 2000);
+
         try {
-          const r = await window.api.post(url);
-          if (out && r.output) out.textContent = r.output;
+          var r = await window.api.post(url);
+          clearInterval(timer);
+          if (out && r && r.output) out.textContent = r.output;
           if (r && r.ok) {
             toast(r.message || label + ' installed');
+            if (out && !r.output) out.textContent = 'Installation completed successfully.\n';
           } else {
-            toast(r.error || 'Installation failed', true);
-            if (out && !r.output) out.textContent += 'ERROR: ' + (r.error || 'Unknown error') + '\n';
+            var errMsg = (r && r.error) || 'Unknown error';
+            toast(errMsg, true);
+            if (out) {
+              if (r && r.output) {
+                out.textContent = r.output + '\n\nERROR: ' + errMsg;
+              } else {
+                out.textContent = 'ERROR: ' + errMsg + '\n';
+              }
+            }
           }
           refreshFeederStatus();
         } catch (e) {
-          const data = e && e.data;
-          const msg = (data && data.error) || e.message || 'Installation failed';
-          if (out && data && data.output) {
-            out.textContent = data.output;
-          } else if (out) {
-            out.textContent += 'ERROR: ' + msg + '\n';
+          clearInterval(timer);
+          var data = e && e.data;
+          var status = e && e.status;
+          var msg = (data && data.error) || e.message || 'Request failed';
+          var detail = 'HTTP ' + (status || '?') + ': ' + msg;
+          if (out) {
+            if (data && data.output) {
+              out.textContent = data.output + '\n\n' + detail;
+            } else {
+              out.textContent = detail + '\n';
+            }
           }
           toast(msg, true);
           refreshFeederStatus();
         } finally {
+          clearInterval(timer);
           btn.disabled = false;
           btn.textContent = 'Install ' + label;
         }
