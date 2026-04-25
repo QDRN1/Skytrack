@@ -22,6 +22,9 @@
       <button class="rail-btn active" data-section="general">
         <span class="rail-icon">⚙</span><span class="rail-label">General</span>
       </button>
+      <button class="rail-btn" data-section="location">
+        <span class="rail-icon">📍</span><span class="rail-label">Location</span>
+      </button>
       <button class="rail-btn" data-section="display">
         <span class="rail-icon">🖥</span><span class="rail-label">Display</span>
       </button>
@@ -58,6 +61,7 @@
     <div class="settings-panes" id="settings-panes">
 
       {% include 'settings/_general.html'      ignore missing %}
+      {% include 'settings/_location.html'    ignore missing %}
       {% include 'settings/_display.html'      ignore missing %}
       {% include 'settings/_access.html'       ignore missing %}
       {% include 'settings/_network.html'      ignore missing %}

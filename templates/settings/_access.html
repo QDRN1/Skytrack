@@ -38,37 +38,56 @@
       <h2>Sign-in session &amp; lockout</h2>
       <p class="muted">
         Controls how long you stay signed in after entering your PIN, and how
-        many wrong PIN attempts trigger a short automatic lockout (to slow
-        down anyone trying to guess the PIN).
+        many wrong PIN attempts trigger a short automatic lockout.
+        {% if not is_super %}These settings can only be changed by a super admin.{% endif %}
       </p>
     </header>
 
-    <form class="card-body card-form" id="form-session"
-          data-endpoint="/api/settings/access/session"
-          data-section="access">
-      <div class="field">
-        <label for="ax-timeout">Keep me signed in for (hours)</label>
-        <input id="ax-timeout" name="session_timeout_hours" type="number"
-               min="1" max="72" value="{{ config.session_timeout_hours or 2 }}">
-        <p class="muted small">Sliding window — each admin action resets the timer.</p>
+    <div class="card-body card-form">
+      <div class="readonly-grid">
+        <div class="readonly-row">
+          <span class="ro-label">Session timeout</span>
+          <code class="ro-value">{{ config.session_timeout_hours or 2 }} hours</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Max wrong PINs</span>
+          <code class="ro-value">{{ config.lockout_max_attempts or 5 }} attempts</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Lockout length</span>
+          <code class="ro-value">{{ config.lockout_window_seconds or 300 }} seconds</code>
+        </div>
       </div>
-      <div class="field">
-        <label for="ax-attempts">Lock out after this many wrong PINs</label>
-        <input id="ax-attempts" name="lockout_max_attempts" type="number"
-               min="1" max="50" value="{{ config.lockout_max_attempts or 5 }}">
-      </div>
-      <div class="field">
-        <label for="ax-window">Lockout length (seconds)</label>
-        <input id="ax-window" name="lockout_window_seconds" type="number"
-               min="30" max="86400" step="30"
-               value="{{ config.lockout_window_seconds or 300 }}">
-        <p class="muted small">How long admin sign-in is blocked after hitting the attempt limit.</p>
-      </div>
-      <footer class="card-footer">
-        <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
-        <button type="submit" class="btn btn-lg btn-primary">Save sign-in policy</button>
-      </footer>
-    </form>
+      {% if is_super %}
+      <details style="margin-top:16px">
+        <summary class="btn btn-lg">Edit lockout policy</summary>
+        <form class="card-form" id="form-session"
+              data-endpoint="/api/settings/access/session"
+              data-section="access" style="margin-top:12px">
+          <div class="field">
+            <label for="ax-timeout">Keep me signed in for (hours)</label>
+            <input id="ax-timeout" name="session_timeout_hours" type="number"
+                   min="1" max="72" value="{{ config.session_timeout_hours or 2 }}">
+          </div>
+          <div class="field">
+            <label for="ax-attempts">Lock out after this many wrong PINs</label>
+            <input id="ax-attempts" name="lockout_max_attempts" type="number"
+                   min="1" max="50" value="{{ config.lockout_max_attempts or 5 }}">
+          </div>
+          <div class="field">
+            <label for="ax-window">Lockout length (seconds)</label>
+            <input id="ax-window" name="lockout_window_seconds" type="number"
+                   min="30" max="86400" step="30"
+                   value="{{ config.lockout_window_seconds or 300 }}">
+          </div>
+          <footer class="card-footer">
+            <button type="button" class="btn btn-lg" data-action="reset">Cancel</button>
+            <button type="submit" class="btn btn-lg btn-primary">Save sign-in policy</button>
+          </footer>
+        </form>
+      </details>
+      {% endif %}
+    </div>
   </div>
 
   <div class="settings-card subtle">

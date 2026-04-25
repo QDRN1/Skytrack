@@ -60,6 +60,7 @@ polkit.addRule(function (action, subject) {
         "dump1090-fa.service":     true,
         "piaware.service":         true,
         "fr24feed.service":        true,
+        "cloudflared.service":     true,
     };
     if (thirdParty[unit]) {
         return polkit.Result.YES;

@@ -256,7 +256,7 @@
           — the device creates and manages the tunnel directly with your
           Cloudflare account.
         </p>
-        <pre class="log-pre" style="font-size:0.85em;padding:12px;user-select:all">sudo bash /opt/skytrack/scripts/setup_tunnel.sh skytrack-baycity skytrack-baycity.yourdomain.com</pre>
+        <pre class="log-pre" style="font-size:0.85em;padding:12px;user-select:all">sudo bash /opt/skytrack/scripts/setup_tunnel.sh skytrack-baycity skytrack-baycity.qdrn.io</pre>
         <p class="muted small" style="margin-top:8px">
           You'll be given a URL to open in any browser to authorize the
           device with your Cloudflare account. The script creates the
@@ -287,7 +287,7 @@
             <div class="field">
               <label for="tunnel-host">Public hostname</label>
               <input type="text" id="tunnel-host" class="input"
-                     placeholder="skytrack-baycity.yourdomain.com"
+                     placeholder="skytrack-baycity.qdrn.io"
                      value="{{ config.cloudflared_hostname or '' }}">
             </div>
             <div class="action-row">

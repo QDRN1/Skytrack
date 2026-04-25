@@ -1,8 +1,8 @@
 """SkyTrack GPS provider — abstraction over gpsd, ModemManager, and static config.
 
 Priority:
-  1. gpsd (if the daemon is reachable)
-  2. ModemManager via ``mmcli`` (cellular modem GPS)
+  1. ModemManager via ``mmcli`` (cellular modem GPS — SIM7600G-H)
+  2. gpsd (if the daemon is reachable)
   3. Static lat/lon from config.yaml
 
 Returns a dict:
@@ -163,13 +163,13 @@ class GPSService:
 
     def get_fix(self):
         """Return the best available GPS fix dict, or None."""
-        fix = _try_gpsd()
+        fix = _try_modemmanager()
         if fix:
             self._last_fix = fix
             _save_cache(fix, self._cache_path)
             return fix
 
-        fix = _try_modemmanager()
+        fix = _try_gpsd()
         if fix:
             self._last_fix = fix
             _save_cache(fix, self._cache_path)

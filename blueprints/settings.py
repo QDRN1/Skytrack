@@ -47,6 +47,7 @@ logger = logging.getLogger('skytrack.settings_bp')
 settings_bp = Blueprint('settings', __name__)
 
 ADMIN = auth_lib.login_required(auth_lib.ROLE_ADMIN)
+SUPER = auth_lib.login_required(auth_lib.ROLE_SUPER)
 
 
 # ---------------------------------------------------------------------------
@@ -304,15 +305,31 @@ def api_geocode():
     import urllib.request
     import urllib.parse
     import json as _json
-    url = 'https://nominatim.openstreetmap.org/search?' + urllib.parse.urlencode({
+    base = 'https://nominatim.openstreetmap.org/search?'
+    headers = {'User-Agent': 'SkyTrack-Appliance/1.0'}
+
+    url = base + urllib.parse.urlencode({
         'q': address, 'format': 'json', 'limit': '1',
+        'countrycodes': 'us',
     })
-    req = urllib.request.Request(url, headers={'User-Agent': 'SkyTrack-Appliance/1.0'})
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             results = _json.loads(resp.read())
     except Exception as e:
         return _err(f'Geocode failed: {e}')
+
+    if not results:
+        url2 = base + urllib.parse.urlencode({
+            'street': address, 'format': 'json', 'limit': '1',
+            'countrycodes': 'us',
+        })
+        req2 = urllib.request.Request(url2, headers=headers)
+        try:
+            with urllib.request.urlopen(req2, timeout=10) as resp2:
+                results = _json.loads(resp2.read())
+        except Exception:
+            pass
 
     if not results:
         return _err('No results found for that address')
@@ -452,7 +469,7 @@ def api_change_pin():
 
 
 @settings_bp.route('/api/settings/access/session', methods=['POST'])
-@ADMIN
+@SUPER
 def api_access_session():
     cfg = current_app.skytrack_config
     payload = request.get_json(silent=True) or {}
@@ -776,7 +793,8 @@ def api_tunnel_toggle():
     cfg = current_app.skytrack_config
     cfg['cloudflared_enabled'] = enable
     _persist({'cloudflared_enabled': enable})
-    logs_svc.log_portal('admin', f'tunnel_{action}ed', {})
+    label = 'started' if enable else 'stopped'
+    logs_svc.log_portal('admin', f'tunnel_{label}', {})
     return _ok({'enabled': enable})
 
 

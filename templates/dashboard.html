@@ -68,6 +68,14 @@
       </div>
     </section>
 
+    <section class="panel panel-map">
+      <h3>Live Map</h3>
+      <div id="aircraft-map"
+           data-lat="{{ center_lat }}"
+           data-lon="{{ center_lon }}"
+           data-zoom="{{ map_zoom }}"></div>
+    </section>
+
     <section class="panel panel-recent">
       <h3>Recent Aircraft</h3>
       <table class="data-table">
@@ -86,14 +94,6 @@
     <section class="panel panel-routes">
       <h3>Top Routes</h3>
       <ol class="rank-list" id="routes-list"></ol>
-    </section>
-
-    <section class="panel panel-map">
-      <h3>Live Map</h3>
-      <div id="aircraft-map"
-           data-lat="{{ center_lat }}"
-           data-lon="{{ center_lon }}"
-           data-zoom="{{ map_zoom }}"></div>
     </section>
   </div>
 </section>
