@@ -27,7 +27,9 @@ import os
 import shutil
 import subprocess
 import tarfile
+import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -2226,66 +2228,13 @@ def api_dump1090_restart():
     return jsonify({'ok': ok, 'message': msg or 'restart issued'})
 
 
-@settings_bp.route('/api/settings/feeders/dump1090/install', methods=['POST'])
-@ADMIN
-def api_dump1090_install():
-    """Install dump1090-fa + piaware together as the ADS-B stack."""
-    logger.info('ADS-B install endpoint called')
-    logs_svc.log_portal('admin', 'adsb_install_requested', {})
-    try:
-        ok1, out1 = _run_installer('dump1090')
-        logger.info('dump1090 installer returned ok=%s, output_len=%d', ok1, len(out1 or ''))
-    except Exception as e:
-        logger.exception('dump1090 installer crashed')
-        return jsonify({'ok': False, 'error': f'dump1090 installer crashed: {e}', 'output': ''})
-    try:
-        ok2, out2 = _run_installer('piaware')
-        logger.info('piaware installer returned ok=%s, output_len=%d', ok2, len(out2 or ''))
-    except Exception as e:
-        logger.exception('piaware installer crashed')
-        combined = (out1 or '') + '\npiaware installer crashed: ' + str(e)
-        return jsonify({'ok': ok1, 'error': f'piaware crashed: {e}', 'output': combined})
-    combined = (out1 or '') + '\n' + (out2 or '')
-    if ok1 and ok2:
-        logs_svc.log_portal('admin', 'adsb_installed', {})
-        return jsonify({'ok': True, 'message': 'dump1090-fa + piaware installed', 'output': combined})
-    if ok1:
-        return jsonify({'ok': True, 'message': 'dump1090-fa installed; piaware failed (see log)', 'output': combined})
-    return jsonify({'ok': False, 'error': 'Installation failed', 'output': combined})
-
-
-@settings_bp.route('/api/settings/feeders/fr24/install', methods=['POST'])
-@ADMIN
-def api_fr24_install():
-    """Install fr24feed (FlightRadar24 feeder)."""
-    logs_svc.log_portal('admin', 'fr24_install_requested', {})
-    ok, output = _run_installer('fr24feed')
-    if ok:
-        logs_svc.log_portal('admin', 'fr24_installed', {})
-        return jsonify({'ok': True, 'message': 'fr24feed installed', 'output': output})
-    return jsonify({'ok': False, 'error': 'Installation failed', 'output': output})
-
-
-@settings_bp.route('/api/settings/software/install', methods=['POST'])
-@ADMIN
-def api_software_install():
-    """Generic package install via the secure installer framework."""
-    package = (request.json or {}).get('package', '').strip()
-    if not package:
-        return _err('No package specified', 400)
-    logs_svc.log_portal('admin', 'software_install_requested', {'package': package})
-    ok, output = _run_installer(package)
-    if ok:
-        logs_svc.log_portal('admin', 'software_installed', {'package': package})
-        return _ok({'message': f'{package} installed', 'output': output})
-    return _err(f'Installation failed: {output}', 500)
-
-
 _INSTALL_WHITELIST = {'dump1090', 'fr24feed', 'piaware'}
+_install_jobs = {}  # job_id -> dict
+_install_lock = threading.Lock()
 
 
 def _run_installer(package):
-    """Run a whitelisted package install.
+    """Run a whitelisted package install (blocking — call from worker thread).
 
     Prefers the deployed wrapper at /usr/local/bin/skytrack-installer.
     Falls back to running the bundled installer script directly when the
@@ -2310,6 +2259,108 @@ def _run_installer(package):
     ok, output = _shell(['sudo', 'bash', script], timeout=900)
     logger.info('Installer script returned ok=%s, len=%d', ok, len(output or ''))
     return ok, output
+
+
+def _install_worker(job_id, packages):
+    """Background worker — runs installers sequentially, updates job dict."""
+    job = _install_jobs[job_id]
+    all_ok = True
+    for pkg in packages:
+        job['current'] = pkg
+        logger.info('Install job %s: starting %s', job_id, pkg)
+        try:
+            ok, out = _run_installer(pkg)
+            job['output'] += (out or '') + '\n'
+            if not ok:
+                all_ok = False
+                logger.warning('Install job %s: %s failed', job_id, pkg)
+        except Exception as e:
+            logger.exception('Install job %s: %s crashed', job_id, pkg)
+            job['output'] += f'\n{pkg} crashed: {e}\n'
+            all_ok = False
+    job['ok'] = all_ok
+    job['status'] = 'done' if all_ok else 'failed'
+    job['finished'] = time.time()
+    job['current'] = None
+    logger.info('Install job %s finished: ok=%s', job_id, all_ok)
+
+
+def _start_install_job(label, packages):
+    """Start an async install job. Returns (job_id, is_new)."""
+    with _install_lock:
+        for jid, job in _install_jobs.items():
+            if job.get('label') == label and job['status'] == 'running':
+                return jid, False
+        job_id = uuid.uuid4().hex[:8]
+        _install_jobs[job_id] = {
+            'label': label,
+            'status': 'running',
+            'output': '',
+            'ok': None,
+            'current': None,
+            'started': time.time(),
+            'finished': None,
+        }
+    threading.Thread(
+        target=_install_worker, args=(job_id, packages),
+        name=f'install-{label}', daemon=True,
+    ).start()
+    return job_id, True
+
+
+@settings_bp.route('/api/settings/feeders/dump1090/install', methods=['POST'])
+@ADMIN
+def api_dump1090_install():
+    """Start async ADS-B stack install (dump1090-fa + piaware)."""
+    logger.info('ADS-B install endpoint called')
+    logs_svc.log_portal('admin', 'adsb_install_requested', {})
+    job_id, is_new = _start_install_job('adsb', ['dump1090', 'piaware'])
+    if not is_new:
+        logger.info('ADS-B install already running: %s', job_id)
+    return jsonify({'job_id': job_id, 'status': 'running'})
+
+
+@settings_bp.route('/api/settings/feeders/fr24/install', methods=['POST'])
+@ADMIN
+def api_fr24_install():
+    """Start async FR24 feeder install."""
+    logs_svc.log_portal('admin', 'fr24_install_requested', {})
+    job_id, is_new = _start_install_job('fr24', ['fr24feed'])
+    if not is_new:
+        logger.info('FR24 install already running: %s', job_id)
+    return jsonify({'job_id': job_id, 'status': 'running'})
+
+
+@settings_bp.route('/api/settings/install/status/<job_id>', methods=['GET'])
+@ADMIN
+def api_install_status(job_id):
+    """Poll install job progress."""
+    job = _install_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Unknown job', 'status': 'unknown'}), 404
+    elapsed = int(time.time() - job['started'])
+    return jsonify({
+        'job_id': job_id,
+        'status': job['status'],
+        'output': job['output'],
+        'ok': job['ok'],
+        'current': job['current'],
+        'elapsed': elapsed,
+    })
+
+
+@settings_bp.route('/api/settings/software/install', methods=['POST'])
+@ADMIN
+def api_software_install():
+    """Generic package install via the secure installer framework."""
+    package = (request.json or {}).get('package', '').strip()
+    if not package:
+        return _err('No package specified', 400)
+    if package not in _INSTALL_WHITELIST:
+        return _err(f'Package {package!r} not allowed', 400)
+    logs_svc.log_portal('admin', 'software_install_requested', {'package': package})
+    job_id, _ = _start_install_job(package, [package])
+    return jsonify({'job_id': job_id, 'status': 'running'})
 
 
 # ---------- Data ------------------------------------------------------------

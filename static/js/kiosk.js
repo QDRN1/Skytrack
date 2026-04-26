@@ -695,7 +695,8 @@
         var now = new Date();
         var hh = String(now.getHours()).padStart(2, '0');
         var mm = String(now.getMinutes()).padStart(2, '0');
-        setText('op-clock-time', hh + ':' + mm);
+        var ss = String(now.getSeconds()).padStart(2, '0');
+        setText('op-clock-time', hh + ':' + mm + ':' + ss);
         var opts = { weekday: 'short', month: 'short', day: 'numeric' };
         try {
           setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
@@ -708,6 +709,12 @@
     if (opClockTimer) clearInterval(opClockTimer);
     opClockTimer = setInterval(tick, 1000);
   }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && visual === 'operational' && !opClockTimer) {
+      startClock();
+    }
+  });
 
   function fmtNumber(n) {
     if (n === null || n === undefined || isNaN(n)) return '—';

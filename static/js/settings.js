@@ -662,13 +662,13 @@
   async function refreshFeederStatus() {
     if (!$('#feed-dump-tile')) return;
     try {
-      const r = await window.api.get('/api/settings/feeders/status');
-      const setTile = (id, st) => {
-        const t = $('#feed-' + id + '-tile');
-        const v = $('#feed-' + id + '-value');
-        const s = $('#feed-' + id + '-sub');
-        const state = (st && st.state) || 'off';
-        const label = {
+      var r = await window.api.get('/api/settings/feeders/status');
+      var setTile = function (id, st) {
+        var t = $('#feed-' + id + '-tile');
+        var v = $('#feed-' + id + '-value');
+        var s = $('#feed-' + id + '-sub');
+        var state = (st && st.state) || 'off';
+        var label = {
           on:      'running',
           off:     'stopped',
           missing: 'not installed',
@@ -684,6 +684,29 @@
       setTile('dump', r.dump1090);
       setTile('fr24', r.fr24);
       setTile('pia',  r.piaware);
+
+      var adsbInstalled = r.dump1090 && r.dump1090.state !== 'missing';
+      var fr24Installed = r.fr24 && r.fr24.state !== 'missing';
+      var adsbBtn = $('#btn-install-adsb');
+      var fr24Btn = $('#btn-install-fr24');
+      if (adsbBtn) {
+        if (adsbInstalled) {
+          adsbBtn.textContent = 'Reinstall ADS-B stack';
+          adsbBtn.classList.remove('btn-primary');
+        } else {
+          adsbBtn.textContent = 'Install ADS-B stack';
+          adsbBtn.classList.add('btn-primary');
+        }
+      }
+      if (fr24Btn) {
+        if (fr24Installed) {
+          fr24Btn.textContent = 'Reinstall FR24 feeder';
+          fr24Btn.classList.remove('btn-primary');
+        } else {
+          fr24Btn.textContent = 'Install FR24 feeder';
+          fr24Btn.classList.add('btn-primary');
+        }
+      }
     } catch (_) {}
   }
 
@@ -704,6 +727,39 @@
       catch (_) { toast('Restart failed', true); }
     });
 
+    function pollInstallJob(jobId, btn, out, label) {
+      var poll = setInterval(async function () {
+        try {
+          var s = await window.api.get('/api/settings/install/status/' + jobId);
+          if (out) {
+            var lines = '';
+            if (s.current) lines += 'Installing ' + s.current + '…\n';
+            lines += s.elapsed + 's elapsed';
+            if (s.output) lines += '\n\n' + s.output;
+            out.textContent = lines;
+            out.scrollTop = out.scrollHeight;
+          }
+          if (s.status === 'done' || s.status === 'failed') {
+            clearInterval(poll);
+            if (out) {
+              out.textContent = s.output || (s.ok ? 'Done.' : 'Failed.');
+              out.scrollTop = out.scrollHeight;
+            }
+            toast(s.ok ? (label + ' installed') : (label + ' had errors — see log'), !s.ok);
+            btn.disabled = false;
+            btn.textContent = 'Install ' + label;
+            refreshFeederStatus();
+          }
+        } catch (e) {
+          clearInterval(poll);
+          if (out) out.textContent += '\nLost contact with server: ' + (e.message || e) + '\n';
+          btn.disabled = false;
+          btn.textContent = 'Install ' + label;
+          refreshFeederStatus();
+        }
+      }, 3000);
+    }
+
     function bindInstall(btnId, outId, url, label) {
       var btn = $('#' + btnId);
       var out = $('#' + outId);
@@ -712,58 +768,27 @@
         var ok = await confirmModal(
           'Install ' + label + '?',
           'This will download and install packages. The device needs internet access. ' +
-          'On Trixie this builds from source and may take several minutes.'
+          'Building from source may take 5–10 minutes.'
         );
         if (!ok) return;
         btn.disabled = true;
         btn.textContent = 'Installing…';
-        if (out) { out.hidden = false; out.textContent = 'Starting installation… waiting for server response.\n'; }
-        toast('Installing ' + label + '… (this may take several minutes)');
-
-        var t0 = Date.now();
-        var timer = setInterval(function () {
-          if (!out) return;
-          var secs = Math.round((Date.now() - t0) / 1000);
-          var dots = '.'.repeat((secs % 3) + 1);
-          out.textContent = 'Installing — ' + secs + 's elapsed' + dots + '\n(builds from source may take 5-10 minutes)\n';
-        }, 2000);
-
+        if (out) { out.hidden = false; out.textContent = 'Starting installation…\n'; }
+        toast('Installing ' + label + '…');
         try {
           var r = await window.api.post(url);
-          clearInterval(timer);
-          if (out && r && r.output) out.textContent = r.output;
-          if (r && r.ok) {
-            toast(r.message || label + ' installed');
-            if (out && !r.output) out.textContent = 'Installation completed successfully.\n';
+          if (r && r.job_id) {
+            if (out) out.textContent = 'Installation started (job ' + r.job_id + ')…\n';
+            pollInstallJob(r.job_id, btn, out, label);
           } else {
-            var errMsg = (r && r.error) || 'Unknown error';
-            toast(errMsg, true);
-            if (out) {
-              if (r && r.output) {
-                out.textContent = r.output + '\n\nERROR: ' + errMsg;
-              } else {
-                out.textContent = 'ERROR: ' + errMsg + '\n';
-              }
-            }
+            if (out) out.textContent = 'Unexpected response: ' + JSON.stringify(r) + '\n';
+            btn.disabled = false;
+            btn.textContent = 'Install ' + label;
           }
-          refreshFeederStatus();
         } catch (e) {
-          clearInterval(timer);
-          var data = e && e.data;
-          var status = e && e.status;
-          var msg = (data && data.error) || e.message || 'Request failed';
-          var detail = 'HTTP ' + (status || '?') + ': ' + msg;
-          if (out) {
-            if (data && data.output) {
-              out.textContent = data.output + '\n\n' + detail;
-            } else {
-              out.textContent = detail + '\n';
-            }
-          }
+          var msg = (e && e.data && e.data.error) || e.message || 'Request failed';
+          if (out) out.textContent = 'ERROR: ' + msg + '\n';
           toast(msg, true);
-          refreshFeederStatus();
-        } finally {
-          clearInterval(timer);
           btn.disabled = false;
           btn.textContent = 'Install ' + label;
         }
