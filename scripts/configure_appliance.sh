@@ -119,6 +119,12 @@ lock_down_cmdline() {
   local line
   line="$(tr -d '\n' <"$target")"
 
+  # Strip kernel-level video override that conflicts with FKMS + hdmi_cvt
+  if [[ "$line" == *"video=HDMI-A-1:"* ]]; then
+    line="$(echo "$line" | sed -E 's/ *video=HDMI-A-1:[^ ]*//')"
+    log "removed video=HDMI-A-1:* kernel parameter"
+  fi
+
   local required=(
     "quiet"
     "splash"
@@ -435,38 +441,53 @@ stabilize_hdmi() {
   local content
   content="$(cat "$cfg")"
 
-  # Parameters to ensure are present. Each is "key=value".
+  # --- Step A: Force FKMS overlay (full KMS conflicts with custom HDMI timing) ---
+  if grep -q 'dtoverlay=vc4-kms-v3d' "$cfg" && ! grep -q 'dtoverlay=vc4-fkms-v3d' "$cfg"; then
+    content="$(echo "$content" | sed 's/dtoverlay=vc4-kms-v3d/dtoverlay=vc4-fkms-v3d/')"
+    need_write=1
+    log "switched KMS → FKMS overlay"
+  elif ! grep -qE 'dtoverlay=vc4-(f?kms)-v3d' "$cfg"; then
+    content="${content}
+dtoverlay=vc4-fkms-v3d"
+    need_write=1
+  fi
+
+  # --- Step B: Canonical 800x480 HDMI block ---
+  # These are the exact parameters needed for a small HDMI panel.
+  # hdmi_group=2 + hdmi_mode=87 + hdmi_cvt = custom CEA timing.
+  # config_hdmi_boost=7 for stable signal on short cables.
   local -a params=(
     "hdmi_force_hotplug=1"
-    "config_hdmi_boost=4"
+    "hdmi_group=2"
+    "hdmi_mode=87"
+    "hdmi_cvt=800 480 60 6 0 0 1"
+    "hdmi_drive=2"
+    "config_hdmi_boost=7"
     "disable_overscan=1"
-    "hdmi_blanking=0"
   )
-
-  # Ensure vc4-kms-v3d or vc4-fkms-v3d overlay is present (required for
-  # modern Pi display stack). On Pi 4/5 Bookworm+ this is usually there
-  # already; we only add it if completely absent.
-  if ! grep -qE 'dtoverlay=vc4-(f?kms)-v3d' "$cfg"; then
-    params+=("dtoverlay=vc4-fkms-v3d")
-  fi
 
   for entry in "${params[@]}"; do
     local key="${entry%%=*}"
     local val="${entry#*=}"
-    # If the key exists (possibly commented or with a different value), replace it.
     if grep -qE "^#?\s*${key}\b" "$cfg"; then
-      # Only rewrite if value differs or is commented out
       if ! grep -q "^${key}=${val}$" "$cfg"; then
         content="$(echo "$content" | sed -E "s|^#?\s*${key}\b.*|${key}=${val}|")"
         need_write=1
       fi
     else
-      # Key not present at all — append under [all] or at end
       content="${content}
 ${key}=${val}"
       need_write=1
     fi
   done
+
+  # --- Step C: Remove conflicting entries ---
+  # hdmi_blanking is not needed — screen blanking is controlled by xset.
+  # Remove any hdmi_blanking lines to avoid firmware-level interference.
+  if grep -qE '^hdmi_blanking=' <<<"$content"; then
+    content="$(echo "$content" | sed '/^hdmi_blanking=/d')"
+    need_write=1
+  fi
 
   if [[ "$need_write" -eq 0 ]]; then
     log "HDMI config already stabilized"
