@@ -453,9 +453,8 @@ dtoverlay=vc4-fkms-v3d"
   fi
 
   # --- Step B: Canonical 800x480 HDMI block ---
-  # These are the exact parameters needed for a small HDMI panel.
-  # hdmi_group=2 + hdmi_mode=87 + hdmi_cvt = custom CEA timing.
-  # config_hdmi_boost=7 for stable signal on short cables.
+  # Strip-then-append: remove ALL existing lines for each key (handles
+  # duplicates from prior runs), then append the canonical value once.
   local -a params=(
     "hdmi_force_hotplug=1"
     "hdmi_group=2"
@@ -468,26 +467,16 @@ dtoverlay=vc4-fkms-v3d"
 
   for entry in "${params[@]}"; do
     local key="${entry%%=*}"
-    local val="${entry#*=}"
-    if grep -qE "^#?\s*${key}\b" "$cfg"; then
-      if ! grep -q "^${key}=${val}$" "$cfg"; then
-        content="$(echo "$content" | sed -E "s|^#?\s*${key}\b.*|${key}=${val}|")"
-        need_write=1
-      fi
-    else
-      content="${content}
-${key}=${val}"
-      need_write=1
-    fi
+    content="$(echo "$content" | sed -E "/^#?\s*${key}\b/d")"
+    content="${content}
+${entry}"
+    need_write=1
   done
 
   # --- Step C: Remove conflicting entries ---
-  # hdmi_blanking is not needed — screen blanking is controlled by xset.
-  # Remove any hdmi_blanking lines to avoid firmware-level interference.
-  if grep -qE '^hdmi_blanking=' <<<"$content"; then
-    content="$(echo "$content" | sed '/^hdmi_blanking=/d')"
-    need_write=1
-  fi
+  # hdmi_blanking: screen blanking controlled by xset, not firmware.
+  # Also strip stray comment-only lines about old HDMI params.
+  content="$(echo "$content" | sed -E '/^#?\s*hdmi_blanking\b/d')"
 
   if [[ "$need_write" -eq 0 ]]; then
     log "HDMI config already stabilized"
