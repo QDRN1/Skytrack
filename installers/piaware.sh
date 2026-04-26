@@ -85,6 +85,13 @@ if [[ "$REAL_CODENAME" == "trixie" ]]; then
   systemctl enable piaware || true
   systemctl restart piaware || true
 
+  # piaware-web may re-enable lighttpd — keep it off for SkyTrack.
+  if systemctl is-active --quiet lighttpd; then
+    echo "Disabling lighttpd to avoid port conflict with SkyTrack…"
+    systemctl stop lighttpd 2>/dev/null || true
+    systemctl disable lighttpd 2>/dev/null || true
+  fi
+
   if systemctl is-active --quiet piaware; then
     echo "piaware is running."
   else
@@ -135,6 +142,13 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y piaware-web 2>/dev/null || tru
 echo "Enabling and starting piaware service…"
 systemctl enable piaware || true
 systemctl restart piaware || true
+
+# piaware-web may re-enable lighttpd — keep it off for SkyTrack.
+if systemctl is-active --quiet lighttpd; then
+  echo "Disabling lighttpd to avoid port conflict with SkyTrack…"
+  systemctl stop lighttpd 2>/dev/null || true
+  systemctl disable lighttpd 2>/dev/null || true
+fi
 
 if systemctl is-active --quiet piaware; then
   echo "piaware is running."

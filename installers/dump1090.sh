@@ -63,6 +63,17 @@ if [[ "$REAL_CODENAME" == "trixie" ]]; then
   systemctl enable dump1090-fa || true
   systemctl restart dump1090-fa || true
 
+  # lighttpd ships with dump1090-fa and serves SkyAware on port 80.
+  # SkyTrack has its own web UI — move lighttpd to port 8888 so it
+  # doesn't hijack the primary port, then stop it to free resources.
+  echo "Reconfiguring lighttpd to avoid port conflict with SkyTrack…"
+  if [[ -f /etc/lighttpd/lighttpd.conf ]]; then
+    sed -i 's/^server.port\s*=.*/server.port = 8888/' /etc/lighttpd/lighttpd.conf
+  fi
+  systemctl stop lighttpd 2>/dev/null || true
+  systemctl disable lighttpd 2>/dev/null || true
+  echo "lighttpd disabled (SkyAware available on port 8888 if re-enabled)."
+
   if systemctl is-active --quiet dump1090-fa; then
     echo "dump1090-fa is running."
   else
@@ -117,6 +128,17 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y dump1090-fa
 echo "Enabling and starting dump1090-fa service…"
 systemctl enable dump1090-fa || true
 systemctl restart dump1090-fa || true
+
+# lighttpd ships with dump1090-fa and serves SkyAware on port 80.
+# SkyTrack has its own web UI — move lighttpd to port 8888 so it
+# doesn't hijack the primary port, then stop it to free resources.
+echo "Reconfiguring lighttpd to avoid port conflict with SkyTrack…"
+if [[ -f /etc/lighttpd/lighttpd.conf ]]; then
+  sed -i 's/^server.port\s*=.*/server.port = 8888/' /etc/lighttpd/lighttpd.conf
+fi
+systemctl stop lighttpd 2>/dev/null || true
+systemctl disable lighttpd 2>/dev/null || true
+echo "lighttpd disabled (SkyAware available on port 8888 if re-enabled)."
 
 if systemctl is-active --quiet dump1090-fa; then
   echo "dump1090-fa is running."
