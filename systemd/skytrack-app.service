@@ -10,6 +10,7 @@ User=skytrack
 Group=skytrack
 WorkingDirectory=/opt/skytrack
 EnvironmentFile=-/etc/skytrack/skytrack.env
+Environment=SKYTRACK_INGEST_STANDALONE=1
 ExecStart=/opt/skytrack/.venv/bin/python /opt/skytrack/app.py
 Restart=always
 RestartSec=5

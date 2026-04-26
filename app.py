@@ -252,13 +252,16 @@ def _start_background_services(app: Flask) -> None:
 
     cfg = app.skytrack_config
 
-    # 1. ADS-B sightings ingest (the SightingsIngest class manages its own
-    # daemon thread internally — start() is non-blocking).
-    try:
-        app.ingest.start()
-        logger.info('Background service started: sightings ingest')
-    except Exception as e:
-        logger.warning('ingest start failed: %s', e)
+    # 1. ADS-B sightings ingest — skip if the standalone systemd service
+    # handles it (avoids double-writing to the DB).
+    if os.environ.get('SKYTRACK_INGEST_STANDALONE'):
+        logger.info('Ingest handled by standalone service, skipping in-process start')
+    else:
+        try:
+            app.ingest.start()
+            logger.info('Background service started: sightings ingest')
+        except Exception as e:
+            logger.warning('ingest start failed: %s', e)
 
     # 2a. DHT22 hardware poller — single owner of the GPIO pin.
     # The poll cadence and retry behaviour live inside SensorService;

@@ -248,3 +248,23 @@ class SightingsIngest:
             'message': f'dump1090 JSON not found at {self.dump1090_json} '
                        '(install dump1090-fa or set dump1090_url to a remote feed)',
         }
+
+
+if __name__ == '__main__':
+    import sys
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(name)s %(levelname)s %(message)s',
+    )
+    from config import load_config
+    cfg = load_config()
+    db.migrate()
+    worker = SightingsIngest(cfg)
+    worker.start()
+    logger.info('Standalone ingest running (Ctrl-C to stop)')
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        worker.stop()
+        sys.exit(0)
