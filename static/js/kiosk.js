@@ -692,9 +692,11 @@
     var tick = function () {
       try {
         var now = new Date();
-        var hh = String(now.getHours()).padStart(2, '0');
+        var h24 = now.getHours();
+        var h12 = h24 % 12 || 12;
         var mm = String(now.getMinutes()).padStart(2, '0');
-        setText('op-clock-time', hh + ':' + mm);
+        var ampm = h24 < 12 ? 'AM' : 'PM';
+        setText('op-clock-time', h12 + ':' + mm + ' ' + ampm);
         var opts = { weekday: 'short', month: 'short', day: 'numeric' };
         try {
           setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
