@@ -323,7 +323,13 @@ def _start_background_services(app: Flask) -> None:
                     _gps_state.clear()
                     if fix:
                         _gps_state.update(fix)
-                        _gps_state['state'] = 'fix_acquired'
+                        src = (fix.get('source') or '').lower()
+                        if src in ('modemmanager', 'gpsd'):
+                            _gps_state['state'] = 'fix_acquired'
+                        elif 'cached' in src or src == 'config':
+                            _gps_state['state'] = 'static'
+                        else:
+                            _gps_state['state'] = 'fix_acquired'
                     else:
                         _gps_state['state'] = 'no_fix'
                 if fix:

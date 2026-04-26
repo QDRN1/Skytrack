@@ -122,11 +122,11 @@ def api_gps():
         })
     with current_app.gps_state_lock:
         snap = dict(current_app.gps_state)
-    if snap.get('state') == 'fix_acquired' and snap.get('lat'):
+    if snap.get('state') in ('fix_acquired', 'static') and snap.get('lat'):
         snap['map_zoom'] = zoom
         return jsonify(snap)
     return jsonify({
-        'state': 'config',
+        'state': 'no_fix',
         'source': 'config',
         'lat': cfg.get('latitude'),
         'lon': cfg.get('longitude'),

@@ -419,6 +419,66 @@ announce_safe_mode() {
 }
 
 # ---------------------------------------------------------------------------
+# 9. HDMI stabilization — prevent screen flickering, timeout, and blanking.
+#    Ensures a forced HDMI hotplug, boost signal, and disables DPMS/blanking
+#    at the firmware level so the kiosk display never goes dark.
+# ---------------------------------------------------------------------------
+stabilize_hdmi() {
+  local cfg="/boot/firmware/config.txt"
+  [[ -f "$cfg" ]] || cfg="/boot/config.txt"
+  if [[ ! -f "$cfg" ]]; then
+    log "config.txt not found — skipping HDMI stabilization (not on a Pi?)"
+    return 0
+  fi
+
+  local need_write=0
+  local content
+  content="$(cat "$cfg")"
+
+  # Parameters to ensure are present. Each is "key=value".
+  local -a params=(
+    "hdmi_force_hotplug=1"
+    "config_hdmi_boost=4"
+    "disable_overscan=1"
+    "hdmi_blanking=0"
+  )
+
+  # Ensure vc4-kms-v3d or vc4-fkms-v3d overlay is present (required for
+  # modern Pi display stack). On Pi 4/5 Bookworm+ this is usually there
+  # already; we only add it if completely absent.
+  if ! grep -qE 'dtoverlay=vc4-(f?kms)-v3d' "$cfg"; then
+    params+=("dtoverlay=vc4-fkms-v3d")
+  fi
+
+  for entry in "${params[@]}"; do
+    local key="${entry%%=*}"
+    local val="${entry#*=}"
+    # If the key exists (possibly commented or with a different value), replace it.
+    if grep -qE "^#?\s*${key}\b" "$cfg"; then
+      # Only rewrite if value differs or is commented out
+      if ! grep -q "^${key}=${val}$" "$cfg"; then
+        content="$(echo "$content" | sed -E "s|^#?\s*${key}\b.*|${key}=${val}|")"
+        need_write=1
+      fi
+    else
+      # Key not present at all — append under [all] or at end
+      content="${content}
+${key}=${val}"
+      need_write=1
+    fi
+  done
+
+  if [[ "$need_write" -eq 0 ]]; then
+    log "HDMI config already stabilized"
+    return 0
+  fi
+
+  log "stabilizing HDMI in $cfg (backup: ${cfg}.bak)"
+  cp -f "$cfg" "${cfg}.bak"
+  printf '%s\n' "$content" > "$cfg"
+}
+
+# ---------------------------------------------------------------------------
 install_plymouth_theme
 lock_down_cmdline
 mask_extra_gettys
@@ -426,6 +486,7 @@ relax_xwrapper
 write_openbox_config
 write_fallback_splash
 seed_display_env
+stabilize_hdmi
 announce_safe_mode
 
 log "appliance configuration complete"

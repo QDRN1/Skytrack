@@ -265,8 +265,14 @@ html[data-anim="off"] .particles-canvas { display: none; }
 }
 .btn:hover { background: var(--bg-elev); }
 .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: color-mix(in srgb, #000000 15%, var(--accent)); }
+[data-theme="dark"] .btn.primary:hover { background: color-mix(in srgb, #ffffff 14%, var(--accent)); }
 .btn.warn { background: var(--accent-warm); color: #fff; border-color: var(--accent-warm); }
+.btn.warn:hover { background: color-mix(in srgb, #000000 12%, var(--accent-warm)); }
+[data-theme="dark"] .btn.warn:hover { background: color-mix(in srgb, #ffffff 14%, var(--accent-warm)); }
 .btn.danger { background: var(--accent-warn); color: #fff; border-color: var(--accent-warn); }
+.btn.danger:hover { background: color-mix(in srgb, #000000 15%, var(--accent-warn)); }
+[data-theme="dark"] .btn.danger:hover { background: color-mix(in srgb, #ffffff 12%, var(--accent-warn)); }
 
 /* -------- Settings tabs -------- */
 .settings { max-width: 1100px; margin: 0 auto; }
@@ -286,6 +292,27 @@ html[data-anim="off"] .particles-canvas { display: none; }
   max-height: 480px; overflow: auto; white-space: pre-wrap;
 }
 [data-theme="light"] .log-pre { background: #1c2240; color: #eef0ff; }
+
+/* Copy All button on .log-pre blocks */
+.copy-all-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  background: rgba(14, 22, 48, 0.85);
+  color: rgba(200, 210, 255, 0.9);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 2;
+  transition: background 150ms ease, color 150ms ease;
+}
+.copy-all-btn:hover {
+  background: var(--accent, #4d8bff);
+  color: #fff;
+}
 
 .release-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .release-version { font-size: 20px; font-weight: 700; color: var(--accent); }
@@ -751,17 +778,22 @@ button.topbar-link {
   border-color: var(--accent);
   color: #ffffff;
 }
-.btn-primary:hover { background: color-mix(in srgb, #ffffff 12%, var(--accent)); }
+.btn-primary:hover { background: color-mix(in srgb, #000000 15%, var(--accent)); }
+[data-theme="dark"] .btn-primary:hover { background: color-mix(in srgb, #ffffff 14%, var(--accent)); }
 .btn-warn {
   background: var(--accent-warm);
   border-color: var(--accent-warm);
   color: #1a1200;
 }
+.btn-warn:hover { background: color-mix(in srgb, #000000 12%, var(--accent-warm)); }
+[data-theme="dark"] .btn-warn:hover { background: color-mix(in srgb, #ffffff 14%, var(--accent-warm)); color: #1a1200; }
 .btn-danger {
   background: var(--accent-warn);
   border-color: var(--accent-warn);
   color: #ffffff;
 }
+.btn-danger:hover { background: color-mix(in srgb, #000000 15%, var(--accent-warn)); }
+[data-theme="dark"] .btn-danger:hover { background: color-mix(in srgb, #ffffff 12%, var(--accent-warn)); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .action-row {
@@ -1317,4 +1349,9 @@ button.topbar-link {
 .hw-value { color: var(--fg); }
 .hw-sub   { font-size: 0.9em; }
 .hw-error { flex: 1 1 100%; color: var(--accent-warn); font-style: italic; }
+
+/* GPS status indicator colors */
+.gps-green { color: #22c55e; font-weight: 600; }
+.gps-amber { color: #f59e0b; font-weight: 600; }
+.gps-red   { color: #ef4444; font-weight: 600; }
 

@@ -1362,15 +1362,34 @@
       if (gs) gs.hidden = srcRadio.value === 'manual';
     }
 
-    // GPS status poll
+    // GPS status poll — red/amber/green states:
+    //   green = live fix (modemmanager, gpsd)
+    //   amber = static fallback (config, cached)
+    //   red   = no fix at all
     async function pollGps() {
       try {
         const d = await window.api.get('/api/settings/location');
         const g = d.gps || {};
         const el = document.getElementById('loc-gps-state');
-        if (el) el.textContent = g.state || 'no_fix';
-        const src = document.getElementById('loc-gps-source');
-        if (src) src.textContent = g.source || '—';
+        if (el) {
+          const state = g.state || 'no_fix';
+          const src = (g.source || '').toLowerCase();
+          el.classList.remove('gps-green', 'gps-amber', 'gps-red');
+          if (state === 'fix_acquired' && (src === 'modemmanager' || src === 'gpsd')) {
+            el.textContent = 'Live Fix';
+            el.classList.add('gps-green');
+          } else if (state === 'static' || src === 'config' || src.includes('cached')) {
+            el.textContent = 'Static (' + (g.source || 'config') + ')';
+            el.classList.add('gps-amber');
+          } else if (state === 'no_fix') {
+            el.textContent = 'No Fix';
+            el.classList.add('gps-red');
+          } else {
+            el.textContent = state;
+          }
+        }
+        const srcEl = document.getElementById('loc-gps-source');
+        if (srcEl) srcEl.textContent = g.source || '—';
         const coords = document.getElementById('loc-gps-coords');
         if (coords && g.lat && g.lon) {
           coords.textContent = Number(g.lat).toFixed(5) + ', ' + Number(g.lon).toFixed(5);
@@ -1512,6 +1531,49 @@
   // ------------------------------------------------------------------
   // Boot
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // Copy All button for .log-pre blocks
+  // ------------------------------------------------------------------
+  function bindCopyButtons() {
+    $$('.log-pre').forEach(pre => {
+      if (pre.querySelector('.copy-all-btn')) return;
+      var wrap = document.createElement('div');
+      wrap.style.position = 'relative';
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy-all-btn';
+      btn.textContent = 'Copy All';
+      btn.addEventListener('click', function () {
+        var text = pre.textContent || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            btn.textContent = 'Copied!';
+            setTimeout(function () { btn.textContent = 'Copy All'; }, 1500);
+          }).catch(function () {
+            fallbackCopy(text, btn);
+          });
+        } else {
+          fallbackCopy(text, btn);
+        }
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function fallbackCopy(text, btn) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); btn.textContent = 'Copied!'; }
+    catch (_) { btn.textContent = 'Failed'; }
+    document.body.removeChild(ta);
+    setTimeout(function () { btn.textContent = 'Copy All'; }, 1500);
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     bindRail();
     bindForms();
@@ -1526,6 +1588,7 @@
     bindKioskCards();
     bindLocationExtras();
     bindSpeedTest();
+    bindCopyButtons();
     refreshSystemStatus();
   });
 

@@ -519,8 +519,9 @@
       min-height: clamp(52px, 10vh, 92px);
     }
     .op-brand {
-      display: flex; align-items: baseline; gap: clamp(8px, 1.2vw, 14px);
+      display: flex; align-items: center;
       min-width: 0;
+      flex-shrink: 0;
     }
     .op-brand .mark {
       display: inline-block;
@@ -533,15 +534,27 @@
       letter-spacing: 1.2px;
       box-shadow: 0 0 22px rgba(77, 139, 255, 0.45);
     }
-    .op-brand .brand-text {
+
+    /* Center block: "SkyTrack — HH:MM" with date below */
+    .op-center {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: clamp(6px, 1vw, 12px);
+      flex: 1 1 auto;
+      text-align: center;
+    }
+    .op-center-label {
       font-size: clamp(1.1em, 2.6vh, 1.9em);
       font-weight: 600;
       letter-spacing: 0.6px;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      color: #ffffff;
     }
-
+    .op-center-sep {
+      font-size: clamp(1em, 2.2vh, 1.5em);
+      color: rgba(151, 160, 196, 0.6);
+    }
     .op-clock {
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       font-size: clamp(1.4em, 4.4vh, 3em);
@@ -551,45 +564,93 @@
       text-shadow: 0 0 18px rgba(77, 139, 255, 0.55);
       white-space: nowrap;
     }
-    .op-clock .op-date {
-      display: block;
-      font-size: 0.38em;
+    .op-date {
+      font-size: clamp(0.55em, 1.2vh, 0.8em);
       letter-spacing: 2px;
       color: rgba(151, 160, 196, 0.92);
       text-transform: uppercase;
-      margin-top: 2px;
       font-weight: 500;
-      text-align: right;
+      margin-left: clamp(4px, 0.8vw, 8px);
     }
 
-    .op-weather {
-      display: flex; align-items: center; gap: clamp(6px, 1vw, 12px);
+    /* Right side: CPU temp + active connection */
+    .op-header-right {
+      display: flex;
+      align-items: center;
+      gap: clamp(6px, 1vw, 12px);
+      flex-shrink: 0;
+    }
+    .op-connection {
+      display: flex;
+      align-items: center;
+      gap: clamp(4px, 0.6vw, 8px);
       padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.2vw, 14px);
       border-radius: clamp(8px, 1.2vh, 14px);
       background: rgba(10, 16, 38, 0.6);
       border: 1px solid rgba(120, 160, 255, 0.18);
-      min-width: 0;
-    }
-    .op-weather .temp {
-      font-size: clamp(1.4em, 4vh, 2.6em);
-      font-weight: 700;
-      color: #ffd49b;
-      line-height: 1;
-    }
-    .op-weather .cond {
       font-size: clamp(0.8em, 1.8vh, 1.1em);
       color: rgba(231, 235, 255, 0.82);
-      line-height: 1.15;
-      max-width: clamp(120px, 18vw, 260px);
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    }
+    .op-connection .conn-icon {
+      font-size: 1.1em;
+    }
+    .op-connection.conn-online { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); }
+    .op-connection.conn-offline { color: #ef4444; border-color: rgba(239, 68, 68, 0.45); }
+
+    /* CPU temp chip — 3-tier color: green <70, amber 70-80, red >80 */
+    .op-cpu-temp {
+      display: inline-flex;
+      align-items: center;
+      padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.2vw, 14px);
+      border-radius: clamp(8px, 1.2vh, 14px);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: clamp(0.85em, 2vh, 1.2em);
+      font-weight: 600;
+      white-space: nowrap;
+      border: 1px solid rgba(120, 160, 255, 0.18);
+      background: rgba(10, 16, 38, 0.6);
+    }
+    .op-cpu-temp.temp-green {
+      color: #4ade80;
+      border-color: rgba(74, 222, 128, 0.35);
+    }
+    .op-cpu-temp.temp-amber {
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.12);
+    }
+    .op-cpu-temp.temp-red {
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.55);
+      background: rgba(239, 68, 68, 0.15);
+      animation: temp-pulse 2s ease-in-out infinite;
+    }
+    @keyframes temp-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
     }
 
-    /* ----- Carousel ------------------------------------------------------ */
+    /* Weather styles removed from header — weather is now only in the card carousel */
+
+    /* ----- Persistent map pane (always visible, top portion) ------------- */
+    .op-map-pane {
+      flex: 1 1 50%;
+      min-height: 0;
+      border-radius: clamp(12px, 2vh, 22px);
+      overflow: hidden;
+    }
+    .op-map-pane .op-map {
+      width: 100%;
+      height: 100%;
+      border-radius: clamp(12px, 2vh, 22px);
+      background: #0a101c;
+    }
+
+    /* ----- Carousel (rotating stat cards, bottom portion) -------------- */
     .op-carousel {
       position: relative;
-      flex: 1 1 auto;
+      flex: 1 1 50%;
       overflow: hidden;
       min-height: 0;
       border-radius: clamp(12px, 2vh, 22px);
@@ -619,9 +680,7 @@
       min-height: 0;
       padding: 0 clamp(2px, 0.5vw, 6px);
     }
-    .carousel-page-map {
-      grid-template-rows: 1fr;
-    }
+    /* carousel-page-map no longer used — map is a persistent pane */
     .carousel-page.full-width {
       grid-template-rows: 1fr;
     }
@@ -648,13 +707,7 @@
       transform: scale(1.15);
     }
 
-    /* Map */
-    .op-map {
-      width: 100%;
-      height: 100%;
-      border-radius: clamp(12px, 2vh, 22px);
-      background: #0a101c;
-    }
+    /* Map (standalone definition removed — now inside .op-map-pane) */
 
     /* List-style card values (airlines) */
     .op-list-value {
@@ -801,11 +854,11 @@
     }
     .op-map .leaflet-popup-tip { background: rgba(10, 16, 38, 0.92); }
 
-    /* Narrow / short displays — drop the header weather badge to keep the
-       main counters legible on 800x480 touchscreens. */
+    /* Narrow / short displays — hide date to save space on 800x480 touchscreens. */
     @media (max-height: 500px), (max-width: 720px) {
-      .op-weather { display: none; }
-      .op-clock .op-date { display: none; }
+      .op-date { display: none; }
+      .op-center-label { display: none; }
+      .op-center-sep { display: none; }
     }
 
     /* ---- Device temp alarm overlay ---- */
@@ -1011,25 +1064,33 @@
       <header class="op-header">
         <div class="op-brand">
           <span class="mark">QDRN</span>
-          <span class="brand-text">SkyTrack Portal</span>
         </div>
-        <div class="op-clock">
-          <span id="op-clock-time">--:--</span>
+        <div class="op-center">
+          <span class="op-center-label">SkyTrack</span>
+          <span class="op-center-sep">—</span>
+          <span class="op-clock" id="op-clock-time">--:--</span>
           <span class="op-date" id="op-clock-date">&nbsp;</span>
         </div>
-        <div class="op-weather" id="op-weather">
-          <span class="temp" id="op-wx-temp">—</span>
-          <span class="cond" id="op-wx-cond">—</span>
+        <div class="op-header-right">
+          <div class="op-cpu-temp" id="op-cpu-temp" hidden>—</div>
+          <div class="op-connection" id="op-connection">
+            <span class="conn-icon" id="op-conn-icon">—</span>
+            <span class="conn-label" id="op-conn-label">—</span>
+          </div>
         </div>
       </header>
 
-      {# ---- Carousel viewport ---- #}
+      {# ---- Persistent map (always visible, top half) ---- #}
+      <div class="op-map-pane" id="op-map-pane">
+        <div id="op-map" class="op-map"></div>
+      </div>
+
+      {# ---- Carousel viewport (rotating stat cards, bottom half) ---- #}
       <main class="op-carousel" id="op-carousel">
         <div class="carousel-track" id="carousel-track">
 
           {# Each .carousel-page holds two cards side-by-side.
-             JS clones/reorders these based on kiosk_cards config.
-             Hidden pages are display:none so swipe math stays simple. #}
+             JS clones/reorders these based on kiosk_cards config. #}
           <div class="carousel-page" data-page="cards-1">
             <section class="op-card" data-card="aircraft_now">
               <div class="label">Aircraft Now</div>
@@ -1080,11 +1141,6 @@
               <div class="value op-device-value" id="op-device-id">—</div>
               <div class="sub" id="op-device-sub">—</div>
             </section>
-          </div>
-
-          {# Map page — full width #}
-          <div class="carousel-page carousel-page-map" data-page="map">
-            <div id="op-map" class="op-map"></div>
           </div>
 
         </div>{# /carousel-track #}

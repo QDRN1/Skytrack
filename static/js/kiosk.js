@@ -45,6 +45,7 @@
   const POS_URL      = '/api/dashboard/positions';
   const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
   const TEMP_ALARM_URL = '/api/device-temp-alarm';
+  const NET_STATUS_URL = '/api/network/status';
 
   // ----- Cadences ------------------------------------------------------
   const ONB_POLL_MS         = 1500;
@@ -447,6 +448,7 @@
     show($('kiosk-op'));
 
     startClock();
+    initMapEagerly();
     initCarousel();
     refreshCards();
     refreshWeather();
@@ -455,6 +457,7 @@
     refreshTrend();
     refreshMap();
     startTempAlarmPoll();
+    startNetStatusPoll();
 
     if (!opCardsTimer) opCardsTimer = setInterval(function () {
       refreshCards(); refreshAirlines(); refreshTrend(); refreshMap();
@@ -470,6 +473,7 @@
     if (opClockTimer) { clearInterval(opClockTimer); opClockTimer = null; }
     stopCarouselAuto();
     stopTempAlarmPoll();
+    stopNetStatusPoll();
   }
 
   // ----- Carousel initialization & config --------------------------------
@@ -478,20 +482,19 @@
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
         carouselInterval = (cfg.interval || 8) * 1000;
-        carouselMapInterval = (cfg.map_interval || 15) * 1000;
-        buildCarouselPages(cfg.cards || [], cfg.show_map !== false);
+        buildCarouselPages(cfg.cards || []);
         setTimeout(startCarouselAuto, 500);
         initSwipe();
         startIdleWatch(cfg.sleep_minutes || 0);
       })
       .catch(function () {
-        buildCarouselPages([], true);
+        buildCarouselPages([]);
         setTimeout(startCarouselAuto, 500);
         initSwipe();
       });
   }
 
-  function buildCarouselPages(enabledCards, showMap) {
+  function buildCarouselPages(enabledCards) {
     var track = $('carousel-track');
     if (!track) return;
     var allCards = track.querySelectorAll('.op-card[data-card]');
@@ -510,8 +513,8 @@
       if (cardMap[id]) enabled.push(cardMap[id]);
     });
 
-    // Remove old page containers (except the map page)
-    var oldPages = track.querySelectorAll('.carousel-page:not(.carousel-page-map)');
+    // Remove old page containers
+    var oldPages = track.querySelectorAll('.carousel-page');
     oldPages.forEach(function (p) { p.remove(); });
 
     // Pair cards into pages of 2
@@ -525,23 +528,15 @@
       } else {
         page.classList.add('full-width');
       }
-      // Insert before map page
-      var mapPage = track.querySelector('.carousel-page-map');
-      if (mapPage) {
-        track.insertBefore(page, mapPage);
-      } else {
-        track.appendChild(page);
-      }
+      track.appendChild(page);
     }
 
-    // Show/hide map page
-    var mp = track.querySelector('.carousel-page-map');
-    if (mp) mp.style.display = showMap ? '' : 'none';
-
-    // Update live page list
-    carouselPages = track.querySelectorAll('.carousel-page:not([style*="display: none"])');
+    // Convert to a real Array (not a live NodeList) to prevent stale references
+    carouselPages = Array.from(track.querySelectorAll('.carousel-page'));
     carouselPage = 0;
-    goToPage(0, false);
+    if (carouselPages.length > 0) {
+      goToPage(0, false);
+    }
     buildDots();
   }
 
@@ -561,6 +556,7 @@
   }
 
   function goToPage(idx, animate) {
+    if (!carouselPages.length) return;
     if (idx < 0) idx = carouselPages.length - 1;
     if (idx >= carouselPages.length) idx = 0;
     carouselPage = idx;
@@ -582,21 +578,14 @@
     for (var d = 0; d < dots.length; d++) {
       dots[d].classList.toggle('active', d === idx);
     }
-    // Init map lazily when map page becomes visible
-    if (carouselPages[idx] && carouselPages[idx].classList.contains('carousel-page-map')) {
-      initMapIfNeeded();
-    }
   }
 
   function currentPageInterval() {
-    if (carouselPages[carouselPage] &&
-        carouselPages[carouselPage].classList.contains('carousel-page-map')) {
-      return carouselMapInterval;
-    }
     return carouselInterval;
   }
 
   function nextPage() {
+    if (carouselPages.length < 2) { scheduleNextAuto(); return; }
     try {
       goToPage(carouselPage + 1, true);
     } catch (_e) { /* never break the chain */ }
@@ -618,7 +607,7 @@
     // transient error), restart it automatically.
     if (!carouselHeartbeat) {
       carouselHeartbeat = setInterval(function () {
-        if (visual === 'operational' && !carouselAutoTimer && carouselPages.length > 1) {
+        if (visual === 'operational' && !carouselAutoTimer && carouselPages.length > 0) {
           scheduleNextAuto();
         }
       }, 12000);
@@ -689,14 +678,16 @@
   }
 
   // ----- Clock -----------------------------------------------------------
+  // HH:MM only (no seconds). Self-healing: if the interval ever dies
+  // (browser throttle, background tab, crash), the visibilitychange
+  // handler and a 15s watchdog restart it.
   function startClock() {
     var tick = function () {
       try {
         var now = new Date();
         var hh = String(now.getHours()).padStart(2, '0');
         var mm = String(now.getMinutes()).padStart(2, '0');
-        var ss = String(now.getSeconds()).padStart(2, '0');
-        setText('op-clock-time', hh + ':' + mm + ':' + ss);
+        setText('op-clock-time', hh + ':' + mm);
         var opts = { weekday: 'short', month: 'short', day: 'numeric' };
         try {
           setText('op-clock-date', now.toLocaleDateString(undefined, opts).toUpperCase());
@@ -710,11 +701,18 @@
     opClockTimer = setInterval(tick, 1000);
   }
 
+  // Self-healing: restart the clock if the interval dies for any reason.
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && visual === 'operational' && !opClockTimer) {
+    if (!document.hidden && visual === 'operational') {
       startClock();
     }
   });
+  // Watchdog: every 15s, verify the clock timer is alive.
+  setInterval(function () {
+    if (visual === 'operational' && !opClockTimer) {
+      startClock();
+    }
+  }, 15000);
 
   function fmtNumber(n) {
     if (n === null || n === undefined || isNaN(n)) return '—';
@@ -911,8 +909,8 @@
     ctx.stroke();
   }
 
-  // ----- Map (Leaflet, lazy) --------------------------------------------
-  function initMapIfNeeded() {
+  // ----- Map (Leaflet, eager — always-visible pane) ----------------------
+  function initMapEagerly() {
     if (mapInitialized) return;
     if (typeof L === 'undefined') return;
     var el = $('op-map');
@@ -925,12 +923,11 @@
         var lat = (g && g.lat) || 44.6;
         var lon = (g && g.lon) || -92.5;
         var zoom = (g && g.map_zoom) || 9;
-        carouselMap = L.map(el, { zoomControl: false, attributionControl: false })
+        carouselMap = L.map(el, { zoomControl: true, attributionControl: false })
           .setView([lat, lon], zoom);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
           maxZoom: 18,
         }).addTo(carouselMap);
-        // Home marker
         L.circleMarker([lat, lon], {
           radius: 8, fillColor: '#4d8bff', fillOpacity: 0.85,
           color: '#fff', weight: 2,
@@ -1013,6 +1010,9 @@
   }
 
   // ----- Device temp alarm poll ----------------------------------------
+  // 3-tier system: green <70°C, amber 70-80°C, red >80°C.
+  // The red alarm overlay fires at 80°C (critical). The header chip
+  // shows current CPU temp with color coding at all times.
   let tempAlarmTimer = null;
   async function checkTempAlarm() {
     try {
@@ -1023,6 +1023,24 @@
       });
       if (!r.ok) return;
       var data = await r.json();
+
+      // Update header CPU temp chip
+      var chip = $('op-cpu-temp');
+      if (chip && data.cpu_temp_c != null) {
+        var temp = data.cpu_temp_c;
+        chip.textContent = Math.round(temp) + '°C';
+        chip.classList.remove('temp-green', 'temp-amber', 'temp-red');
+        if (temp >= 80) {
+          chip.classList.add('temp-red');
+        } else if (temp >= 70) {
+          chip.classList.add('temp-amber');
+        } else {
+          chip.classList.add('temp-green');
+        }
+        chip.hidden = false;
+      }
+
+      // Critical overlay at threshold
       var overlay = $('temp-alarm-overlay');
       if (!overlay) return;
       if (data.active) {
@@ -1044,6 +1062,60 @@
   }
   function stopTempAlarmPoll() {
     if (tempAlarmTimer) { clearInterval(tempAlarmTimer); tempAlarmTimer = null; }
+  }
+
+  // ----- Network status poll (header active connection) ---------------
+  let netStatusTimer = null;
+  async function checkNetStatus() {
+    try {
+      var r = await fetch(NET_STATUS_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      var connEl = $('op-connection');
+      var iconEl = $('op-conn-icon');
+      var labelEl = $('op-conn-label');
+      if (!connEl) return;
+
+      connEl.classList.remove('conn-online', 'conn-offline');
+      var primary = data.primary || 'none';
+      var online = !!data.internet;
+
+      if (online) {
+        connEl.classList.add('conn-online');
+        if (primary === 'wifi') {
+          var ssid = (data.wifi && data.wifi.ssid) || 'WiFi';
+          if (iconEl) iconEl.textContent = '◉';
+          if (labelEl) labelEl.textContent = ssid;
+        } else if (primary === 'cellular') {
+          var tech = (data.cellular && data.cellular.access_tech) || 'LTE';
+          if (iconEl) iconEl.textContent = '▲';
+          if (labelEl) labelEl.textContent = tech.toUpperCase();
+        } else if (primary === 'ethernet') {
+          if (iconEl) iconEl.textContent = '⬤';
+          if (labelEl) labelEl.textContent = 'Ethernet';
+        } else {
+          if (iconEl) iconEl.textContent = '◉';
+          if (labelEl) labelEl.textContent = 'Online';
+        }
+      } else {
+        connEl.classList.add('conn-offline');
+        if (iconEl) iconEl.textContent = '○';
+        if (labelEl) labelEl.textContent = 'Offline';
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  function startNetStatusPoll() {
+    if (netStatusTimer) return;
+    checkNetStatus();
+    netStatusTimer = setInterval(checkNetStatus, 30000);
+  }
+  function stopNetStatusPoll() {
+    if (netStatusTimer) { clearInterval(netStatusTimer); netStatusTimer = null; }
   }
 
   // ----- Onboarding state polling ------------------------------------
