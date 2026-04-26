@@ -28,6 +28,9 @@ if [[ "$REAL_CODENAME" == "trixie" ]]; then
     build-essential debhelper dh-sysuser \
     tcl8.6-dev tclx8.4 tcllib itcl3 \
     libboost-system-dev libboost-filesystem-dev libboost-program-options-dev \
+    libboost-regex-dev \
+    python3-dev python3-venv python3-setuptools python3-build \
+    python3-filelock python3-pyasyncore \
     net-tools iproute2 procps \
     git patchelf \
     2>&1
@@ -56,14 +59,24 @@ if [[ "$REAL_CODENAME" == "trixie" ]]; then
     cd package-bookworm
   fi
 
+  echo "Resolving build dependencies via dpkg-checkbuilddeps…"
+  if ! dpkg-checkbuilddeps 2>&1; then
+    echo "Attempting to install missing build deps automatically…"
+    DEBIAN_FRONTEND=noninteractive apt-get build-dep -y . 2>&1 || true
+  fi
+
   echo "Building .deb package (this may take several minutes)…"
-  dpkg-buildpackage -b --no-sign 2>&1 || true
+  if ! dpkg-buildpackage -b --no-sign 2>&1; then
+    echo "ERROR: dpkg-buildpackage failed. Check the output above."
+    rm -rf "$BUILD_DIR"
+    exit 1
+  fi
 
   cd "$BUILD_DIR"
 
   echo "Installing built packages…"
-  dpkg -i piaware_*_*.deb 2>/dev/null || true
-  dpkg -i piaware-web_*_*.deb 2>/dev/null || true
+  dpkg -i piaware_*_*.deb 2>&1 || true
+  dpkg -i piaware-web_*_*.deb 2>&1 || true
   apt-get install -f -y 2>&1
 
   rm -rf "$BUILD_DIR"
