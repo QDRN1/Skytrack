@@ -73,7 +73,7 @@ def _derive_id(hw_source: str, collision_counter: int = 0) -> str:
 
 
 def _now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def get_or_create_device_id() -> dict:

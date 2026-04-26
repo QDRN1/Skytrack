@@ -207,6 +207,15 @@ def migrate():
         'INSERT OR IGNORE INTO schema_version (version) VALUES (?)',
         (SCHEMA_VERSION,),
     )
+    # Normalize ISO-8601 timestamps (T separator + +00:00 suffix) to SQLite
+    # native format so datetime('now', ...) comparisons work correctly.
+    for tbl, col in [('sightings', 'ts'), ('aircraft_log', 'first_seen'),
+                     ('aircraft_log', 'last_seen')]:
+        conn.execute(f"""
+            UPDATE {tbl}
+            SET {col} = REPLACE(REPLACE({col}, 'T', ' '), '+00:00', '')
+            WHERE {col} LIKE '%T%' OR {col} LIKE '%+00:00'
+        """)
     conn.commit()
     logger.info('Schema migrated to version %d at %s', SCHEMA_VERSION, _db_path())
 
@@ -252,4 +261,4 @@ def prune(sightings_days=7, logs_days=30):
 # ---------------------------------------------------------------------------
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')

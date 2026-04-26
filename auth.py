@@ -82,7 +82,7 @@ def _auth_path() -> Path:
 
 
 def _now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _empty_record() -> dict:
