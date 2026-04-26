@@ -44,6 +44,7 @@
   const TREND_URL    = '/api/dashboard/trend';
   const POS_URL      = '/api/dashboard/positions';
   const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
+  const SENSOR_URL     = '/api/sensor';
   const TEMP_ALARM_URL = '/api/device-temp-alarm';
   const NET_STATUS_URL = '/api/network/status';
 
@@ -456,6 +457,7 @@
     refreshAirlines();
     refreshTrend();
     refreshMap();
+    startSensorPoll();
     startTempAlarmPoll();
     startNetStatusPoll();
 
@@ -472,6 +474,7 @@
     if (opDevTimer)   { clearInterval(opDevTimer);   opDevTimer   = null; }
     if (opClockTimer) { clearInterval(opClockTimer); opClockTimer = null; }
     stopCarouselAuto();
+    stopSensorPoll();
     stopTempAlarmPoll();
     stopNetStatusPoll();
   }
@@ -1005,10 +1008,41 @@
     resetIdle();
   }
 
-  // ----- Device temp alarm poll ----------------------------------------
-  // 3-tier system: green <70°C, amber 70-80°C, red >80°C.
-  // The red alarm overlay fires at 80°C (critical). The header chip
-  // shows current CPU temp with color coding at all times.
+  // ----- Enclosure sensor poll (DHT22/BME280 via /api/sensor) ----------
+  let sensorTimer = null;
+  async function checkSensor() {
+    try {
+      var r = await fetch(SENSOR_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      var reading = data && data.reading;
+      var el = $('op-sensor-reading');
+      if (!el || !reading) return;
+
+      var tempF = reading.temperature_f;
+      var hum = reading.humidity;
+      if (tempF != null && hum != null) {
+        setText('op-sensor-temp', Math.round(Number(tempF)) + '°F');
+        setText('op-sensor-hum', Math.round(Number(hum)) + '%');
+        el.hidden = false;
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  function startSensorPoll() {
+    if (sensorTimer) return;
+    checkSensor();
+    sensorTimer = setInterval(checkSensor, 10000);
+  }
+  function stopSensorPoll() {
+    if (sensorTimer) { clearInterval(sensorTimer); sensorTimer = null; }
+  }
+
+  // ----- Device temp alarm poll (critical overlay only) ----------------
   let tempAlarmTimer = null;
   async function checkTempAlarm() {
     try {
@@ -1019,24 +1053,6 @@
       });
       if (!r.ok) return;
       var data = await r.json();
-
-      // Update header CPU temp chip
-      var chip = $('op-cpu-temp');
-      if (chip && data.cpu_temp_c != null) {
-        var temp = data.cpu_temp_c;
-        chip.textContent = Math.round(temp) + '°C';
-        chip.classList.remove('temp-green', 'temp-amber', 'temp-red');
-        if (temp >= 80) {
-          chip.classList.add('temp-red');
-        } else if (temp >= 70) {
-          chip.classList.add('temp-amber');
-        } else {
-          chip.classList.add('temp-green');
-        }
-        chip.hidden = false;
-      }
-
-      // Critical overlay at threshold
       var overlay = $('temp-alarm-overlay');
       if (!overlay) return;
       if (data.active) {
@@ -1060,7 +1076,11 @@
     if (tempAlarmTimer) { clearInterval(tempAlarmTimer); tempAlarmTimer = null; }
   }
 
-  // ----- Network status poll (header active connection) ---------------
+  // ----- Network status poll (header connection pill) ------------------
+  // Signal strength classification:
+  //   strong (green): signal_pct >= 50
+  //   weak (amber):   signal_pct > 0 and < 50
+  //   offline (red):  no internet
   let netStatusTimer = null;
   async function checkNetStatus() {
     try {
@@ -1076,32 +1096,38 @@
       var labelEl = $('op-conn-label');
       if (!connEl) return;
 
-      connEl.classList.remove('conn-online', 'conn-offline');
+      connEl.classList.remove('conn-strong', 'conn-weak', 'conn-offline');
       var primary = data.primary || 'none';
       var online = !!data.internet;
 
-      if (online) {
-        connEl.classList.add('conn-online');
-        if (primary === 'wifi') {
-          var ssid = (data.wifi && data.wifi.ssid) || 'WiFi';
-          if (iconEl) iconEl.textContent = '◉';
-          if (labelEl) labelEl.textContent = ssid;
-        } else if (primary === 'cellular') {
-          var tech = (data.cellular && data.cellular.access_tech) || 'LTE';
-          if (iconEl) iconEl.textContent = '▲';
-          if (labelEl) labelEl.textContent = tech.toUpperCase();
-        } else if (primary === 'ethernet') {
-          if (iconEl) iconEl.textContent = '⬤';
-          if (labelEl) labelEl.textContent = 'Ethernet';
-        } else {
-          if (iconEl) iconEl.textContent = '◉';
-          if (labelEl) labelEl.textContent = 'Online';
-        }
-      } else {
+      if (!online || primary === 'none') {
         connEl.classList.add('conn-offline');
         if (iconEl) iconEl.textContent = '○';
         if (labelEl) labelEl.textContent = 'Offline';
+        return;
       }
+
+      var signalPct = 0;
+      var label = 'Online';
+      var icon = '◉';
+
+      if (primary === 'wifi') {
+        signalPct = (data.wifi && data.wifi.signal_pct) || 0;
+        label = (data.wifi && data.wifi.ssid) || 'WiFi';
+        icon = '◉';
+      } else if (primary === 'cellular') {
+        signalPct = (data.cellular && data.cellular.signal_pct) || 0;
+        label = (data.cellular && data.cellular.carrier) || 'Cellular';
+        icon = '▲';
+      } else if (primary === 'ethernet') {
+        signalPct = 100;
+        label = 'Ethernet';
+        icon = '⬤';
+      }
+
+      connEl.classList.add(signalPct >= 50 ? 'conn-strong' : 'conn-weak');
+      if (iconEl) iconEl.textContent = icon;
+      if (labelEl) labelEl.textContent = label;
     } catch (_e) { /* transient */ }
   }
 
