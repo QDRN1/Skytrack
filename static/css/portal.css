@@ -438,6 +438,8 @@ html[data-anim="off"] .particles-canvas { display: none; }
   font-variant-numeric: tabular-nums; color: var(--fg-muted);
 }
 .data-table tbody tr:hover td { background: var(--bg-elev); }
+.table-wrap { max-height: 420px; overflow-y: auto; border-radius: 8px; border: 1px solid var(--border); }
+.table-controls { display: flex; gap: 8px; margin-top: 8px; }
 
 /* -------- Radar URL block -------- */
 .radar-url { background: var(--bg-elev); padding: 12px; border-radius: 10px; margin-bottom: 12px; }

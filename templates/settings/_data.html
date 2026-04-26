@@ -105,4 +105,58 @@
     </div>
   </div>
 
+  <div class="settings-card">
+    <header class="card-header">
+      <h2>Aircraft Log</h2>
+      <p class="muted">
+        Persistent registry of every unique aircraft SkyTrack has ever seen.
+        Sighting counts accumulate over time and are not affected by the
+        retention setting above.
+      </p>
+    </header>
+    <div class="card-body">
+      <div class="readonly-grid" id="aircraft-log-stats">
+        <div class="readonly-row">
+          <span class="ro-label">Unique aircraft</span>
+          <code class="ro-value" id="alog-total-aircraft">…</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Total sightings</span>
+          <code class="ro-value" id="alog-total-sightings">…</code>
+        </div>
+        <div class="readonly-row">
+          <span class="ro-label">Tracking since</span>
+          <code class="ro-value" id="alog-earliest">…</code>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="aircraft-log-table-wrap">
+        <table class="data-table" id="aircraft-log-table">
+          <thead>
+            <tr>
+              <th>ICAO</th>
+              <th>Callsign</th>
+              <th>Airline</th>
+              <th>Sightings</th>
+              <th>First Seen</th>
+              <th>Last Seen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="aircraft-log-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-controls">
+        <button type="button" class="btn btn-sm" id="alog-load-more">Load more</button>
+      </div>
+    </div>
+    <footer class="card-footer">
+      <button type="button" class="btn btn-lg btn-danger" id="btn-alog-reset-all"
+              data-confirm-title="Reset all sighting counts?"
+              data-confirm-body="This deletes the entire aircraft log. New sightings will rebuild it from scratch. Flight history in the sightings table is not affected.">
+        Reset All Counts
+      </button>
+    </footer>
+  </div>
+
 </section>

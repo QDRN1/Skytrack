@@ -219,6 +219,77 @@ def search(query: str, range_key: str = '24h', limit: int = 50):
     return [dict(r) for r in rows]
 
 
+def frequent_flyers(limit: int = 10):
+    """Top aircraft by lifetime sighting count from the persistent log."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT icao, callsign, airline, sighting_count,
+               first_seen, last_seen,
+               altitude_max, altitude_min, signal_best_db
+        FROM aircraft_log
+        ORDER BY sighting_count DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def aircraft_log_list(sort: str = 'count', limit: int = 100, offset: int = 0):
+    """Paginated aircraft log for the dashboard table."""
+    order = {
+        'count': 'sighting_count DESC',
+        'recent': 'last_seen DESC',
+        'first': 'first_seen ASC',
+        'icao': 'icao ASC',
+    }.get(sort, 'sighting_count DESC')
+    conn = get_conn()
+    rows = conn.execute(
+        f"""
+        SELECT icao, callsign, airline, sighting_count,
+               first_seen, last_seen,
+               altitude_max, altitude_min, signal_best_db
+        FROM aircraft_log
+        ORDER BY {order}
+        LIMIT ? OFFSET ?
+        """,
+        (limit, offset),
+    ).fetchall()
+    total = conn.execute('SELECT COUNT(*) AS n FROM aircraft_log').fetchone()
+    return {
+        'aircraft': [dict(r) for r in rows],
+        'total': total['n'] if total else 0,
+    }
+
+
+def aircraft_log_stats():
+    """Summary stats for the aircraft log."""
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS total_aircraft,
+               SUM(sighting_count) AS total_sightings,
+               MIN(first_seen) AS earliest,
+               MAX(last_seen) AS latest
+        FROM aircraft_log
+        """
+    ).fetchone()
+    if not row:
+        return {'total_aircraft': 0, 'total_sightings': 0}
+    return dict(row)
+
+
+def reset_aircraft_log(icao: str = None):
+    """Reset sighting counts. If icao is given, reset only that aircraft."""
+    conn = get_conn()
+    if icao:
+        conn.execute('DELETE FROM aircraft_log WHERE icao = ?', (icao.lower(),))
+    else:
+        conn.execute('DELETE FROM aircraft_log')
+    conn.commit()
+
+
 def aircraft_now_positions():
     """Latest position per aircraft seen in the last 5 minutes (for map)."""
     conn = get_conn()

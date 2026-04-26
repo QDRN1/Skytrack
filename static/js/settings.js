@@ -56,6 +56,11 @@
     return false;
   }
 
+  function fmtNumber(n) {
+    if (n == null || isNaN(n)) return '—';
+    try { return Number(n).toLocaleString(); } catch (_) { return String(n); }
+  }
+
   function fmtBytes(n) {
     if (n == null || isNaN(n)) return '—';
     const u = ['B','KB','MB','GB','TB'];
@@ -98,7 +103,7 @@
       if (name === 'network')      refreshNetworkStatus();
       if (name === 'feeders')      refreshFeederStatus();
       if (name === 'diagnostics')  refreshDiagnostics();
-      if (name === 'data')         refreshDataUsage();
+      if (name === 'data')       { refreshDataUsage(); refreshAircraftLog(); }
       if (name === 'updates')      refreshBackups();
       if (name === 'alerts')     { refreshWatchlist(); refreshHardwareStatus(); }
     }
@@ -831,6 +836,78 @@
     wireAction('btn-data-vacuum', '/api/settings/data/vacuum', 'Vacuum database now?', 'This rewrites the SQLite file. Brief I/O spike.', 'Vacuumed');
     wireAction('btn-data-prune',  '/api/settings/data/prune',  'Prune old rows?',     'This removes flight history older than your retention setting.', 'Pruned');
     wireAction('btn-data-wipe',   '/api/settings/data/wipe',   'Wipe all flight history?', 'This deletes every aircraft, flight, and enrichment row. Settings are kept.', 'Wiped');
+
+    // Aircraft log
+    refreshAircraftLog();
+    const loadMore = $('#alog-load-more');
+    if (loadMore) loadMore.addEventListener('click', () => {
+      alogOffset += 100;
+      refreshAircraftLog(true);
+    });
+    const resetAll = $('#btn-alog-reset-all');
+    if (resetAll) resetAll.addEventListener('click', async () => {
+      const ok = await confirmModal(
+        resetAll.dataset.confirmTitle || 'Reset all sighting counts?',
+        resetAll.dataset.confirmBody  || 'Deletes the entire aircraft log.'
+      );
+      if (!ok) return;
+      try {
+        await window.api.post('/api/dashboard/aircraft-log/reset', {});
+        toast('Aircraft log reset');
+        alogOffset = 0;
+        refreshAircraftLog();
+      } catch (_) { toast('Failed to reset', true); }
+    });
+  }
+
+  let alogOffset = 0;
+  async function refreshAircraftLog(append) {
+    try {
+      const stats = await window.api.get('/api/dashboard/aircraft-log/stats');
+      const ta = $('#alog-total-aircraft');
+      const ts = $('#alog-total-sightings');
+      const te = $('#alog-earliest');
+      if (ta) ta.textContent = fmtNumber(stats.total_aircraft || 0);
+      if (ts) ts.textContent = fmtNumber(stats.total_sightings || 0);
+      if (te) te.textContent = stats.earliest ? new Date(stats.earliest).toLocaleDateString() : '—';
+    } catch (_) {}
+
+    try {
+      const data = await window.api.get('/api/dashboard/aircraft-log?sort=count&limit=100&offset=' + (append ? alogOffset : 0));
+      const tbody = $('#aircraft-log-tbody');
+      if (!tbody) return;
+      if (!append) tbody.innerHTML = '';
+      (data.aircraft || []).forEach(ac => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td><code>' + escapeHtml(ac.icao.toUpperCase()) + '</code></td>' +
+          '<td>' + escapeHtml(ac.callsign || '—') + '</td>' +
+          '<td>' + escapeHtml(ac.airline || '—') + '</td>' +
+          '<td><strong>' + fmtNumber(ac.sighting_count) + '</strong></td>' +
+          '<td class="muted small">' + fmtDateShort(ac.first_seen) + '</td>' +
+          '<td class="muted small">' + fmtDateShort(ac.last_seen) + '</td>' +
+          '<td><button type="button" class="btn btn-sm btn-danger alog-remove" data-icao="' + escapeAttr(ac.icao) + '">×</button></td>';
+        tbody.appendChild(tr);
+      });
+      const more = $('#alog-load-more');
+      if (more) more.hidden = (data.aircraft || []).length < 100;
+
+      tbody.querySelectorAll('.alog-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            await window.api.post('/api/dashboard/aircraft-log/reset', { icao: btn.dataset.icao });
+            btn.closest('tr').remove();
+            toast('Removed ' + btn.dataset.icao.toUpperCase());
+          } catch (_) { toast('Failed', true); }
+        });
+      });
+    } catch (_) {}
+  }
+
+  function fmtDateShort(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }); }
+    catch (_) { return iso.slice(0, 10); }
   }
 
   // ------------------------------------------------------------------

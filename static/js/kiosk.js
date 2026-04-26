@@ -44,6 +44,8 @@
   const TREND_URL    = '/api/dashboard/trend';
   const POS_URL      = '/api/dashboard/positions';
   const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
+  const FREQ_URL       = '/api/dashboard/frequent-flyers';
+  const LOG_STATS_URL  = '/api/dashboard/aircraft-log/stats';
   const SENSOR_URL     = '/api/sensor';
   const TEMP_ALARM_URL = '/api/device-temp-alarm';
   const NET_STATUS_URL = '/api/network/status';
@@ -455,6 +457,8 @@
     refreshWeather();
     refreshDevice();
     refreshAirlines();
+    refreshFrequentFlyers();
+    refreshLogStats();
     refreshTrend();
     refreshMap();
     startSensorPoll();
@@ -462,7 +466,8 @@
     startNetStatusPoll();
 
     if (!opCardsTimer) opCardsTimer = setInterval(function () {
-      refreshCards(); refreshAirlines(); refreshTrend(); refreshMap();
+      refreshCards(); refreshAirlines(); refreshFrequentFlyers();
+      refreshLogStats(); refreshTrend(); refreshMap();
     }, OP_CARDS_POLL_MS);
     if (!opWxTimer)    opWxTimer    = setInterval(refreshWeather, OP_WEATHER_POLL_MS);
     if (!opDevTimer)   opDevTimer   = setInterval(refreshDevice,  OP_DEVICE_POLL_MS);
@@ -839,11 +844,51 @@
       var data = await r.json();
       if (Array.isArray(data) && data.length) {
         var lines = data.slice(0, 5).map(function (d) {
-          return (d.airline || d.callsign_prefix || '?') + '  ' + fmtNumber(d.count);
+          return (d.airline || d.callsign_prefix || '?') + '  ' + fmtNumber(d.n || d.count);
         });
         setText('op-airlines-value', lines.join('\n'));
       } else {
         setText('op-airlines-value', '—');
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  async function refreshFrequentFlyers() {
+    try {
+      var r = await fetch(FREQ_URL + '?limit=5', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      if (Array.isArray(data) && data.length) {
+        var lines = data.slice(0, 5).map(function (d) {
+          var label = d.callsign || d.icao.toUpperCase();
+          return label + '  ×' + fmtNumber(d.sighting_count);
+        });
+        setText('op-freq-value', lines.join('\n'));
+        setText('op-freq-sub', data.length + ' most seen · all time');
+      } else {
+        setText('op-freq-value', '—');
+        setText('op-freq-sub', 'tracking aircraft');
+      }
+    } catch (_e) { /* transient */ }
+  }
+
+  async function refreshLogStats() {
+    try {
+      var r = await fetch(LOG_STATS_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var data = await r.json();
+      if (data && data.total_aircraft != null) {
+        setText('op-total-value', fmtNumber(data.total_aircraft));
+        var sightings = data.total_sightings || 0;
+        setText('op-total-sub', fmtNumber(sightings) + ' sightings · all time');
       }
     } catch (_e) { /* transient */ }
   }
@@ -859,8 +904,9 @@
       });
       if (!r.ok) return;
       var data = await r.json();
-      if (!Array.isArray(data) || !data.length) return;
-      drawSparkline(canvas, data);
+      var points = Array.isArray(data) ? data : (data && data.points) || [];
+      if (!points.length) return;
+      drawSparkline(canvas, points);
     } catch (_e) { /* transient */ }
   }
 

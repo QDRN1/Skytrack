@@ -88,8 +88,45 @@ class SightingsIngest:
                     for r in rows
                 ],
             )
+            self._upsert_aircraft_log(conn, rows, ts)
         self._last_count = len(rows)
         return len(rows)
+
+    @staticmethod
+    def _upsert_aircraft_log(conn, rows, ts):
+        """Batch upsert into the persistent aircraft registry."""
+        for r in rows:
+            icao = r['icao']
+            cs = r.get('callsign')
+            airline = cs[:3] if cs and len(cs) >= 3 else None
+            alt = r.get('altitude_ft')
+            sig = r.get('signal_db')
+            conn.execute(
+                """
+                INSERT INTO aircraft_log
+                    (icao, callsign, airline, first_seen, last_seen,
+                     sighting_count, altitude_max, altitude_min, signal_best_db)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(icao) DO UPDATE SET
+                    callsign       = COALESCE(excluded.callsign, aircraft_log.callsign),
+                    airline        = COALESCE(excluded.airline, aircraft_log.airline),
+                    last_seen      = excluded.last_seen,
+                    sighting_count = aircraft_log.sighting_count + 1,
+                    altitude_max   = MAX(COALESCE(aircraft_log.altitude_max, 0),
+                                         COALESCE(excluded.altitude_max, 0)),
+                    altitude_min   = CASE
+                        WHEN aircraft_log.altitude_min IS NULL THEN excluded.altitude_min
+                        WHEN excluded.altitude_min IS NULL THEN aircraft_log.altitude_min
+                        ELSE MIN(aircraft_log.altitude_min, excluded.altitude_min)
+                    END,
+                    signal_best_db = CASE
+                        WHEN aircraft_log.signal_best_db IS NULL THEN excluded.signal_best_db
+                        WHEN excluded.signal_best_db IS NULL THEN aircraft_log.signal_best_db
+                        ELSE MAX(aircraft_log.signal_best_db, excluded.signal_best_db)
+                    END
+                """,
+                (icao, cs, airline, ts, ts, alt, alt, sig),
+            )
 
     @property
     def last_count(self):

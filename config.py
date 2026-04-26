@@ -19,12 +19,11 @@ DEFAULT_CONFIG = {
     'port': 8080,
     'debug': False,
     'secret_key': 'skytrack-change-me-in-production',
-    # mock_mode is NOT a hardware kill-switch — sensors/buzzer try real
-    # hardware first regardless. It only affects code paths that *cannot*
-    # gracefully fall back on their own (e.g. ADS-B mock fleet). Real
-    # installs should leave this True; the sensor layer ignores it on a
-    # detected Pi and always probes the GPIO before using mock values.
-    'mock_mode': True,
+    # mock_mode controls the ADS-B mock fleet fallback. When False (default
+    # for production), the ingest loop returns empty if dump1090 is
+    # unavailable rather than injecting fake aircraft. Set True only for
+    # development/testing without an ADS-B receiver.
+    'mock_mode': False,
     'timezone': 'auto',
 
     # --- Localization / units ---
@@ -43,7 +42,8 @@ DEFAULT_CONFIG = {
     # --- Kiosk carousel ----------------------------------------------------
     'kiosk_cards': ['aircraft_now', 'aircraft_today', 'busiest_hour',
                     'last_aircraft', 'weather', 'top_airlines',
-                    'activity_trend', 'device_info'],
+                    'frequent_flyers', 'activity_trend',
+                    'device_info', 'total_tracked'],
     'kiosk_carousel_interval': 8,       # seconds between card auto-rotate
     'kiosk_map_interval': 15,           # seconds the map page stays visible
     'kiosk_show_map': True,

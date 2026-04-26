@@ -99,6 +99,34 @@ def api_search():
     return jsonify(dashboard_svc.search(q, range_key=range_key))
 
 
+@dashboard_bp.route('/api/dashboard/frequent-flyers')
+def api_frequent_flyers():
+    limit = int(request.args.get('limit', 10))
+    return jsonify(dashboard_svc.frequent_flyers(limit=min(limit, 100)))
+
+
+@dashboard_bp.route('/api/dashboard/aircraft-log')
+def api_aircraft_log():
+    sort = request.args.get('sort', 'count')
+    limit = int(request.args.get('limit', 100))
+    offset = int(request.args.get('offset', 0))
+    return jsonify(dashboard_svc.aircraft_log_list(
+        sort=sort, limit=min(limit, 500), offset=offset))
+
+
+@dashboard_bp.route('/api/dashboard/aircraft-log/stats')
+def api_aircraft_log_stats():
+    return jsonify(dashboard_svc.aircraft_log_stats())
+
+
+@dashboard_bp.route('/api/dashboard/aircraft-log/reset', methods=['POST'])
+@auth_lib.login_required(auth_lib.ROLE_ADMIN)
+def api_aircraft_log_reset():
+    icao = (request.json or {}).get('icao')
+    dashboard_svc.reset_aircraft_log(icao=icao)
+    return jsonify({'ok': True})
+
+
 @dashboard_bp.route('/api/dashboard/weather')
 def api_weather():
     return jsonify(current_app.weather_svc.get_weather())
@@ -127,7 +155,8 @@ def api_kiosk_config():
         'cards': cfg.get('kiosk_cards', [
             'aircraft_now', 'aircraft_today', 'busiest_hour',
             'last_aircraft', 'weather', 'top_airlines',
-            'activity_trend', 'device_info',
+            'frequent_flyers', 'activity_trend',
+            'device_info', 'total_tracked',
         ]),
         'interval': cfg.get('kiosk_carousel_interval', 8),
         'map_interval': cfg.get('kiosk_map_interval', 15),

@@ -22,7 +22,7 @@ _local = threading.local()
 # Schema
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 DDL = [
     # Versioning
@@ -120,6 +120,23 @@ DDL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_auth_attempts_ts ON auth_attempts(ts)",
+    # Persistent aircraft registry — never pruned by retention.
+    # One row per unique ICAO hex code, accumulates sighting_count over time.
+    """
+    CREATE TABLE IF NOT EXISTS aircraft_log (
+        icao           TEXT PRIMARY KEY,
+        callsign       TEXT,
+        airline        TEXT,
+        first_seen     TEXT NOT NULL,
+        last_seen      TEXT NOT NULL,
+        sighting_count INTEGER NOT NULL DEFAULT 1,
+        altitude_max   INTEGER,
+        altitude_min   INTEGER,
+        signal_best_db REAL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_aircraft_log_count ON aircraft_log(sighting_count DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_aircraft_log_last ON aircraft_log(last_seen DESC)",
 ]
 
 
