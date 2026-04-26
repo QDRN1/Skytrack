@@ -102,9 +102,6 @@ class WeatherService:
         if self._cache and (now - self._cache_time) < self._cache_ttl:
             return {**self._cache, 'cached': True}
 
-        if self.config.get('mock_mode'):
-            return self._cache_and_return(self._mock_weather())
-
         provider = (self.config.get('weather_provider') or 'open-meteo').lower()
 
         if provider == 'none' or not self.config.get('weather_enabled', True):
@@ -137,8 +134,6 @@ class WeatherService:
         return self._cache_and_return(self._mock_weather())
 
     def selfcheck(self):
-        if self.config.get('mock_mode'):
-            return {'ok': True, 'message': 'Mock mode active'}
         provider = (self.config.get('weather_provider') or 'open-meteo').lower()
         if provider == 'none':
             return {'ok': True, 'message': 'Weather provider disabled'}

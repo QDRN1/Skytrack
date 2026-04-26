@@ -518,42 +518,26 @@
       -webkit-backdrop-filter: blur(6px);
       min-height: clamp(52px, 10vh, 92px);
     }
-    .op-brand {
-      display: flex; align-items: center;
+    /* Header 3-column: [logo + clock] | [connection] | [cpu temp] */
+    .op-header-left {
+      display: flex;
+      align-items: center;
+      gap: clamp(8px, 1.2vw, 14px);
+      flex: 1 1 0;
       min-width: 0;
+    }
+    .op-logo-img {
+      height: clamp(32px, 6vh, 56px);
+      width: auto;
+      object-fit: contain;
+      border-radius: 6px;
       flex-shrink: 0;
     }
-    .op-brand .mark {
-      display: inline-block;
-      padding: 0.2em 0.6em;
-      border-radius: 0.35em;
-      background: linear-gradient(135deg, #2e6cf6, #4d8bff);
-      color: #ffffff;
-      font-weight: 700;
-      font-size: clamp(0.9em, 2vh, 1.3em);
-      letter-spacing: 1.2px;
-      box-shadow: 0 0 22px rgba(77, 139, 255, 0.45);
-    }
-
-    /* Center block: "SkyTrack — HH:MM" with date below */
-    .op-center {
+    .op-clock-group {
       display: flex;
-      align-items: baseline;
-      justify-content: center;
-      gap: clamp(6px, 1vw, 12px);
-      flex: 1 1 auto;
-      text-align: center;
-    }
-    .op-center-label {
-      font-size: clamp(1.1em, 2.6vh, 1.9em);
-      font-weight: 600;
-      letter-spacing: 0.6px;
-      white-space: nowrap;
-      color: #ffffff;
-    }
-    .op-center-sep {
-      font-size: clamp(1em, 2.2vh, 1.5em);
-      color: rgba(151, 160, 196, 0.6);
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1;
     }
     .op-clock {
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -570,25 +554,26 @@
       color: rgba(151, 160, 196, 0.92);
       text-transform: uppercase;
       font-weight: 500;
-      margin-left: clamp(4px, 0.8vw, 8px);
+      margin-top: 2px;
     }
 
-    /* Right side: CPU temp + active connection */
-    .op-header-right {
+    /* Center: active connection */
+    .op-header-center {
       display: flex;
       align-items: center;
-      gap: clamp(6px, 1vw, 12px);
-      flex-shrink: 0;
+      justify-content: center;
+      flex: 0 0 auto;
     }
     .op-connection {
       display: flex;
       align-items: center;
       gap: clamp(4px, 0.6vw, 8px);
-      padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.2vw, 14px);
+      padding: clamp(4px, 0.8vh, 8px) clamp(12px, 2vw, 22px);
       border-radius: clamp(8px, 1.2vh, 14px);
       background: rgba(10, 16, 38, 0.6);
       border: 1px solid rgba(120, 160, 255, 0.18);
-      font-size: clamp(0.8em, 1.8vh, 1.1em);
+      font-size: clamp(0.85em, 2vh, 1.15em);
+      font-weight: 600;
       color: rgba(231, 235, 255, 0.82);
       white-space: nowrap;
     }
@@ -597,6 +582,16 @@
     }
     .op-connection.conn-online { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); }
     .op-connection.conn-offline { color: #ef4444; border-color: rgba(239, 68, 68, 0.45); }
+
+    /* Right side: CPU temp */
+    .op-header-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: clamp(6px, 1vw, 12px);
+      flex: 1 1 0;
+      min-width: 0;
+    }
 
     /* CPU temp chip — 3-tier color: green <70, amber 70-80, red >80 */
     .op-cpu-temp {
@@ -1062,21 +1057,22 @@
     {# ---- OPERATIONAL DISPLAY (permanent view after first boot) ---- #}
     <div class="kiosk-op" id="kiosk-op" hidden>
       <header class="op-header">
-        <div class="op-brand">
-          <span class="mark">QDRN</span>
+        <div class="op-header-left">
+          <img src="{{ url_for('static', filename='img/CaptainQIcon-BGRVD.PNG') }}"
+               alt="SkyTrack" class="op-logo-img">
+          <div class="op-clock-group">
+            <span class="op-clock" id="op-clock-time">--:--</span>
+            <span class="op-date" id="op-clock-date">&nbsp;</span>
+          </div>
         </div>
-        <div class="op-center">
-          <span class="op-center-label">SkyTrack</span>
-          <span class="op-center-sep">—</span>
-          <span class="op-clock" id="op-clock-time">--:--</span>
-          <span class="op-date" id="op-clock-date">&nbsp;</span>
-        </div>
-        <div class="op-header-right">
-          <div class="op-cpu-temp" id="op-cpu-temp" hidden>—</div>
+        <div class="op-header-center">
           <div class="op-connection" id="op-connection">
             <span class="conn-icon" id="op-conn-icon">—</span>
             <span class="conn-label" id="op-conn-label">—</span>
           </div>
+        </div>
+        <div class="op-header-right">
+          <div class="op-cpu-temp" id="op-cpu-temp" hidden>—</div>
         </div>
       </header>
 

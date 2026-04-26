@@ -593,24 +593,21 @@
   }
 
   function scheduleNextAuto() {
-    stopCarouselAuto();
-    var interval = carouselInterval;
-    try { interval = currentPageInterval(); } catch (_e) {}
-    carouselAutoTimer = setTimeout(nextPage, interval);
+    // Only clear the timer — never kill the heartbeat here.
+    if (carouselAutoTimer) { clearTimeout(carouselAutoTimer); carouselAutoTimer = null; }
+    carouselAutoTimer = setTimeout(nextPage, carouselInterval);
   }
 
   var carouselHeartbeat = null;
 
   function startCarouselAuto() {
     scheduleNextAuto();
-    // Heartbeat: if the setTimeout chain ever breaks (browser throttling,
-    // transient error), restart it automatically.
     if (!carouselHeartbeat) {
       carouselHeartbeat = setInterval(function () {
         if (visual === 'operational' && !carouselAutoTimer && carouselPages.length > 0) {
           scheduleNextAuto();
         }
-      }, 12000);
+      }, 8000);
     }
   }
   function stopCarouselAuto() {
@@ -628,6 +625,7 @@
     el.addEventListener('touchstart', onDragStart, { passive: true });
     el.addEventListener('touchmove', onDragMove, { passive: false });
     el.addEventListener('touchend', onDragEnd, { passive: true });
+    el.addEventListener('touchcancel', onDragEnd, { passive: true });
     el.addEventListener('mousedown', onDragStart);
     el.addEventListener('mousemove', onDragMove);
     el.addEventListener('mouseup', onDragEnd);
@@ -645,7 +643,8 @@
     dragDx = 0;
     var track = $('carousel-track');
     if (track) track.classList.add('dragging');
-    stopCarouselAuto();
+    // Pause auto-advance timer but keep the heartbeat alive so recovery works.
+    if (carouselAutoTimer) { clearTimeout(carouselAutoTimer); carouselAutoTimer = null; }
   }
 
   function onDragMove(e) {
@@ -795,12 +794,9 @@
       var cur = (data && data.current) || null;
       if (!cur) return;
       if (cur.temp_f !== undefined && cur.temp_f !== null) {
-        var tempStr = Math.round(Number(cur.temp_f)) + '°';
-        setText('op-wx-temp', tempStr);
-        setText('op-wx-big-temp', tempStr);
+        setText('op-wx-big-temp', Math.round(Number(cur.temp_f)) + '°F');
       }
       if (cur.condition) {
-        setText('op-wx-cond', String(cur.condition));
         setText('op-wx-big-cond', String(cur.condition));
       }
     } catch (_e) { /* transient */ }
