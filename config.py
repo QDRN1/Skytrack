@@ -47,6 +47,7 @@ DEFAULT_CONFIG = {
     'kiosk_carousel_interval': 8,       # seconds between card auto-rotate
     'kiosk_map_interval': 15,           # seconds the map page stays visible
     'kiosk_show_map': True,
+    'stadia_api_key': '',
 
     # --- Hardware (DHT + buzzer pins) -----------------------------------
     'dht_pin': 21,
@@ -230,6 +231,7 @@ _ENV_MAP = {
     'SKYTRACK_INGEST_INTERVAL': ('ingest_interval', int),
     'SKYTRACK_DISPLAY_ROTATION': ('display_rotation', str),
     'SKYTRACK_DISPLAY_OUTPUT':  ('display_output', str),
+    'SKYTRACK_STADIA_KEY':      ('stadia_api_key', str),
 }
 
 

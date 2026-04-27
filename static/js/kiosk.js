@@ -974,9 +974,8 @@
         var zoom = (g && g.map_zoom) || 9;
         carouselMap = L.map(el, { zoomControl: true, attributionControl: false })
           .setView([lat, lon], zoom);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          maxZoom: 18,
-        }).addTo(carouselMap);
+        var tileUrl = el.dataset.tileUrl || 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+        L.tileLayer(tileUrl, { maxZoom: 18 }).addTo(carouselMap);
         L.circleMarker([lat, lon], {
           radius: 8, fillColor: '#4d8bff', fillOpacity: 0.85,
           color: '#fff', weight: 2,

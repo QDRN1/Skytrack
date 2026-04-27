@@ -451,11 +451,18 @@ def _register_template_globals(app: Flask) -> None:
     def _inject_globals():
         identity = app.config.get('DEVICE_RECORD', {})
         role = auth_lib.current_role()
+        cfg = app.skytrack_config
+        stadia_key = cfg.get('stadia_api_key', '')
+        if stadia_key:
+            tile_url = f'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={stadia_key}'
+        else:
+            tile_url = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
         return {
             'device': identity,
             'device_id': app.config.get('DEVICE_ID'),
             'radar_url': device_id.radar_url(identity) if identity else '',
             'config': app.skytrack_config,
+            'map_tile_url': tile_url,
             'current_role': role,
             'is_admin': role in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER),
             'is_super': role == auth_lib.ROLE_SUPER,

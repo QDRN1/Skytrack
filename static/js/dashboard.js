@@ -220,9 +220,8 @@
       [parseFloat(el.dataset.lat) || 0, parseFloat(el.dataset.lon) || 0],
       parseInt(el.dataset.zoom) || 8,
     );
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 18,
-    }).addTo(state.map);
+    const tileUrl = el.dataset.tileUrl || 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+    L.tileLayer(tileUrl, { maxZoom: 18 }).addTo(state.map);
   }
 
   function _aircraftIcon(track) {
