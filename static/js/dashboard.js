@@ -223,17 +223,30 @@
     }).addTo(state.map);
   }
 
+  function _aircraftIcon(track) {
+    return L.divIcon({
+      className: 'aircraft-marker',
+      html: '<svg viewBox="0 0 24 24" width="20" height="20" style="transform:rotate(' +
+        (track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="#ffae59" stroke="#000" stroke-width="0.5"/></svg>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    });
+  }
+
   function renderMap(positions) {
     if (!state.map || !window.L) return;
     const seen = new Set();
     positions.forEach((p) => {
       if (p.lat == null || p.lon == null) return;
       seen.add(p.icao);
-      const label = `${p.callsign || p.icao}<br>${p.altitude_ft || '?'} ft`;
+      const label = `${escape(p.callsign || p.icao)}<br>${p.altitude_ft || '?'} ft`;
       if (state.markers[p.icao]) {
-        state.markers[p.icao].setLatLng([p.lat, p.lon]).bindPopup(label);
+        state.markers[p.icao].setLatLng([p.lat, p.lon])
+          .setIcon(_aircraftIcon(p.track))
+          .bindPopup(label);
       } else {
-        state.markers[p.icao] = L.marker([p.lat, p.lon]).addTo(state.map).bindPopup(label);
+        state.markers[p.icao] = L.marker([p.lat, p.lon], { icon: _aircraftIcon(p.track) })
+          .addTo(state.map).bindPopup(label);
       }
     });
     Object.keys(state.markers).forEach((k) => {

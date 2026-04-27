@@ -211,6 +211,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
 .panel-routes { grid-column: span 4; }
 .panel-map { grid-column: span 8; }
 #aircraft-map { height: 380px; border-radius: 10px; }
+.aircraft-marker { background: transparent; border: none; }
 
 /* Fixed-height wrapper for the Activity Trend canvas.
    Chart.js with responsive:true + maintainAspectRatio:false requires a
