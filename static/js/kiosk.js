@@ -46,6 +46,7 @@
   const KIOSK_CFG_URL = '/api/dashboard/kiosk-config';
   const FREQ_URL       = '/api/dashboard/frequent-flyers';
   const LOG_STATS_URL  = '/api/dashboard/aircraft-log/stats';
+  const TRAILS_URL     = '/api/dashboard/trails';
   const SENSOR_URL     = '/api/sensor';
   const TEMP_ALARM_URL = '/api/device-temp-alarm';
   const NET_STATUS_URL = '/api/network/status';
@@ -439,6 +440,7 @@
   let carouselMapInterval = 15000;
   let carouselMap = null;
   let carouselMarkers = {};
+  let carouselTrails = {};
   let mapInitialized = false;
   let trendChart = null;
   // Touch/drag state
@@ -1024,6 +1026,39 @@
         if (!seen[k]) {
           carouselMap.removeLayer(carouselMarkers[k]);
           delete carouselMarkers[k];
+        }
+      });
+    } catch (_e) { /* transient */ }
+    refreshTrails();
+  }
+
+  async function refreshTrails() {
+    if (!carouselMap) return;
+    try {
+      var r = await fetch(TRAILS_URL, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      var trails = await r.json();
+      var seen = {};
+      Object.keys(trails).forEach(function (icao) {
+        var pts = trails[icao];
+        if (pts.length < 2) return;
+        seen[icao] = true;
+        if (carouselTrails[icao]) {
+          carouselTrails[icao].setLatLngs(pts);
+        } else {
+          carouselTrails[icao] = L.polyline(pts, {
+            color: '#ffae59', weight: 2, opacity: 0.5, dashArray: '4 6',
+          }).addTo(carouselMap);
+        }
+      });
+      Object.keys(carouselTrails).forEach(function (k) {
+        if (!seen[k]) {
+          carouselMap.removeLayer(carouselTrails[k]);
+          delete carouselTrails[k];
         }
       });
     } catch (_e) { /* transient */ }

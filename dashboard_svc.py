@@ -311,3 +311,25 @@ def aircraft_now_positions():
         """
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def aircraft_trails(minutes: int = 10):
+    """Recent position history per aircraft for drawing flight trails."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT icao, lat, lon, track, ts
+        FROM sightings
+        WHERE ts > datetime('now', ? || ' minutes')
+          AND lat IS NOT NULL AND lon IS NOT NULL
+        ORDER BY icao, ts ASC
+        """,
+        (f'-{minutes}',),
+    ).fetchall()
+    trails = {}
+    for r in rows:
+        icao = r['icao']
+        if icao not in trails:
+            trails[icao] = []
+        trails[icao].append([r['lat'], r['lon']])
+    return trails

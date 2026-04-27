@@ -3,7 +3,7 @@
  * filter chips that drive every range-aware widget at once.
  */
 (function () {
-  const state = { range: '24h', map: null, markers: {}, trendChart: null };
+  const state = { range: '24h', map: null, markers: {}, trails: {}, trendChart: null };
 
   document.addEventListener('DOMContentLoaded', () => {
     bindFilter();
@@ -37,16 +37,18 @@
   }
 
   async function refreshAll() {
-    const [cards, recent, weather, positions] = await Promise.allSettled([
+    const [cards, recent, weather, positions, trails] = await Promise.allSettled([
       window.api.get('/api/dashboard/cards'),
       window.api.get('/api/dashboard/recent'),
       window.api.get('/api/dashboard/weather'),
       window.api.get('/api/dashboard/positions'),
+      window.api.get('/api/dashboard/trails'),
     ]);
     if (cards.status === 'fulfilled')     renderCards(cards.value);
     if (recent.status === 'fulfilled')    renderRecent(recent.value);
     if (weather.status === 'fulfilled')   renderWeather(weather.value);
     if (positions.status === 'fulfilled') renderMap(positions.value);
+    if (trails.status === 'fulfilled')    renderTrails(trails.value);
     refreshRangeWidgets();
   }
 
@@ -253,6 +255,29 @@
       if (!seen.has(k)) {
         state.map.removeLayer(state.markers[k]);
         delete state.markers[k];
+      }
+    });
+  }
+
+  function renderTrails(data) {
+    if (!state.map || !window.L) return;
+    const seen = new Set();
+    Object.keys(data).forEach((icao) => {
+      const pts = data[icao];
+      if (pts.length < 2) return;
+      seen.add(icao);
+      if (state.trails[icao]) {
+        state.trails[icao].setLatLngs(pts);
+      } else {
+        state.trails[icao] = L.polyline(pts, {
+          color: '#ffae59', weight: 2, opacity: 0.5, dashArray: '4 6',
+        }).addTo(state.map);
+      }
+    });
+    Object.keys(state.trails).forEach((k) => {
+      if (!seen.has(k)) {
+        state.map.removeLayer(state.trails[k]);
+        delete state.trails[k];
       }
     });
   }

@@ -90,6 +90,13 @@ def api_positions():
     return jsonify(dashboard_svc.aircraft_now_positions())
 
 
+@dashboard_bp.route('/api/dashboard/trails')
+def api_trails():
+    minutes = request.args.get('minutes', 10, type=int)
+    minutes = max(1, min(minutes, 30))
+    return jsonify(dashboard_svc.aircraft_trails(minutes))
+
+
 @dashboard_bp.route('/api/dashboard/search')
 def api_search():
     q = request.args.get('q', '').strip()
