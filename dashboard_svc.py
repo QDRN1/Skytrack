@@ -318,7 +318,7 @@ def aircraft_trails(minutes: int = 10):
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT icao, lat, lon, track, ts
+        SELECT icao, lat, lon, altitude_ft, ts
         FROM sightings
         WHERE ts > datetime('now', ? || ' minutes')
           AND lat IS NOT NULL AND lon IS NOT NULL
@@ -330,6 +330,8 @@ def aircraft_trails(minutes: int = 10):
     for r in rows:
         icao = r['icao']
         if icao not in trails:
-            trails[icao] = []
-        trails[icao].append([r['lat'], r['lon']])
+            trails[icao] = {'points': [], 'alt': None}
+        trails[icao]['points'].append([r['lat'], r['lon']])
+        if r['altitude_ft']:
+            trails[icao]['alt'] = r['altitude_ft']
     return trails

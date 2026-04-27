@@ -51,6 +51,15 @@
   const TEMP_ALARM_URL = '/api/device-temp-alarm';
   const NET_STATUS_URL = '/api/network/status';
 
+  function altColor(alt) {
+    if (!alt || alt <= 0) return '#888888';
+    if (alt < 5000)  return '#4ade80';
+    if (alt < 15000) return '#facc15';
+    if (alt < 30000) return '#fb923c';
+    if (alt < 40000) return '#f87171';
+    return '#c084fc';
+  }
+
   // ----- Cadences ------------------------------------------------------
   const ONB_POLL_MS         = 1500;
   const OP_CARDS_POLL_MS    = 5000;
@@ -565,25 +574,24 @@
     }
   }
 
+  var FX_CLASSES = ['fx-fade', 'fx-slide-left', 'fx-slide-right', 'fx-slide-up', 'fx-zoom', 'fx-flip'];
+
   function goToPage(idx, animate) {
     if (!carouselPages.length) return;
     if (idx < 0) idx = carouselPages.length - 1;
     if (idx >= carouselPages.length) idx = 0;
     carouselPage = idx;
-    var track = $('carousel-track');
-    if (!track) return;
-    if (animate === false) {
-      track.style.transition = 'none';
-    } else {
-      track.style.transition = '';
-    }
-    track.style.transform = 'translateX(' + (-idx * 100) + '%)';
-    if (animate === false) {
-      requestAnimationFrame(function () {
-        track.style.transition = '';
-      });
-    }
-    // Update dots
+
+    var fx = animate !== false
+      ? FX_CLASSES[Math.floor(Math.random() * FX_CLASSES.length)]
+      : 'fx-fade';
+
+    carouselPages.forEach(function (page, i) {
+      FX_CLASSES.forEach(function (c) { page.classList.remove(c); });
+      page.classList.add(fx);
+      page.classList.toggle('active', i === idx);
+    });
+
     var dots = ($('carousel-dots') || {}).children || [];
     for (var d = 0; d < dots.length; d++) {
       dots[d].classList.toggle('active', d === idx);
@@ -651,37 +659,23 @@
     isDragging = true;
     dragStartX = clientX(e);
     dragDx = 0;
-    var track = $('carousel-track');
-    if (track) track.classList.add('dragging');
-    // Pause auto-advance timer but keep the heartbeat alive so recovery works.
     if (carouselAutoTimer) { clearTimeout(carouselAutoTimer); carouselAutoTimer = null; }
   }
 
   function onDragMove(e) {
     if (!isDragging) return;
     dragDx = clientX(e) - dragStartX;
-    var track = $('carousel-track');
-    if (!track) return;
-    var base = -carouselPage * 100;
-    var el = $('op-carousel');
-    var w = el ? el.offsetWidth : window.innerWidth;
-    var pct = (dragDx / w) * 100;
-    track.style.transform = 'translateX(' + (base + pct) + '%)';
     if (e.cancelable) e.preventDefault();
   }
 
   function onDragEnd() {
     if (!isDragging) return;
     isDragging = false;
-    var track = $('carousel-track');
-    if (track) track.classList.remove('dragging');
     var threshold = 50;
     if (dragDx < -threshold) {
       goToPage(carouselPage + 1, true);
     } else if (dragDx > threshold) {
       goToPage(carouselPage - 1, true);
-    } else {
-      goToPage(carouselPage, true);
     }
     resetCarouselAuto();
   }
@@ -1004,21 +998,23 @@
         if (!ac.lat || !ac.lon) return;
         var key = ac.icao || ac.hex || (ac.lat + ',' + ac.lon);
         seen[key] = true;
+        var color = altColor(ac.altitude_ft);
+        var icon = L.divIcon({
+          className: 'aircraft-marker',
+          html: '<svg viewBox="0 0 24 24" width="22" height="22" style="transform:rotate(' +
+            (ac.track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="' + color + '" stroke="#000" stroke-width="0.5"/></svg>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
         if (carouselMarkers[key]) {
-          carouselMarkers[key].setLatLng([ac.lat, ac.lon]);
+          carouselMarkers[key].setLatLng([ac.lat, ac.lon]).setIcon(icon);
         } else {
-          var icon = L.divIcon({
-            className: 'aircraft-marker',
-            html: '<svg viewBox="0 0 24 24" width="22" height="22" style="transform:rotate(' +
-              (ac.track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="#ffae59" stroke="#000" stroke-width="0.5"/></svg>',
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-          });
           carouselMarkers[key] = L.marker([ac.lat, ac.lon], { icon: icon })
-            .addTo(carouselMap)
-            .bindPopup((ac.callsign || ac.icao || '?') + '<br>' +
-              (ac.altitude_ft ? ac.altitude_ft + ' ft' : ''));
+            .addTo(carouselMap);
         }
+        carouselMarkers[key].bindPopup(
+          (ac.callsign || ac.icao || '?') + '<br>' +
+          (ac.altitude_ft ? ac.altitude_ft.toLocaleString() + ' ft' : ''));
       });
       // Remove stale
       Object.keys(carouselMarkers).forEach(function (k) {
@@ -1043,14 +1039,16 @@
       var trails = await r.json();
       var seen = {};
       Object.keys(trails).forEach(function (icao) {
-        var pts = trails[icao];
+        var t = trails[icao];
+        var pts = t.points || t;
         if (pts.length < 2) return;
         seen[icao] = true;
+        var color = altColor(t.alt);
         if (carouselTrails[icao]) {
-          carouselTrails[icao].setLatLngs(pts);
+          carouselTrails[icao].setLatLngs(pts).setStyle({ color: color });
         } else {
           carouselTrails[icao] = L.polyline(pts, {
-            color: '#ffae59', weight: 2, opacity: 0.5, dashArray: '4 6',
+            color: color, weight: 2, opacity: 0.45, dashArray: '4 6',
           }).addTo(carouselMap);
         }
       });

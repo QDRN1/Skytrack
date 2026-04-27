@@ -510,20 +510,22 @@
       grid-template-columns: auto 1fr auto;
       align-items: center;
       gap: clamp(14px, 2.5vw, 32px);
-      padding: clamp(8px, 1.4vh, 16px) clamp(14px, 2vw, 28px);
+      padding: clamp(6px, 1vh, 12px) clamp(14px, 2vw, 28px);
       background: rgba(6, 11, 28, 0.55);
       border: 1px solid rgba(120, 160, 255, 0.18);
       border-radius: clamp(10px, 1.6vh, 18px);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       min-height: clamp(48px, 8vh, 80px);
+      box-sizing: border-box;
     }
 
     /* Left: logo */
     .op-header-left {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
+      align-self: center;
     }
     .op-logo-img {
       height: clamp(32px, 6vh, 56px);
@@ -540,6 +542,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      align-self: center;
       line-height: 1;
     }
     .op-clock {
@@ -584,8 +587,13 @@
       background: rgba(10, 16, 38, 0.6);
       color: rgba(231, 235, 255, 0.88);
     }
+    .op-sensor-reading .sensor-label {
+      color: rgba(151, 160, 196, 0.65);
+      font-weight: 500;
+      font-size: 0.85em;
+    }
     .op-sensor-reading .sensor-sep {
-      color: rgba(151, 160, 196, 0.5);
+      color: rgba(151, 160, 196, 0.35);
     }
 
     /* Connection pill */
@@ -633,31 +641,59 @@
       -webkit-transform: translateZ(0);
     }
     .carousel-track {
-      display: flex;
+      position: relative;
+      width: 100%;
       height: 100%;
-      transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-      will-change: transform;
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
-      transform: translateZ(0);
-      -webkit-transform: translateZ(0);
-    }
-    .carousel-track.dragging {
-      transition: none;
     }
     .carousel-page {
-      flex: 0 0 100%;
+      position: absolute;
+      inset: 0;
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
       gap: clamp(10px, 2vh, 22px);
-      min-height: 0;
       padding: 0 clamp(2px, 0.5vw, 6px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      will-change: opacity, transform;
+      transform: translateZ(0);
     }
-    /* carousel-page-map no longer used — map is a persistent pane */
+    .carousel-page.active {
+      opacity: 1;
+      visibility: visible;
+      z-index: 2;
+    }
     .carousel-page.full-width {
       grid-template-rows: 1fr;
     }
+    /* Transition flavors — applied to .carousel-page by JS */
+    .carousel-page.fx-fade { transition: opacity 0.9s ease; }
+    .carousel-page.fx-slide-left {
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      transform: translateX(40px); opacity: 0;
+    }
+    .carousel-page.fx-slide-left.active { transform: translateX(0); opacity: 1; }
+    .carousel-page.fx-slide-right {
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      transform: translateX(-40px); opacity: 0;
+    }
+    .carousel-page.fx-slide-right.active { transform: translateX(0); opacity: 1; }
+    .carousel-page.fx-slide-up {
+      transition: opacity 0.6s ease, transform 0.6s ease;
+      transform: translateY(30px); opacity: 0;
+    }
+    .carousel-page.fx-slide-up.active { transform: translateY(0); opacity: 1; }
+    .carousel-page.fx-zoom {
+      transition: opacity 0.7s ease, transform 0.7s ease;
+      transform: scale(0.85); opacity: 0;
+    }
+    .carousel-page.fx-zoom.active { transform: scale(1); opacity: 1; }
+    .carousel-page.fx-flip {
+      transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: perspective(800px) rotateY(90deg); opacity: 0;
+    }
+    .carousel-page.fx-flip.active { transform: perspective(800px) rotateY(0); opacity: 1; }
 
     /* Dot indicators */
     .carousel-dots {
@@ -1046,8 +1082,10 @@
         </div>
         <div class="op-header-right">
           <div class="op-sensor-reading" id="op-sensor-reading" hidden>
+            <span class="sensor-label">Enclosure Temp:</span>
             <span id="op-sensor-temp">—</span>
             <span class="sensor-sep">|</span>
+            <span class="sensor-label">Humidity:</span>
             <span id="op-sensor-hum">—</span>
           </div>
           <div class="op-connection" id="op-connection">

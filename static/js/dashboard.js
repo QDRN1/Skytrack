@@ -3,6 +3,15 @@
  * filter chips that drive every range-aware widget at once.
  */
 (function () {
+  function altColor(alt) {
+    if (!alt || alt <= 0) return '#888888';
+    if (alt < 5000)  return '#4ade80';
+    if (alt < 15000) return '#facc15';
+    if (alt < 30000) return '#fb923c';
+    if (alt < 40000) return '#f87171';
+    return '#c084fc';
+  }
+
   const state = { range: '24h', map: null, markers: {}, trails: {}, trendChart: null };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -224,11 +233,12 @@
     L.tileLayer(tileUrl, { maxZoom: 18 }).addTo(state.map);
   }
 
-  function _aircraftIcon(track) {
+  function _aircraftIcon(track, alt) {
+    var color = altColor(alt);
     return L.divIcon({
       className: 'aircraft-marker',
       html: '<svg viewBox="0 0 24 24" width="20" height="20" style="transform:rotate(' +
-        (track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="#ffae59" stroke="#000" stroke-width="0.5"/></svg>',
+        (track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="' + color + '" stroke="#000" stroke-width="0.5"/></svg>',
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     });
@@ -243,10 +253,10 @@
       const label = `${escape(p.callsign || p.icao)}<br>${p.altitude_ft || '?'} ft`;
       if (state.markers[p.icao]) {
         state.markers[p.icao].setLatLng([p.lat, p.lon])
-          .setIcon(_aircraftIcon(p.track))
+          .setIcon(_aircraftIcon(p.track, p.altitude_ft))
           .bindPopup(label);
       } else {
-        state.markers[p.icao] = L.marker([p.lat, p.lon], { icon: _aircraftIcon(p.track) })
+        state.markers[p.icao] = L.marker([p.lat, p.lon], { icon: _aircraftIcon(p.track, p.altitude_ft) })
           .addTo(state.map).bindPopup(label);
       }
     });
@@ -262,14 +272,16 @@
     if (!state.map || !window.L) return;
     const seen = new Set();
     Object.keys(data).forEach((icao) => {
-      const pts = data[icao];
+      const t = data[icao];
+      const pts = t.points || t;
       if (pts.length < 2) return;
       seen.add(icao);
+      const color = altColor(t.alt);
       if (state.trails[icao]) {
-        state.trails[icao].setLatLngs(pts);
+        state.trails[icao].setLatLngs(pts).setStyle({ color });
       } else {
         state.trails[icao] = L.polyline(pts, {
-          color: '#ffae59', weight: 2, opacity: 0.5, dashArray: '4 6',
+          color, weight: 2, opacity: 0.45, dashArray: '4 6',
         }).addTo(state.map);
       }
     });
