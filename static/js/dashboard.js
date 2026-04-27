@@ -37,32 +37,28 @@
   }
 
   async function refreshAll() {
-    try {
-      const [cards, recent, weather, positions] = await Promise.all([
-        window.api.get('/api/dashboard/cards'),
-        window.api.get('/api/dashboard/recent'),
-        window.api.get('/api/dashboard/weather'),
-        window.api.get('/api/dashboard/positions'),
-      ]);
-      renderCards(cards);
-      renderRecent(recent);
-      renderWeather(weather);
-      renderMap(positions);
-    } catch (e) { console.warn('refreshAll', e); }
+    const [cards, recent, weather, positions] = await Promise.allSettled([
+      window.api.get('/api/dashboard/cards'),
+      window.api.get('/api/dashboard/recent'),
+      window.api.get('/api/dashboard/weather'),
+      window.api.get('/api/dashboard/positions'),
+    ]);
+    if (cards.status === 'fulfilled')     renderCards(cards.value);
+    if (recent.status === 'fulfilled')    renderRecent(recent.value);
+    if (weather.status === 'fulfilled')   renderWeather(weather.value);
+    if (positions.status === 'fulfilled') renderMap(positions.value);
     refreshRangeWidgets();
   }
 
   async function refreshRangeWidgets() {
-    try {
-      const [airlines, routes, trend] = await Promise.all([
-        window.api.get(`/api/dashboard/airlines?range=${state.range}`),
-        window.api.get(`/api/dashboard/routes?range=${state.range}`),
-        window.api.get(`/api/dashboard/trend?range=${state.range}`),
-      ]);
-      renderAirlines(airlines);
-      renderRoutes(routes);
-      renderTrend(trend);
-    } catch (e) { console.warn('refreshRangeWidgets', e); }
+    const [airlines, routes, trend] = await Promise.allSettled([
+      window.api.get(`/api/dashboard/airlines?range=${state.range}`),
+      window.api.get(`/api/dashboard/routes?range=${state.range}`),
+      window.api.get(`/api/dashboard/trend?range=${state.range}`),
+    ]);
+    if (airlines.status === 'fulfilled') renderAirlines(airlines.value);
+    if (routes.status === 'fulfilled')   renderRoutes(routes.value);
+    if (trend.status === 'fulfilled')    renderTrend(trend.value);
   }
 
   // -------- Renderers --------
