@@ -397,6 +397,66 @@ def _start_background_services(app: Flask) -> None:
                 logger.debug('dashboard tick error: %s', e)
             time.sleep(10)
 
+    # 7. Auto backup — runs on configured schedule (daily/weekly/monthly)
+    def _auto_backup_loop():
+        import tarfile
+        from pathlib import Path
+
+        _FREQ_SECONDS = {
+            'daily': 86400,
+            'weekly': 604800,
+            'monthly': 2592000,
+        }
+
+        def _do_backup():
+            backup_dir = Path(cfg.get('backup_dir', '/var/lib/skytrack/backups'))
+            try:
+                backup_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return
+            name = f'skytrack-auto-{int(time.time())}.tar.gz'
+            out_path = backup_dir / name
+            targets = []
+            for p in (cfg.get('auth_path'), cfg.get('db_path'), cfg.get('device_id_path')):
+                if p and os.path.exists(p):
+                    targets.append(p)
+            yaml_path = os.environ.get('SKYTRACK_CONFIG',
+                                       os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                    'config.yaml'))
+            if os.path.exists(yaml_path):
+                targets.append(yaml_path)
+            if not targets:
+                return
+            try:
+                with tarfile.open(out_path, 'w:gz') as tf:
+                    for t in targets:
+                        tf.add(t, arcname=os.path.basename(t))
+                logger.info('Auto backup created: %s', name)
+            except Exception as e:
+                logger.warning('Auto backup failed: %s', e)
+
+            keep = int(cfg.get('backup_keep', 5))
+            try:
+                backups = sorted(backup_dir.glob('skytrack-auto-*.tar.gz'),
+                                 key=lambda x: x.stat().st_mtime, reverse=True)
+                for old in backups[keep:]:
+                    old.unlink()
+                    logger.info('Auto backup pruned: %s', old.name)
+            except Exception:
+                pass
+
+        while True:
+            freq = (cfg.get('backup_frequency') or cfg.get('auto_backup_frequency') or 'off').lower()
+            interval = _FREQ_SECONDS.get(freq, 0)
+            if interval <= 0:
+                time.sleep(3600)
+                continue
+            time.sleep(interval)
+            try:
+                _do_backup()
+            except Exception as e:
+                logger.warning('auto backup loop error: %s', e)
+
     workers = [
         ('skytrack-sensor', _sensor_loop),
         ('skytrack-cellular', _cellular_loop),
@@ -404,6 +464,7 @@ def _start_background_services(app: Flask) -> None:
         ('skytrack-enrichment', _enrichment_worker),
         ('skytrack-prune', _prune_loop),
         ('skytrack-dashtick', _dashboard_tick_loop),
+        ('skytrack-autobackup', _auto_backup_loop),
     ]
     for name, target in workers:
         t = threading.Thread(target=target, name=name, daemon=True)

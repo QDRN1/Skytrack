@@ -106,7 +106,12 @@
     if (clock) {
       const tick = () => {
         const d = new Date();
-        clock.textContent = d.toLocaleTimeString();
+        var h24 = d.getHours();
+        var h12 = h24 % 12 || 12;
+        var mm = String(d.getMinutes()).padStart(2, '0');
+        var ss = String(d.getSeconds()).padStart(2, '0');
+        var ampm = h24 < 12 ? 'AM' : 'PM';
+        clock.textContent = h12 + ':' + mm + ':' + ss + ' ' + ampm;
       };
       tick();
       setInterval(tick, 1000);

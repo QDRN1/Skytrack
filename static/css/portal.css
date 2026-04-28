@@ -440,6 +440,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
   font-variant-numeric: tabular-nums; color: var(--fg-muted);
 }
 .data-table tbody tr:hover td { background: var(--bg-elev); }
+.data-table tbody tr.alog-row:hover td { background: rgba(77, 139, 255, 0.12); cursor: pointer; }
 .table-wrap { max-height: 420px; overflow-y: auto; border-radius: 8px; border: 1px solid var(--border); }
 .table-controls { display: flex; gap: 8px; margin-top: 8px; }
 
@@ -1184,6 +1185,47 @@ button.topbar-link {
 .confirm-card p  { margin: 0 0 22px 0; }
 .confirm-actions {
   display: flex; justify-content: flex-end; gap: 10px;
+}
+
+/* ---------- Flight map modal ---------- */
+.flight-map-modal {
+  position: fixed; inset: 0;
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.flight-map-modal[hidden] { display: none; }
+.flight-map-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(5, 10, 30, 0.65);
+  backdrop-filter: blur(4px);
+}
+.flight-map-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 14px 48px rgba(0, 0, 0, 0.5);
+  width: min(90vw, 800px);
+  height: min(80vh, 600px);
+  display: flex;
+  flex-direction: column;
+}
+.flight-map-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.flight-map-header h2 { margin: 0; font-size: 1.1rem; }
+.flight-map-header .btn { font-size: 1.3rem; line-height: 1; padding: 4px 10px; }
+.flight-map-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+}
+.flight-map-footer {
+  padding: 8px 18px;
+  border-top: 1px solid var(--border);
 }
 
 /* ---------- Settings toast ---------- */

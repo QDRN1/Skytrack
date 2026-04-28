@@ -77,7 +77,14 @@
   function renderCards(c) {
     set('#card-now-value', c.now.count);
     set('#card-today-value', c.today.count);
-    set('#card-busy-value', c.busiest.count + (c.busiest.hour != null ? ` @${pad(c.busiest.hour)}h UTC` : ''));
+    if (c.busiest.hour != null) {
+      var hr = Number(c.busiest.hour);
+      var h12 = hr % 12 || 12;
+      var ampm = hr < 12 ? 'AM' : 'PM';
+      set('#card-busy-value', c.busiest.count + ` @${h12}:00 ${ampm}`);
+    } else {
+      set('#card-busy-value', c.busiest.count);
+    }
     if (c.last) {
       set('#card-last-value', c.last.callsign || c.last.icao);
       set('#card-last-sub', `${c.last.altitude_ft || '?'} ft • ${c.last.speed_kts || '?'} kts`);
@@ -96,7 +103,7 @@
         <td>${escape(r.callsign || '—')}</td>
         <td>${r.altitude_ft || '—'}</td>
         <td>${r.speed_kts || '—'}</td>
-        <td>${escape(r.last_seen || '')}</td>
+        <td>${r.last_seen ? new Date(r.last_seen).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'}</td>
       </tr>
     `).join('');
   }
@@ -141,21 +148,21 @@
       return;
     }
     const temp = w.current.temp_f;
-    set('#wx-temp', temp != null ? `${Math.round(temp)}°` : '—');
+    set('#wx-temp', temp != null ? `${Math.round(temp)}°F` : '—');
     const cond = w.current.condition || '—';
     set('#wx-cond', `${wxEmoji(cond)}  ${cond}`);
     const hi = w.current.high_f, lo = w.current.low_f;
     const hilo = document.getElementById('wx-hilo');
     if (hilo) {
       hilo.textContent = (hi != null && lo != null)
-        ? `Hi ${Math.round(hi)}°  ·  Lo ${Math.round(lo)}°`
+        ? `Hi ${Math.round(hi)}°F  ·  Lo ${Math.round(lo)}°F`
         : '';
     }
     const fc = document.getElementById('wx-forecast');
     if (fc) {
       fc.innerHTML = (w.forecast || []).map(d => {
-        const dh = (d.high_f != null) ? `${Math.round(d.high_f)}°` : '—';
-        const dl = (d.low_f  != null) ? `${Math.round(d.low_f)}°`  : '—';
+        const dh = (d.high_f != null) ? `${Math.round(d.high_f)}°F` : '—';
+        const dl = (d.low_f  != null) ? `${Math.round(d.low_f)}°F`  : '—';
         return `
           <div class="wx-day" title="${escape(d.condition || '')}">
             <div class="wx-day-name">${escape(d.day)}</div>
@@ -176,7 +183,7 @@
       if (w.last_update) {
         try {
           parts.push('updated ' + new Date(w.last_update).toLocaleTimeString([],
-            { hour: '2-digit', minute: '2-digit' }));
+            { hour: 'numeric', minute: '2-digit', hour12: true }));
         } catch (_) { /* leave off */ }
       }
       stamp.textContent = parts.join(' · ');
@@ -187,7 +194,7 @@
     if (!window.Chart) return;
     const canvas = document.getElementById('trend-chart');
     if (!canvas) return;
-    const labels = data.points.map(p => new Date(p.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const labels = data.points.map(p => new Date(p.t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }));
     const counts = data.points.map(p => p.n);
     if (state.trendChart) {
       state.trendChart.data.labels = labels;

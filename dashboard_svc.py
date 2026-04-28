@@ -313,6 +313,23 @@ def aircraft_now_positions():
     return [dict(r) for r in rows]
 
 
+def aircraft_positions(icao: str, limit: int = 500):
+    """All recorded positions for a specific ICAO, newest first."""
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT lat, lon, altitude_ft, speed_kts, track, ts
+        FROM sightings
+        WHERE icao = ?
+          AND lat IS NOT NULL AND lon IS NOT NULL
+        ORDER BY ts DESC
+        LIMIT ?
+        """,
+        (icao.lower(), limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def aircraft_trails(minutes: int = 10):
     """Recent position history per aircraft for drawing flight trails."""
     conn = get_conn()

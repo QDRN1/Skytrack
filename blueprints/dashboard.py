@@ -126,6 +126,12 @@ def api_aircraft_log_stats():
     return jsonify(dashboard_svc.aircraft_log_stats())
 
 
+@dashboard_bp.route('/api/dashboard/aircraft-log/<icao>/positions')
+def api_aircraft_positions(icao):
+    limit = int(request.args.get('limit', 500))
+    return jsonify(dashboard_svc.aircraft_positions(icao, limit=min(limit, 1000)))
+
+
 @dashboard_bp.route('/api/dashboard/aircraft-log/reset', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_aircraft_log_reset():

@@ -72,6 +72,21 @@
     </div>
   </div>
 
+  {# ---------- Flight map modal (aircraft log click-to-view) ---------- #}
+  <div class="flight-map-modal" id="flight-map-modal" hidden role="dialog" aria-modal="true">
+    <div class="flight-map-backdrop" id="flight-map-close-backdrop"></div>
+    <div class="flight-map-card">
+      <div class="flight-map-header">
+        <h2 id="flight-map-title">Flight History</h2>
+        <button type="button" class="btn btn-sm" id="flight-map-close">&times;</button>
+      </div>
+      <div class="flight-map-body">
+        <div id="flight-map" style="width:100%;height:100%;border-radius:8px;" data-tile-url="{{ map_tile_url }}"></div>
+      </div>
+      <div class="flight-map-footer muted small" id="flight-map-info"></div>
+    </div>
+  </div>
+
   {# ---------- Confirm modal (large touch target, hard to trigger by mistake) ---------- #}
   <div class="confirm-modal" id="confirm-modal" hidden role="dialog" aria-modal="true">
     <div class="confirm-backdrop" data-confirm-cancel></div>
@@ -88,6 +103,11 @@
 </section>
 {% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet.css') }}">
+{% endblock %}
+
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/leaflet.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/settings.js') }}" defer></script>
 {% endblock %}

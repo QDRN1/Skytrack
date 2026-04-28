@@ -7,10 +7,17 @@ internet-reachability probing.
 
 Keep this thin — the actual OS-level work lives in `net_backend.py` so the
 stack can be standardized in one place.
+
+Standalone supervisor mode (--supervise):
+  Runs as a long-lived process for systemd. Periodically probes network
+  state and logs transitions. Used by skytrack-network.service.
 """
 
+import argparse
 import logging
 import socket
+import sys
+import time
 from typing import Optional
 
 import hotspot
@@ -140,3 +147,42 @@ def get_network_status(config) -> dict:
         'primary_interface': uplink.get('interface') or '',
         'uplink':            uplink,
     }
+
+
+# ---------------------------------------------------------------------------
+# Standalone supervisor entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='SkyTrack network supervisor')
+    parser.add_argument('--supervise', action='store_true',
+                        help='Run the long-lived supervisor loop')
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(name)s %(levelname)s %(message)s',
+    )
+
+    if not args.supervise:
+        logger.error('Use --supervise to start the supervisor loop')
+        sys.exit(1)
+
+    from config import load_config
+    cfg = load_config()
+
+    logger.info('Network supervisor starting (poll every 30s)')
+    last_primary = None
+    last_online = None
+    while True:
+        try:
+            status = get_network_status(cfg)
+            primary = status.get('primary', 'none')
+            online = status.get('internet', False)
+            if primary != last_primary or online != last_online:
+                logger.info('Network state: primary=%s online=%s', primary, online)
+                last_primary = primary
+                last_online = online
+        except Exception as e:
+            logger.warning('Network probe error: %s', e)
+        time.sleep(30)

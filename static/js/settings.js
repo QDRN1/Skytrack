@@ -858,6 +858,17 @@
         refreshAircraftLog();
       } catch (_) { toast('Failed to reset', true); }
     });
+
+    // Aircraft log row click → flight map popup
+    const logTable = $('#aircraft-log-tbody');
+    if (logTable) {
+      logTable.addEventListener('click', (e) => {
+        if (e.target.closest('.alog-remove')) return;
+        const row = e.target.closest('.alog-row');
+        if (!row) return;
+        showFlightMap(row.dataset.icao, row.dataset.callsign);
+      });
+    }
   }
 
   let alogOffset = 0;
@@ -879,6 +890,10 @@
       if (!append) tbody.innerHTML = '';
       (data.aircraft || []).forEach(ac => {
         const tr = document.createElement('tr');
+        tr.className = 'alog-row';
+        tr.dataset.icao = ac.icao;
+        tr.dataset.callsign = ac.callsign || '';
+        tr.style.cursor = 'pointer';
         tr.innerHTML =
           '<td><code>' + escapeHtml(ac.icao.toUpperCase()) + '</code></td>' +
           '<td>' + escapeHtml(ac.callsign || '—') + '</td>' +
@@ -906,8 +921,130 @@
 
   function fmtDateShort(iso) {
     if (!iso) return '—';
-    try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }); }
-    catch (_) { return iso.slice(0, 10); }
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }) +
+             ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch (_) { return iso.slice(0, 10); }
+  }
+
+  // ------------------------------------------------------------------
+  // Flight map modal — click an aircraft log row to see its positions
+  // ------------------------------------------------------------------
+  let flightMapInstance = null;
+
+  function altColor(alt) {
+    if (!alt || alt <= 0) return '#888888';
+    if (alt < 5000)  return '#4ade80';
+    if (alt < 15000) return '#facc15';
+    if (alt < 30000) return '#fb923c';
+    if (alt < 40000) return '#f87171';
+    return '#c084fc';
+  }
+
+  async function showFlightMap(icao, callsign) {
+    const modal = $('#flight-map-modal');
+    if (!modal) return;
+    const title = $('#flight-map-title');
+    const info = $('#flight-map-info');
+    const label = (callsign || icao).toUpperCase();
+    if (title) title.textContent = 'Flight History — ' + label;
+    if (info) info.textContent = 'Loading positions…';
+    modal.hidden = false;
+
+    if (flightMapInstance) {
+      flightMapInstance.remove();
+      flightMapInstance = null;
+    }
+
+    try {
+      const positions = await window.api.get('/api/dashboard/aircraft-log/' + encodeURIComponent(icao) + '/positions');
+      if (!positions || !positions.length) {
+        if (info) info.textContent = 'No position data recorded for ' + label;
+        const el = $('#flight-map');
+        if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--fg-muted);">No position data available</div>';
+        return;
+      }
+
+      if (typeof L === 'undefined') {
+        if (info) info.textContent = 'Map library not loaded';
+        return;
+      }
+
+      const mapEl = $('#flight-map');
+      if (!mapEl) return;
+      mapEl.innerHTML = '';
+
+      flightMapInstance = L.map(mapEl, { zoomControl: true, attributionControl: false });
+      const tileUrl = mapEl.dataset.tileUrl || 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+      L.tileLayer(tileUrl, { maxZoom: 18 }).addTo(flightMapInstance);
+
+      var latlngs = [];
+      var bounds = L.latLngBounds();
+      positions.forEach(function (p) {
+        if (p.lat == null || p.lon == null) return;
+        latlngs.push([p.lat, p.lon]);
+        bounds.extend([p.lat, p.lon]);
+      });
+
+      if (latlngs.length > 1) {
+        var color = altColor(positions[0].altitude_ft);
+        L.polyline(latlngs.reverse(), {
+          color: color, weight: 3, opacity: 0.7,
+        }).addTo(flightMapInstance);
+      }
+
+      if (positions[0] && positions[0].lat != null) {
+        var latest = positions[0];
+        var color2 = altColor(latest.altitude_ft);
+        var icon = L.divIcon({
+          className: 'aircraft-marker',
+          html: '<svg viewBox="0 0 24 24" width="24" height="24" style="transform:rotate(' +
+            (latest.track || 0) + 'deg)"><path d="M12 2L4 20h3l5-6 5 6h3z" fill="' + color2 + '" stroke="#000" stroke-width="0.5"/></svg>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+        L.marker([latest.lat, latest.lon], { icon: icon })
+          .addTo(flightMapInstance)
+          .bindPopup(label + '<br>' + (latest.altitude_ft ? latest.altitude_ft.toLocaleString() + ' ft' : ''));
+      }
+
+      if (bounds.isValid()) {
+        flightMapInstance.fitBounds(bounds, { padding: [30, 30] });
+      }
+
+      var altMin = null, altMax = null;
+      positions.forEach(function (p) {
+        if (p.altitude_ft != null) {
+          if (altMin === null || p.altitude_ft < altMin) altMin = p.altitude_ft;
+          if (altMax === null || p.altitude_ft > altMax) altMax = p.altitude_ft;
+        }
+      });
+      var parts = [positions.length + ' position' + (positions.length === 1 ? '' : 's')];
+      if (altMin != null) parts.push('Alt: ' + fmtNumber(altMin) + ' – ' + fmtNumber(altMax) + ' ft');
+      if (positions[positions.length - 1] && positions[positions.length - 1].ts) {
+        parts.push('From: ' + fmtDateShort(positions[positions.length - 1].ts));
+      }
+      if (positions[0] && positions[0].ts) {
+        parts.push('To: ' + fmtDateShort(positions[0].ts));
+      }
+      if (info) info.textContent = parts.join(' · ');
+
+      setTimeout(function () {
+        if (flightMapInstance) flightMapInstance.invalidateSize();
+      }, 200);
+    } catch (e) {
+      if (info) info.textContent = 'Failed to load positions';
+    }
+  }
+
+  function closeFlightMap() {
+    const modal = $('#flight-map-modal');
+    if (modal) modal.hidden = true;
+    if (flightMapInstance) {
+      flightMapInstance.remove();
+      flightMapInstance = null;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -1137,7 +1274,8 @@
         } else {
           const statusEl = $('#upd-status-text');
           const checkedTime = r.checked_at
-            ? new Date(r.checked_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+            ? new Date(r.checked_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+              ' ' + new Date(r.checked_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
             : 'just now';
 
           if (r.behind === 0) {
@@ -1667,6 +1805,15 @@
     bindSpeedTest();
     bindCopyButtons();
     refreshSystemStatus();
+
+    // Flight map modal close handlers
+    const fmClose = $('#flight-map-close');
+    if (fmClose) fmClose.addEventListener('click', closeFlightMap);
+    const fmBackdrop = $('#flight-map-close-backdrop');
+    if (fmBackdrop) fmBackdrop.addEventListener('click', closeFlightMap);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeFlightMap();
+    });
   });
 
 })();

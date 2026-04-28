@@ -749,8 +749,10 @@
           setText('op-busy-value', '—');
           setText('op-busy-sub',   'last 24 h');
         } else {
-          var h = String(hour).padStart(2, '0') + ':00';
-          setText('op-busy-value', h);
+          var hr = Number(hour);
+          var h12 = hr % 12 || 12;
+          var ampm = hr < 12 ? 'AM' : 'PM';
+          setText('op-busy-value', h12 + ':00 ' + ampm);
           var n = data.busiest.count;
           setText('op-busy-sub', (n !== undefined && n !== null)
             ? fmtNumber(n) + ' aircraft'
@@ -1100,15 +1102,15 @@
       if (!r.ok) return;
       var data = await r.json();
       var reading = data && data.reading;
-      var el = $('op-sensor-reading');
-      if (!el || !reading) return;
+      if (!reading) return;
 
       var tempF = reading.temperature_f;
       var hum = reading.humidity;
-      if (tempF != null && hum != null) {
+      if (tempF != null) {
         setText('op-sensor-temp', Math.round(Number(tempF)) + '°F');
+      }
+      if (hum != null) {
         setText('op-sensor-hum', Math.round(Number(hum)) + '%');
-        el.hidden = false;
       }
     } catch (_e) { /* transient */ }
   }
