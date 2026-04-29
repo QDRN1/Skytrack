@@ -89,7 +89,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
   position: sticky;
   top: 0;
   z-index: 10;
-  height: var(--topbar-h);
+  min-height: var(--topbar-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -97,6 +97,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(14px);
+  flex-wrap: wrap;
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; gap: 14px; }
 .topbar-logo {
@@ -441,7 +442,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
 }
 .data-table tbody tr:hover td { background: var(--bg-elev); }
 .data-table tbody tr.alog-row:hover td { background: rgba(77, 139, 255, 0.12); cursor: pointer; }
-.table-wrap { max-height: 420px; overflow-y: auto; border-radius: 8px; border: 1px solid var(--border); }
+.table-wrap { max-height: 420px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border); }
 .table-controls { display: flex; gap: 8px; margin-top: 8px; }
 
 /* -------- Radar URL block -------- */
@@ -1400,4 +1401,171 @@ button.topbar-link {
 .gps-green { color: #22c55e; font-weight: 600; }
 .gps-amber { color: #f59e0b; font-weight: 600; }
 .gps-red   { color: #ef4444; font-weight: 600; }
+
+/* =====================================================================
+   MOBILE RESPONSIVE — phones and small tablets
+   ===================================================================== */
+
+/* ---- Tablet breakpoint (≤768px) ---- */
+@media (max-width: 768px) {
+  :root {
+    --topbar-h: 48px;
+    --secondary-h: 32px;
+  }
+
+  .topbar { padding: 0 10px; }
+  .topbar-left, .topbar-right { gap: 8px; }
+  .topbar-nav { gap: 10px; }
+  .topbar-link { font-size: 0.85em; }
+  .topbar-device { font-size: 0.75em; }
+  .logo-mark { font-size: 0.7em; padding: 2px 6px; }
+
+  .topbar-secondary {
+    gap: 10px;
+    padding: 0 10px;
+    font-size: 0.78em;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .content { padding: 14px 10px; }
+
+  .cards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .card { padding: 12px 14px; }
+  .card-value { font-size: 1.8em; }
+
+  .search-box { flex: 1 1 200px; max-width: none; }
+
+  #aircraft-map { height: 280px; }
+  .trend-chart-wrap { height: 180px; min-height: 180px; }
+
+  .readonly-row { grid-template-columns: 120px 1fr auto; gap: 8px; padding: 8px 10px; }
+
+  .flight-map-card {
+    width: 95vw;
+    height: 85vh;
+  }
+}
+
+/* ---- Phone breakpoint (≤480px) ---- */
+@media (max-width: 480px) {
+  :root {
+    --topbar-h: 44px;
+    --secondary-h: 28px;
+  }
+
+  /* Topbar: hide device ID, shrink nav */
+  .topbar { padding: 0 8px; }
+  .topbar-device { display: none; }
+  .topbar-nav { gap: 6px; }
+  .topbar-link { font-size: 0.8em; }
+  .topbar-left, .topbar-right { gap: 6px; }
+
+  .topbar-secondary {
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 0.72em;
+  }
+
+  .content { padding: 10px 8px; }
+
+  /* Cards: 2 per row on phones */
+  .cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .card { padding: 10px; }
+  .card h3 { font-size: 0.75em; margin-bottom: 4px; }
+  .card-value { font-size: 1.4em; }
+  .card-sub { font-size: 0.78em; }
+
+  /* Filter bar: stack on phones */
+  .filter-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .filter-group { justify-content: center; flex-wrap: wrap; }
+  .chip { padding: 5px 10px; font-size: 0.8em; }
+  .search-box { flex: none; max-width: none; }
+
+  /* Dashboard grid: all full-width */
+  .dash-grid { gap: 10px; }
+  .panel { padding: 12px; }
+  .panel h3 { font-size: 0.85em; margin-bottom: 8px; }
+  .panel-trend, .panel-weather, .panel-map,
+  .panel-airlines, .panel-recent, .panel-routes {
+    grid-column: span 12;
+  }
+
+  #aircraft-map { height: 220px; }
+  .trend-chart-wrap { height: 150px; min-height: 150px; }
+
+  /* Tables: horizontal scroll */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { font-size: 0.8em; min-width: 500px; }
+  .data-table th, .data-table td { padding: 6px 4px; }
+
+  /* Readonly grid: stack label above value */
+  .readonly-row {
+    grid-template-columns: 1fr auto;
+    gap: 4px 8px;
+  }
+  .readonly-row .ro-label {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+  }
+
+  /* Settings rail: compact horizontal strip */
+  .settings-topline { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .settings-topline h1 { font-size: 1.3rem; }
+
+  .rail-btn { padding: 8px 10px; min-height: 40px; gap: 6px; }
+  .rail-icon { font-size: 1.1rem; }
+  .rail-label { font-size: 0.8rem; }
+
+  /* Settings cards */
+  .settings-card .card-header { padding: 14px 12px 8px; }
+  .settings-card .card-body { padding: 10px 12px; }
+  .settings-card .card-footer { padding: 10px 12px 14px; }
+
+  /* Inline forms: single column */
+  .inline-form { grid-template-columns: 1fr; }
+  .saved-wifi-item { grid-template-columns: 1fr; gap: 6px; }
+  .saved-wifi-item .btn { justify-self: start; }
+
+  /* Hardware status rows */
+  .hw-label { min-width: 0; font-size: 0.85em; }
+  .hw-row { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+
+  /* Weather forecast */
+  .wx-forecast { gap: 4px; }
+  .wx-day { font-size: 0.85em; }
+
+  /* Rank lists (airlines, routes) */
+  .rank-list { font-size: 0.85em; }
+  .rank-list li { padding: 6px 8px; }
+
+  /* Flight map modal */
+  .flight-map-card {
+    width: 100vw;
+    height: 90vh;
+    border-radius: 0;
+  }
+  .flight-map-header { padding: 10px 12px; }
+  .flight-map-footer { padding: 6px 12px; font-size: 0.78em; }
+
+  /* Confirm modal */
+  .confirm-card { padding: 18px; max-width: 92vw; }
+}
+
+/* ---- Very small phones (≤360px) ---- */
+@media (max-width: 360px) {
+  .cards { grid-template-columns: 1fr; }
+  .card-value { font-size: 1.6em; }
+
+  .topbar-nav { display: none; }
+
+  .chip { padding: 4px 8px; font-size: 0.75em; }
+
+  #aircraft-map { height: 180px; }
+  .trend-chart-wrap { height: 120px; min-height: 120px; }
+}
 
