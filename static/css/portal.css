@@ -1115,7 +1115,7 @@ button.topbar-link {
 }
 .saved-wifi-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -1123,9 +1123,15 @@ button.topbar-link {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+.saved-wifi-item.sw-active {
+  border-color: var(--accent);
+}
 .saved-wifi-item .sw-ssid {
   font-weight: 600;
   word-break: break-all;
+}
+.btn-ok {
+  background: #2a9d4e; color: #fff; cursor: default; opacity: .85;
 }
 .inline-form {
   display: grid;

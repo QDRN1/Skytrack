@@ -1886,6 +1886,20 @@ def api_network_status():
 def api_wifi_saved():
     cfg = current_app.skytrack_config
     saved = list(cfg.get('saved_wifi_networks') or [])
+    saved_ssids = {n.get('ssid') for n in saved}
+
+    # Merge in any NM-known connections not already in config (e.g. networks
+    # joined via nmcli directly or before the saved-list feature existed).
+    try:
+        nm = network_svc.wifi_saved()
+        for nm_net in (nm.get('networks') or []):
+            ssid = nm_net.get('ssid')
+            if ssid and ssid not in saved_ssids:
+                saved.append({'ssid': ssid, 'has_password': True})
+                saved_ssids.add(ssid)
+    except Exception:
+        pass
+
     connected_ssid = None
     try:
         st = network_svc.get_network_status(cfg) or {}

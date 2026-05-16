@@ -423,13 +423,16 @@
         return;
       }
       list.innerHTML = '';
+      items.sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0));
       items.forEach(net => {
         const li = document.createElement('li');
-        li.className = 'saved-wifi-item';
+        li.className = 'saved-wifi-item' + (net.connected ? ' sw-active' : '');
+        const connBtn = net.connected
+          ? `<button type="button" class="btn btn-ok" disabled>Connected</button>`
+          : `<button type="button" class="btn" data-wifi-connect="${escapeAttr(net.ssid)}">Connect</button>`;
         li.innerHTML = `
           <span class="sw-ssid">${escapeHtml(net.ssid)}</span>
-          <span class="muted small">${net.connected ? 'connected' : ''}</span>
-          <button type="button" class="btn" data-wifi-connect="${escapeAttr(net.ssid)}">Connect</button>
+          ${connBtn}
           <button type="button" class="btn btn-danger" data-wifi-forget="${escapeAttr(net.ssid)}">Forget</button>`;
         list.appendChild(li);
       });
@@ -646,8 +649,18 @@
       const c = e.target.closest('[data-wifi-connect]');
       if (c) {
         const ssid = c.dataset.wifiConnect;
-        try { await window.api.post('/api/settings/network/wifi/connect', { ssid }); toast(`Connecting to ${ssid}`); refreshNetworkStatus(); }
-        catch (_) { toast('Connect failed', true); }
+        c.disabled = true;
+        c.textContent = 'Connecting…';
+        try {
+          const r = await window.api.post('/api/settings/network/wifi/connect', { ssid });
+          if (r && r.ok) {
+            toast(`Connected to ${ssid}`);
+          } else {
+            toast(r && r.message ? r.message : 'Connect failed — check signal/password', true);
+          }
+          refreshNetworkStatus();
+          refreshSavedWifi();
+        } catch (_) { toast('Connect failed — network error', true); refreshSavedWifi(); }
         return;
       }
       const f = e.target.closest('[data-wifi-forget]');
