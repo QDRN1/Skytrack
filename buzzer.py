@@ -188,3 +188,25 @@ class Buzzer:
             'volume':           self.volume,
             'last_error':       self._last_error,
         }
+
+
+if __name__ == '__main__':
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description='SkyTrack buzzer service')
+    parser.add_argument('--supervise', action='store_true',
+                        help='Run supervised polling loop for systemd')
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
+    if args.supervise:
+        logger.info('Buzzer supervisor started')
+        while True:
+            time.sleep(30)
+            logger.info('buzzer heartbeat')

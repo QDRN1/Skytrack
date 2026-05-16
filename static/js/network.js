@@ -4,6 +4,8 @@
  * so the kiosk never sees a native Chromium alert box.
  */
 (function () {
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
   document.addEventListener('DOMContentLoaded', () => {
     refresh();
     setInterval(refresh, 15000);
@@ -19,26 +21,42 @@
         await window.uiModal.alert('Admin role required.', 'Not allowed');
       }
     });
-    bind('#btn-hotspot-regenerate', async () => {
-      if (!(await window.uiModal.confirm(
-        'This will rotate the hotspot password. Anyone currently connected '
-        + 'will need to re-enter the new password.',
-        'Generate new hotspot password?'
-      ))) return;
-      const r = await window.api.post('/api/network/hotspot/regenerate');
-      await window.uiModal.alert(`New password:\n${r.password}`, 'Hotspot password');
+    bind('#btn-hotspot-regenerate', async function () {
+      var btn = document.querySelector('#btn-hotspot-regenerate');
+      try {
+        if (btn) btn.disabled = true;
+        if (!(await window.uiModal.confirm(
+          'This will rotate the hotspot password. Anyone currently connected '
+          + 'will need to re-enter the new password.',
+          'Generate new hotspot password?'
+        ))) return;
+        const r = await window.api.post('/api/network/hotspot/regenerate');
+        await window.uiModal.alert(`New password:\n${r.password}`, 'Hotspot password');
+      } catch (e) {
+        await window.uiModal.alert('Operation failed: ' + (e.message || e), 'Error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     });
-    bind('#btn-hotspot-restart', async () => {
-      if (!(await window.uiModal.confirm(
-        'Restart hostapd, dnsmasq, and skytrack-hotspot. Clients will '
-        + 'briefly disconnect.',
-        'Restart hotspot services?'
-      ))) return;
-      const r = await window.api.post('/api/network/hotspot/restart');
-      await window.uiModal.alert(
-        r.message || (r.ok ? 'Hotspot restarted.' : 'Restart failed.'),
-        r.ok ? 'Done' : 'Failed'
-      );
+    bind('#btn-hotspot-restart', async function () {
+      var btn = document.querySelector('#btn-hotspot-restart');
+      try {
+        if (btn) btn.disabled = true;
+        if (!(await window.uiModal.confirm(
+          'Restart hostapd, dnsmasq, and skytrack-hotspot. Clients will '
+          + 'briefly disconnect.',
+          'Restart hotspot services?'
+        ))) return;
+        const r = await window.api.post('/api/network/hotspot/restart');
+        await window.uiModal.alert(
+          r.message || (r.ok ? 'Hotspot restarted.' : 'Restart failed.'),
+          r.ok ? 'Done' : 'Failed'
+        );
+      } catch (e) {
+        await window.uiModal.alert('Operation failed: ' + (e.message || e), 'Error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     });
 
     const metered = document.getElementById('metered-toggle');
@@ -56,7 +74,7 @@
     try {
       const s = await window.api.get('/api/network/status');
       render('#hotspot-status', s.hotspot && [
-        `SSID: <strong>${s.hotspot.ssid}</strong>`,
+        `SSID: <strong>${esc(s.hotspot.ssid)}</strong>`,
         `Gateway: ${s.hotspot.gateway}`,
         `Active: ${s.hotspot.enabled ? 'yes' : 'no'}`,
         `Clients: ${s.hotspot.clients ? s.hotspot.clients.length : 0}`,

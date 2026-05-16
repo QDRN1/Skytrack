@@ -62,7 +62,7 @@ def _derive_id(hw_source: str, collision_counter: int = 0) -> str:
     if collision_counter:
         msg += f'|collision-{collision_counter}'.encode()
 
-    digest = hmac.new(_SALT, msg, hashlib.sha256).digest()
+    digest = hmac.HMAC(_SALT, msg, hashlib.sha256).digest()
     # 5 chars × log2(31) ≈ 24.8 bits — 4 bytes of digest is plenty
     val = int.from_bytes(digest[:4], 'big')
     chars = []

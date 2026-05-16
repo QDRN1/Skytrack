@@ -179,14 +179,15 @@ def get_state(config: Optional[dict] = None) -> Dict:
             'next_stage':            <stage|None>,   # default forward step
         }
     """
+    import json as _json
     rec = auth_lib.read_auth() or {}
+    before = _json.dumps(rec.get('onboarding'), sort_keys=True, default=str)
     block = _ensure_block(rec)
     _recompute_completion(block, config, rec.get('secrets') or {})
+    after = _json.dumps(rec.get('onboarding'), sort_keys=True, default=str)
 
-    # We may have populated `onboarding` for the first time, or refreshed
-    # the derived completion flags — either way persist so subsequent
-    # reads don't repeat the work.
-    auth_lib.write_auth(rec)
+    if before != after:
+        auth_lib.write_auth(rec)
 
     stage = block['stage']
     return {

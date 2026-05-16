@@ -40,6 +40,7 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from functools import wraps
@@ -51,6 +52,8 @@ from flask import (jsonify, redirect, render_template, request, session,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = logging.getLogger('skytrack.auth')
+
+_auth_lock = threading.Lock()
 
 DEFAULT_AUTH_PATH = Path('/var/lib/skytrack/auth.json')
 
@@ -123,16 +126,17 @@ def read_auth() -> dict:
 
 def write_auth(record: dict) -> None:
     """Atomic write at mode 0600."""
-    record['updated_at'] = _now_iso()
-    path = _auth_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix('.tmp')
-    tmp.write_text(json.dumps(record, indent=2))
-    try:
-        tmp.chmod(0o600)
-    except OSError:
-        pass
-    tmp.replace(path)
+    with _auth_lock:
+        record['updated_at'] = _now_iso()
+        path = _auth_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(record, indent=2))
+        try:
+            tmp.chmod(0o600)
+        except OSError:
+            pass
+        tmp.replace(path)
 
 
 def is_configured() -> bool:

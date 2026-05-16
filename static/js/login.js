@@ -14,15 +14,14 @@
 
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      err.hidden = true;
+      if (err) err.hidden = true;
 
       const data = new FormData(form);
       const pin = (data.get('pin') || '').trim();
       const next = data.get('next') || '/dashboard';
 
       if (!/^[0-9]{4,8}$/.test(pin)) {
-        err.textContent = 'Enter your 4–8 digit admin PIN.';
-        err.hidden = false;
+        if (err) { err.textContent = 'Enter your 4–8 digit admin PIN.'; err.hidden = false; }
         return;
       }
 
@@ -32,11 +31,9 @@
           window.location.href = result.next || next;
           return;
         }
-        err.textContent = (result && result.error) || 'Sign-in failed';
-        err.hidden = false;
+        if (err) { err.textContent = (result && result.error) || 'Sign-in failed'; err.hidden = false; }
       } catch (e) {
-        err.textContent = (e.data && e.data.error) || e.message || 'Sign-in failed';
-        err.hidden = false;
+        if (err) { err.textContent = (e.data && e.data.error) || e.message || 'Sign-in failed'; err.hidden = false; }
       }
     });
   });

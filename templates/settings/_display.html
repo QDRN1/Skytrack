@@ -87,9 +87,11 @@
           ] %}
           <label class="switch-row">
             <span>{{ lbl }}</span>
-            <input type="checkbox" name="kiosk_card" value="{{ id }}"
-                   {% if id in enabled %}checked{% endif %}>
-            <span class="switch"></span>
+            <span class="switch">
+              <input type="checkbox" name="kiosk_card" value="{{ id }}"
+                     {% if id in enabled %}checked{% endif %}>
+              <span class="switch-track"></span>
+            </span>
           </label>
           {% endfor %}
         </div>
@@ -98,9 +100,11 @@
       <div class="field">
         <label class="switch-row">
           <span>Show map page</span>
-          <input type="checkbox" id="kiosk-show-map"
-                 {% if config.kiosk_show_map != False %}checked{% endif %}>
-          <span class="switch"></span>
+          <span class="switch">
+            <input type="checkbox" id="kiosk-show-map"
+                   {% if config.kiosk_show_map != False %}checked{% endif %}>
+            <span class="switch-track"></span>
+          </span>
         </label>
       </div>
 

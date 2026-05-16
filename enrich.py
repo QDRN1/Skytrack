@@ -201,8 +201,8 @@ def _fetch_aeroapi(icao: str, callsign: Optional[str]) -> Optional[dict]:
 
 def _fetch_opensky(icao: str, callsign: Optional[str]) -> Optional[dict]:
     import requests
-    user = get_secret('opensky_user')
-    pw = get_secret('opensky_pass')
+    user = get_secret('opensky_username')
+    pw = get_secret('opensky_password')
     auth = (user, pw) if user and pw else None
     url = f'https://opensky-network.org/api/states/all?icao24={icao}'
     resp = requests.get(url, auth=auth, timeout=8)

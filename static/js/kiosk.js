@@ -864,7 +864,7 @@
       var data = await r.json();
       if (Array.isArray(data) && data.length) {
         var lines = data.slice(0, 5).map(function (d) {
-          var label = d.callsign || d.icao.toUpperCase();
+          var label = d.callsign || (d.icao || '').toUpperCase();
           return label + '  ×' + fmtNumber(d.sighting_count);
         });
         setText('op-freq-value', lines.join('\n'));

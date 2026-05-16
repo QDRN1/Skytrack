@@ -8,7 +8,7 @@
     if (loginForm) {
       loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        loginErr.hidden = true;
+        if (loginErr) loginErr.hidden = true;
         const fd = new FormData(loginForm);
         try {
           const r = await fetch('/superuser', {
@@ -20,11 +20,9 @@
             }),
           }).then(x => x.json());
           if (r.ok) { window.location.href = r.next; return; }
-          loginErr.textContent = r.error || 'auth failed';
-          loginErr.hidden = false;
+          if (loginErr) { loginErr.textContent = r.error || 'auth failed'; loginErr.hidden = false; }
         } catch (err) {
-          loginErr.textContent = 'connection error';
-          loginErr.hidden = false;
+          if (loginErr) { loginErr.textContent = 'connection error'; loginErr.hidden = false; }
         }
       });
     }
@@ -36,35 +34,43 @@
     };
 
     bind('#btn-regen-device', async () => {
-      if (!(await window.uiModal.confirm(
-        'Anyone displaying the old ID on the radar page will need to re-pair. '
-        + 'This action cannot be undone.',
-        'Force-regenerate device ID?'
-      ))) return;
-      const r = await window.api.post('/api/super/device/regenerate', { reason: 'super-console' });
-      log(`device → ${r.device.device_id}`);
+      try {
+        if (!(await window.uiModal.confirm(
+          'Anyone displaying the old ID on the radar page will need to re-pair. '
+          + 'This action cannot be undone.',
+          'Force-regenerate device ID?'
+        ))) return;
+        const r = await window.api.post('/api/super/device/regenerate', { reason: 'super-console' });
+        log(`device → ${r && r.device ? r.device.device_id : '?'}`);
+      } catch (e) { log('error: ' + (e.message || e)); }
     });
 
     bind('#btn-prune', async () => {
-      await window.api.post('/api/super/db/prune');
-      log('db prune complete');
+      try {
+        await window.api.post('/api/super/db/prune');
+        log('db prune complete');
+      } catch (e) { log('error: ' + (e.message || e)); }
     });
 
     bind('#btn-vacuum', async () => {
-      await window.api.post('/api/super/db/vacuum');
-      log('db vacuum complete');
+      try {
+        await window.api.post('/api/super/db/vacuum');
+        log('db vacuum complete');
+      } catch (e) { log('error: ' + (e.message || e)); }
     });
 
     bind('#btn-factory-reset', async () => {
-      if (!(await window.uiModal.confirm(
-        'This wipes auth.json (admin PIN, hotspot password, API keys) and '
-        + 'forces the device back to the first-boot wizard. Your aircraft '
-        + 'database is kept. This cannot be undone.',
-        'Factory reset?'
-      ))) return;
-      await window.api.post('/api/super/factory_reset');
-      log('factory reset — redirecting to /setup');
-      setTimeout(() => window.location.href = '/setup', 1500);
+      try {
+        if (!(await window.uiModal.confirm(
+          'This wipes auth.json (admin PIN, hotspot password, API keys) and '
+          + 'forces the device back to the first-boot wizard. Your aircraft '
+          + 'database is kept. This cannot be undone.',
+          'Factory reset?'
+        ))) return;
+        await window.api.post('/api/super/factory_reset');
+        log('factory reset — redirecting to /setup');
+        setTimeout(() => window.location.href = '/setup', 1500);
+      } catch (e) { log('error: ' + (e.message || e)); }
     });
 
     const credsForm = document.getElementById('form-super-creds');

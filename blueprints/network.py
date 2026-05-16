@@ -101,7 +101,7 @@ def api_state():
 
     # Admin-only enrichments — never leak the hotspot password to a
     # pre-auth caller.
-    if auth_lib.current_role() == auth_lib.ROLE_ADMIN:
+    if auth_lib.current_role() in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER):
         try:
             rec = auth_lib.read_auth() or {}
             state['hotspot']['password'] = rec.get('hotspot_password') or ''

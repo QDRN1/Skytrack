@@ -6,6 +6,7 @@ Surfaces:
   • Application log     (tail of /var/log/skytrack/skytrack.log)
 """
 
+import collections
 import logging
 import os
 
@@ -36,14 +37,20 @@ def index():
 @logs_bp.route('/api/logs/portal')
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_portal_tail():
-    limit = int(request.args.get('limit', 100))
+    try:
+        limit = int(request.args.get('limit', 100))
+    except (ValueError, TypeError):
+        limit = 100
     return jsonify(logs_svc.tail_portal(limit=limit))
 
 
 @logs_bp.route('/api/logs/network')
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_network_tail():
-    limit = int(request.args.get('limit', 100))
+    try:
+        limit = int(request.args.get('limit', 100))
+    except (ValueError, TypeError):
+        limit = 100
     return jsonify(logs_svc.tail_network(limit=limit))
 
 
@@ -51,14 +58,17 @@ def api_network_tail():
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_app_tail():
     """Tail the application log file. Admin-only since it can leak."""
-    limit = int(request.args.get('limit', 200))
+    try:
+        limit = int(request.args.get('limit', 200))
+    except (ValueError, TypeError):
+        limit = 200
     log_dir = current_app.skytrack_config.get('log_dir', '/var/log/skytrack')
     path = os.path.join(log_dir, 'skytrack.log')
     lines = []
     try:
         if os.path.exists(path):
             with open(path, 'r', errors='replace') as f:
-                lines = f.readlines()[-limit:]
+                lines = list(collections.deque(f, maxlen=limit))
     except OSError as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'lines': [ln.rstrip() for ln in lines]})

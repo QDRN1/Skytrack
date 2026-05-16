@@ -66,7 +66,7 @@ socketio = SocketIO(
 
 _workers_started = False
 _worker_lock = threading.Lock()
-_enrichment_queue: 'queue.Queue' = queue.Queue()
+_enrichment_queue: 'queue.Queue' = queue.Queue(maxsize=1000)
 _cellular_state: dict = {'state': 'unknown'}
 _cellular_state_lock = threading.Lock()
 _gps_state: dict = {'state': 'no_fix'}
@@ -230,6 +230,11 @@ def create_app(config_overrides: Optional[dict] = None) -> Flask:
     _register_error_handlers(app)
     _register_socket_events(app)
 
+    # Register teardown to close per-request DB connections
+    @app.teardown_appcontext
+    def _close_db(exc):
+        db.close_conn()
+
     # Bind SocketIO last — after the routes are registered
     socketio.init_app(app)
 
@@ -298,7 +303,7 @@ def _start_background_services(app: Flask) -> None:
                     logs_svc.log_portal('system', 'buzzer_alert',
                                         buzzer_eval.get('reason', ''))
             except Exception as e:
-                logger.debug('sensor loop error: %s', e)
+                logger.warning('sensor loop error: %s', e)
             time.sleep(interval)
 
     # 3. Cellular status monitor
@@ -312,7 +317,7 @@ def _start_background_services(app: Flask) -> None:
                     _cellular_state.update(cell)
                 socketio.emit('cellular_update', cell)
             except Exception as e:
-                logger.debug('cellular loop error: %s', e)
+                logger.warning('cellular loop error: %s', e)
             time.sleep(30)
 
     # 4. GPS fix loop — polls gpsd / ModemManager every 30s, caches the
@@ -338,7 +343,7 @@ def _start_background_services(app: Flask) -> None:
                 if fix:
                     socketio.emit('gps_update', fix)
             except Exception as e:
-                logger.debug('gps loop error: %s', e)
+                logger.warning('gps loop error: %s', e)
             time.sleep(30)
 
     # 5. API enrichment worker — drains an in-memory queue, never polls.
@@ -357,7 +362,7 @@ def _start_background_services(app: Flask) -> None:
                 if rec:
                     socketio.emit('enrichment_update', rec)
             except Exception as e:
-                logger.debug('enrichment worker error: %s', e)
+                logger.warning('enrichment worker error: %s', e)
             finally:
                 try:
                     _enrichment_queue.task_done()
@@ -370,11 +375,11 @@ def _start_background_services(app: Flask) -> None:
         while True:
             try:
                 _db.prune(
-                    sightings_days=int(cfg.get('sightings_retention_days', 7)),
+                    sightings_days=int(cfg.get('sightings_retention_days') or cfg.get('data_retention_days', 7)),
                     logs_days=int(cfg.get('logs_retention_days', 30)),
                 )
             except Exception as e:
-                logger.debug('prune loop error: %s', e)
+                logger.warning('prune loop error: %s', e)
             time.sleep(3600)
 
     # 6. Dashboard tick — periodic push of the 4 cards + positions so
@@ -394,11 +399,12 @@ def _start_background_services(app: Flask) -> None:
                 }
                 socketio.emit('dashboard_tick', payload)
             except Exception as e:
-                logger.debug('dashboard tick error: %s', e)
+                logger.warning('dashboard tick error: %s', e)
             time.sleep(10)
 
     # 7. Auto backup — runs on configured schedule (daily/weekly/monthly)
     def _auto_backup_loop():
+        import db
         import tarfile
         from pathlib import Path
 
@@ -427,6 +433,11 @@ def _start_background_services(app: Flask) -> None:
                 targets.append(yaml_path)
             if not targets:
                 return
+            try:
+                conn = db.get_conn()
+                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            except Exception:
+                pass
             try:
                 with tarfile.open(out_path, 'w:gz') as tf:
                     for t in targets:

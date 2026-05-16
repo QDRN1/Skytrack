@@ -254,6 +254,10 @@ def prune(sightings_days=7, logs_days=30):
         conn.execute(
             "DELETE FROM enrichments WHERE expires_at < datetime('now')"
         )
+        conn.execute(
+            "DELETE FROM auth_attempts WHERE ts < datetime('now', ?)",
+            (f'-{int(logs_days)} days',),
+        )
 
 
 # ---------------------------------------------------------------------------

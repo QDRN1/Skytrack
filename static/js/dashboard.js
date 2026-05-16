@@ -38,10 +38,12 @@
     if (!form) return;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const q = document.getElementById('search-input').value.trim();
-      if (!q) return;
-      const rows = await window.api.get(`/api/dashboard/search?q=${encodeURIComponent(q)}&range=${state.range}`);
-      renderRecent(rows);
+      try {
+        const q = document.getElementById('search-input').value.trim();
+        if (!q) return;
+        const rows = await window.api.get(`/api/dashboard/search?q=${encodeURIComponent(q)}&range=${state.range}`);
+        renderRecent(rows);
+      } catch (_e) { /* ignore */ }
     });
   }
 
@@ -95,6 +97,7 @@
   }
 
   function renderRecent(rows) {
+    if (!Array.isArray(rows)) return;
     const tbody = document.getElementById('recent-tbody');
     if (!tbody) return;
     tbody.innerHTML = rows.map(r => `
@@ -191,9 +194,10 @@
   }
 
   function renderTrend(data) {
-    if (!window.Chart) return;
+    if (typeof Chart === 'undefined') return;
     const canvas = document.getElementById('trend-chart');
     if (!canvas) return;
+    if (!data || !data.points) return;
     const labels = data.points.map(p => new Date(p.t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }));
     const counts = data.points.map(p => p.n);
     if (state.trendChart) {

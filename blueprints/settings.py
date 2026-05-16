@@ -926,7 +926,7 @@ def api_test_opensky():
 @ADMIN
 def api_test_weather():
     try:
-        wx = current_app.weather_svc.fetch()
+        wx = current_app.weather_svc.get_weather()
         return jsonify({'ok': bool(wx), 'message': 'OK' if wx else 'no data',
                         'sample': wx})
     except Exception as e:
@@ -2452,7 +2452,7 @@ def _with_db(fn):
 @ADMIN
 def api_data_vacuum():
     def run(_db):
-        conn = _db.connect()
+        conn = _db.get_conn()
         try:
             conn.execute('VACUUM')
             conn.commit()
@@ -2470,7 +2470,7 @@ def api_data_prune():
     cfg = current_app.skytrack_config
     days = int(cfg.get('data_retention_days') or cfg.get('sightings_retention_days') or 30)
     def run(_db):
-        conn = _db.connect()
+        conn = _db.get_conn()
         removed = 0
         try:
             for tbl, col in (('sightings','ts'), ('flight_events','ts'), ('enrichment_cache','updated_at')):
@@ -2495,7 +2495,7 @@ def api_data_prune():
 @ADMIN
 def api_data_wipe():
     def run(_db):
-        conn = _db.connect()
+        conn = _db.get_conn()
         wiped = []
         try:
             for tbl in ('sightings','flight_events','enrichment_cache','alerts_log'):

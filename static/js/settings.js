@@ -326,8 +326,10 @@
   function confirmModal(title, body) {
     const modal = $('#confirm-modal');
     if (modal) {
-      $('#confirm-title', modal).textContent = title || 'Are you sure?';
-      $('#confirm-body',  modal).textContent = body  || '';
+      var titleEl = $('#confirm-title', modal);
+      if (titleEl) titleEl.textContent = title || 'Are you sure?';
+      var bodyEl = $('#confirm-body', modal);
+      if (bodyEl) bodyEl.textContent = body  || '';
       modal.hidden = false;
       return new Promise(resolve => { _confirmResolve = resolve; });
     }
@@ -343,7 +345,8 @@
     $$('[data-confirm-cancel]', modal).forEach(el => {
       el.addEventListener('click', () => { modal.hidden = true; _confirmResolve && _confirmResolve(false); _confirmResolve = null; });
     });
-    $('#confirm-ok', modal).addEventListener('click', () => {
+    var okBtn = $('#confirm-ok', modal);
+    if (okBtn) okBtn.addEventListener('click', () => {
       modal.hidden = true; _confirmResolve && _confirmResolve(true); _confirmResolve = null;
     });
   }
@@ -1285,7 +1288,8 @@
         const r = await window.api.post('/api/settings/updates/check');
         if (!r.ok) {
           setOut(r.message || 'Check failed.', true);
-          $('#upd-status-text').textContent = r.message || 'Check failed.';
+          var updStatusText = $('#upd-status-text');
+          if (updStatusText) updStatusText.textContent = r.message || 'Check failed.';
         } else {
           const statusEl = $('#upd-status-text');
           const checkedTime = r.checked_at

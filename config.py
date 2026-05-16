@@ -9,8 +9,12 @@ accessed via the auth module. Keep them out of git and out of the repo.
 
 import os
 import logging
+import secrets
+import threading
 
 logger = logging.getLogger('skytrack.config')
+
+_config_lock = threading.Lock()
 
 DEFAULT_CONFIG = {
     # --- General ---
@@ -269,6 +273,16 @@ def load_config(config_path: str = None) -> dict:
         except (ValueError, TypeError):
             logger.warning('Invalid value for %s: %s', env_key, val)
 
+    # Auto-generate SECRET_KEY if still using the insecure default
+    if config.get('secret_key') == 'skytrack-change-me-in-production':
+        new_key = secrets.token_hex(32)
+        config['secret_key'] = new_key
+        try:
+            save_user_config(config_path, {'secret_key': new_key})
+            logger.info('Generated and persisted a new secret_key')
+        except Exception as e:
+            logger.warning('Could not persist generated secret_key: %s', e)
+
     return config
 
 
@@ -279,20 +293,21 @@ def save_user_config(config_path: str, updates: dict) -> None:
     except ImportError:
         raise RuntimeError('PyYAML not available; cannot persist settings')
 
-    existing = {}
-    if os.path.exists(config_path):
-        try:
-            with open(config_path) as f:
-                existing = yaml.safe_load(f) or {}
-        except Exception:
-            existing = {}
+    with _config_lock:
+        existing = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path) as f:
+                    existing = yaml.safe_load(f) or {}
+            except Exception:
+                existing = {}
 
-    existing.update(updates)
+        existing.update(updates)
 
-    parent = os.path.dirname(config_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    tmp = config_path + '.tmp'
-    with open(tmp, 'w') as f:
-        yaml.safe_dump(existing, f, sort_keys=False)
-    os.replace(tmp, config_path)
+        parent = os.path.dirname(config_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        tmp = config_path + '.tmp'
+        with open(tmp, 'w') as f:
+            yaml.safe_dump(existing, f, sort_keys=False)
+        os.replace(tmp, config_path)

@@ -290,6 +290,7 @@ html[data-anim="off"] .particles-canvas { display: none; }
 .tabpanel.active { display: block; }
 .usage-block { display: flex; align-items: center; gap: 14px; margin: 12px 0; padding: 10px; background: var(--bg-elev); border-radius: 8px; }
 .log-pre {
+  position: relative;
   background: #0c0f25; color: #cdd6ff;
   border-radius: 10px; padding: 14px; font-family: ui-monospace, "SF Mono", monospace; font-size: 12px;
   max-height: 480px; overflow: auto; white-space: pre-wrap;
@@ -801,6 +802,9 @@ button.topbar-link {
 .btn-danger:hover { background: color-mix(in srgb, #000000 15%, var(--accent-warn)); }
 [data-theme="dark"] .btn-danger:hover { background: color-mix(in srgb, #ffffff 12%, var(--accent-warn)); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-sm { padding: 6px 12px; font-size: 0.85rem; min-height: 32px; }
+.input-with-button { display: flex; gap: 8px; align-items: flex-start; }
+.input-with-button input { flex: 1; }
 
 .action-row {
   display: flex; flex-wrap: wrap; gap: 10px;
@@ -1133,6 +1137,8 @@ button.topbar-link {
 .btn-ok {
   background: #2a9d4e; color: #fff; cursor: default; opacity: .85;
 }
+.btn-ok:hover { background: color-mix(in srgb, #000000 15%, #2a9d4e); }
+[data-theme="dark"] .btn-ok:hover { background: color-mix(in srgb, #ffffff 12%, #2a9d4e); }
 .inline-form {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -1142,7 +1148,7 @@ button.topbar-link {
 }
 @media (max-width: 680px) {
   .inline-form { grid-template-columns: 1fr; }
-  .saved-wifi-item { grid-template-columns: 1fr auto; }
+  .saved-wifi-item { grid-template-columns: 1fr auto auto; }
 }
 
 /* ---------- Flash + apply-on-reboot badges ---------- */

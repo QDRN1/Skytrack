@@ -63,7 +63,7 @@ def api_cards():
 
 @dashboard_bp.route('/api/dashboard/recent')
 def api_recent():
-    limit = int(request.args.get('limit', 25))
+    limit = request.args.get('limit', 25, type=int)
     return jsonify(dashboard_svc.recent_aircraft(limit=limit))
 
 
@@ -108,15 +108,15 @@ def api_search():
 
 @dashboard_bp.route('/api/dashboard/frequent-flyers')
 def api_frequent_flyers():
-    limit = int(request.args.get('limit', 10))
+    limit = request.args.get('limit', 10, type=int)
     return jsonify(dashboard_svc.frequent_flyers(limit=min(limit, 100)))
 
 
 @dashboard_bp.route('/api/dashboard/aircraft-log')
 def api_aircraft_log():
     sort = request.args.get('sort', 'count')
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
+    limit = request.args.get('limit', 100, type=int)
+    offset = request.args.get('offset', 0, type=int)
     return jsonify(dashboard_svc.aircraft_log_list(
         sort=sort, limit=min(limit, 500), offset=offset))
 
@@ -128,7 +128,7 @@ def api_aircraft_log_stats():
 
 @dashboard_bp.route('/api/dashboard/aircraft-log/<icao>/positions')
 def api_aircraft_positions(icao):
-    limit = int(request.args.get('limit', 500))
+    limit = request.args.get('limit', 500, type=int)
     return jsonify(dashboard_svc.aircraft_positions(icao, limit=min(limit, 1000)))
 
 

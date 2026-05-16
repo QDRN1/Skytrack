@@ -55,6 +55,7 @@
     state.modal.querySelectorAll('[data-auth-close]').forEach((el) => {
       el.addEventListener('click', () => closeModal('cancelled'));
     });
+    if (!state.form) return;
     state.form.addEventListener('submit', onModalSubmit);
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !state.modal.hidden) closeModal('cancelled');
