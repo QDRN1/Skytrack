@@ -328,10 +328,34 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
         # duplicates when we create a fresh one below.
         _run(['nmcli', 'connection', 'delete', '--', ssid], timeout=10)
 
-    # New network — create a fresh connection profile.
-    args = ['nmcli', 'device', 'wifi', 'connect', '--', ssid]
+    # New network — create the connection profile explicitly so that
+    # key-mgmt is always set.  `nmcli device wifi connect` omits
+    # 802-11-wireless-security.key-mgmt on some NM builds, which
+    # causes "property is missing" errors on WPA networks.
     if password:
-        args += ['password', password]
+        r = _run([
+            'nmcli', 'connection', 'add',
+            'type', 'wifi',
+            'con-name', ssid,
+            'ssid', ssid,
+            'wifi-sec.key-mgmt', 'wpa-psk',
+            'wifi-sec.psk', password,
+        ], timeout=15)
+        if not r['ok']:
+            return {
+                'ok': False,
+                'backend': 'nm',
+                'message': (r['stderr'] or r['stdout'] or 'failed to create connection'),
+            }
+        r = _run(['nmcli', 'connection', 'up', '--', ssid], timeout=45)
+        return {
+            'ok': r['ok'],
+            'backend': 'nm',
+            'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
+        }
+
+    # Open network (no password)
+    args = ['nmcli', 'device', 'wifi', 'connect', '--', ssid]
     r = _run(args, timeout=45)
     return {
         'ok': r['ok'],
