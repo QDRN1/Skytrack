@@ -306,7 +306,7 @@ def api_geocode():
     """Geocode an address string to lat/lon using Nominatim (free, no key).
 
     Handles midwest rural fire-number addresses (W7048, N1234, etc.) by
-    trying multiple query strategies and falling back to city+state+zip.
+    progressively simplifying the query until Nominatim finds a match.
     """
     import re
     import urllib.request
@@ -321,60 +321,59 @@ def api_geocode():
     base = 'https://nominatim.openstreetmap.org/search?'
     headers = {'User-Agent': 'SkyTrack-Appliance/1.0'}
 
-    def _query(params):
+    def _nom(params):
         params.update({'format': 'json', 'limit': '1', 'countrycodes': 'us'})
         url = base + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return _json.loads(resp.read())
+            r = _json.loads(resp.read())
+        return r if r else None
 
-    def _try(*queries):
-        """Try a list of query param dicts, return first non-empty result."""
-        for q in queries:
+    # Normalize whitespace, preserve commas for the first try.
+    norm = re.sub(r'\s+', ' ', address).strip()
+
+    # 1. Try the address exactly as typed.
+    results = None
+    try:
+        results = _nom({'q': norm})
+    except Exception:
+        pass
+
+    if not results:
+        # Flatten commas so we can tokenize cleanly.
+        flat = re.sub(r',', ' ', norm)
+        flat = re.sub(r'\s+', ' ', flat).strip()
+
+        # Strip midwest rural fire-number prefix (W7048, N1234, etc.).
+        flat = re.sub(r'^[NSEWnsew]\d+\s+', '', flat)
+
+        # Extract zip and state from the tail: "... WI 54723"
+        tail = re.search(r'\b([A-Za-z]{2})\s+(\d{5})(?:-\d{4})?\s*$', flat)
+        state = tail.group(1).upper() if tail else ''
+        zipcode = tail.group(2) if tail else ''
+        before_tail = flat[:tail.start()].strip() if tail else flat
+
+        # Progressive word-drop: try the full stripped string, then drop
+        # one word from the front each time.  This peels off the street
+        # portion until only the city name remains.
+        # e.g. "170th ave bay city" → "ave bay city" → "bay city" → "city"
+        words = before_tail.split()
+        for i in range(len(words)):
+            candidate = ' '.join(words[i:])
+            suffix = (', ' + state + ' ' + zipcode) if state else ''
             try:
-                r = _query(q)
-                if r:
-                    return r
+                results = _nom({'q': candidate + suffix})
+                if results:
+                    break
             except Exception:
                 pass
-        return None
 
-    # Normalize: collapse whitespace, strip commas for parsing.
-    norm = re.sub(r'\s+', ' ', address).strip()
-    clean = re.sub(r',', ' ', norm)
-    clean = re.sub(r'\s+', ' ', clean).strip()
-
-    # Strip midwest fire-number prefix (W7048, N1234, S555, E200).
-    stripped = re.sub(r'^[NSEWnsew]\d+\s+', '', clean)
-
-    # Try to parse a US zip code, state abbrev, and city from the tail.
-    zip_m = re.search(r'(\d{5})(?:\s*-\s*\d{4})?\s*$', clean)
-    zipcode = zip_m.group(1) if zip_m else ''
-    state_m = re.search(r'\b([A-Za-z]{2})\s+\d{5}', clean)
-    state = state_m.group(1).upper() if state_m else ''
-    city = ''
-    if state and zipcode:
-        # Everything between the street and state is the city.
-        before_state = clean[:state_m.start()].strip().rstrip(',').strip()
-        parts = re.split(r',\s*|\s{2,}', before_state)
-        city = parts[-1].strip() if parts else ''
-
-    results = (
-        # 1. Full address as-is
-        _try({'q': norm}) or
-        # 2. Full address as street param
-        _try({'street': norm}) or
-        # 3. Stripped (no fire number) as freeform
-        (stripped != clean and _try({'q': stripped})) or
-        # 4. Structured query: street + city + state + zip
-        (city and _try({'street': stripped.replace(city, '').strip().rstrip(',').strip(),
-                        'city': city, 'state': state, 'postalcode': zipcode})) or
-        # 5. Just city + state + zip
-        (city and _try({'city': city, 'state': state, 'postalcode': zipcode})) or
-        # 6. Just city + state
-        (city and state and _try({'city': city, 'state': state})) or
-        None
-    )
+        # Last resort: just the zip code.
+        if not results and zipcode:
+            try:
+                results = _nom({'q': zipcode})
+            except Exception:
+                pass
 
     if not results:
         return _err('No results found for that address')
