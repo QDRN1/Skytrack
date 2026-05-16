@@ -147,6 +147,9 @@ html[data-anim="off"] .particles-canvas { display: none; }
   font-size: 0.95rem;
   animation: critical-pulse 2s ease-in-out infinite;
 }
+.critical-banner[hidden] {
+  display: none;
+}
 @keyframes critical-pulse {
   0%, 100% { background: #dc2626; }
   50% { background: #b91c1c; }
