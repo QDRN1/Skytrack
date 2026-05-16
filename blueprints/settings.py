@@ -300,39 +300,46 @@ def api_location():
 @ADMIN
 def api_geocode():
     """Geocode an address string to lat/lon using Nominatim (free, no key)."""
+    import re
+    import urllib.request
+    import urllib.parse
+    import json as _json
+
     payload = request.get_json(silent=True) or {}
     address = (payload.get('address') or '').strip()
     if not address:
         return _err('address is required')
 
-    import urllib.request
-    import urllib.parse
-    import json as _json
     base = 'https://nominatim.openstreetmap.org/search?'
     headers = {'User-Agent': 'SkyTrack-Appliance/1.0'}
 
-    url = base + urllib.parse.urlencode({
-        'q': address, 'format': 'json', 'limit': '1',
-        'countrycodes': 'us',
-    })
-    req = urllib.request.Request(url, headers=headers)
-    try:
+    def _query(params):
+        params.update({'format': 'json', 'limit': '1', 'countrycodes': 'us'})
+        url = base + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=10) as resp:
-            results = _json.loads(resp.read())
-    except Exception as e:
-        return _err(f'Geocode failed: {e}')
+            return _json.loads(resp.read())
 
-    if not results:
-        url2 = base + urllib.parse.urlencode({
-            'street': address, 'format': 'json', 'limit': '1',
-            'countrycodes': 'us',
-        })
-        req2 = urllib.request.Request(url2, headers=headers)
+    # Build a list of address variants to try.
+    # Wisconsin (and other midwest states) use rural fire number prefixes
+    # like W7048, N1234, S555 that Nominatim can't parse.
+    variants = [address]
+    fire_num_re = re.match(r'^[NSEWnsew]\d+\s+(.+)$', address)
+    if fire_num_re:
+        variants.append(fire_num_re.group(1))
+
+    results = None
+    for variant in variants:
         try:
-            with urllib.request.urlopen(req2, timeout=10) as resp2:
-                results = _json.loads(resp2.read())
-        except Exception:
-            pass
+            results = _query({'q': variant})
+            if results:
+                break
+            results = _query({'street': variant})
+            if results:
+                break
+        except Exception as e:
+            if variant == variants[-1]:
+                return _err(f'Geocode failed: {e}')
 
     if not results:
         return _err('No results found for that address')
