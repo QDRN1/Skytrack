@@ -317,7 +317,7 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
     saved = wifi_saved()
     known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
     if known:
-        r = _run(['nmcli', 'connection', 'up', '--', ssid], timeout=45)
+        r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
         if r['ok']:
             return {
                 'ok': True,
@@ -326,7 +326,7 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
             }
         # Profile activation failed — delete the stale profile to avoid
         # duplicates when we create a fresh one below.
-        _run(['nmcli', 'connection', 'delete', '--', ssid], timeout=10)
+        _run(['nmcli', 'connection', 'delete', ssid], timeout=10)
 
     # New network — create the connection profile explicitly so that
     # key-mgmt is always set.  `nmcli device wifi connect` omits
@@ -347,7 +347,7 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
                 'backend': 'nm',
                 'message': (r['stderr'] or r['stdout'] or 'failed to create connection'),
             }
-        r = _run(['nmcli', 'connection', 'up', '--', ssid], timeout=45)
+        r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
         return {
             'ok': r['ok'],
             'backend': 'nm',
@@ -355,7 +355,7 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
         }
 
     # Open network (no password)
-    args = ['nmcli', 'device', 'wifi', 'connect', '--', ssid]
+    args = ['nmcli', 'device', 'wifi', 'connect', ssid]
     r = _run(args, timeout=45)
     return {
         'ok': r['ok'],
@@ -370,7 +370,7 @@ def wifi_forget(ssid: str) -> Dict:
         return {'ok': False, 'backend': detect_backend(), 'message': 'ssid required'}
     if detect_backend() != 'nm':
         return {'ok': False, 'backend': 'direct', 'message': 'NetworkManager required'}
-    r = _run(['nmcli', 'connection', 'delete', '--', ssid], timeout=10)
+    r = _run(['nmcli', 'connection', 'delete', ssid], timeout=10)
     return {
         'ok': r['ok'],
         'backend': 'nm',
