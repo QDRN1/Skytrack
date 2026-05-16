@@ -248,13 +248,16 @@ def wifi_scan() -> Dict:
         bssid = parts[4].strip() if len(parts) > 4 else ''
         freq  = parts[5].strip() if len(parts) > 5 else ''
         prev = seen.get(ssid)
-        if prev and prev['signal'] >= signal:
-            continue
+        if prev:
+            if in_use:
+                prev['in_use'] = True
+            if prev['signal'] >= signal:
+                continue
         seen[ssid] = {
             'ssid':     ssid,
             'signal':   signal,
             'security': security or 'open',
-            'in_use':   in_use,
+            'in_use':   in_use or (prev['in_use'] if prev else False),
             'bssid':    bssid,
             'freq':     freq,
         }
@@ -295,7 +298,12 @@ def wifi_saved() -> Dict:
 
 
 def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
-    """Join a WiFi network. Password is optional for open networks."""
+    """Join a WiFi network. Password is optional for open networks.
+
+    If NM already has a saved connection profile for this SSID, activate
+    it with ``nmcli connection up``.  Otherwise create a new connection
+    with ``nmcli device wifi connect``.
+    """
     if not ssid:
         return {'ok': False, 'backend': detect_backend(), 'message': 'ssid required'}
     if detect_backend() != 'nm':
@@ -305,12 +313,22 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
             'message': 'NetworkManager required for wifi join',
         }
 
+    # If NM already knows this SSID, reactivate the existing profile.
+    if not password:
+        saved = wifi_saved()
+        known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
+        if known:
+            r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
+            return {
+                'ok': r['ok'],
+                'backend': 'nm',
+                'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
+            }
+
     args = ['nmcli', 'device', 'wifi', 'connect', ssid]
     if password:
         args += ['password', password]
     r = _run(args, timeout=45)
-    # nmcli exits non-zero if the connection partially succeeded; surface the
-    # stderr text verbatim so the UI can show exactly what went wrong.
     return {
         'ok': r['ok'],
         'backend': 'nm',

@@ -598,13 +598,15 @@
         scanList.innerHTML = '';
         nets.forEach(n => {
           const li = document.createElement('li');
-          li.className = 'saved-wifi-item';
+          li.className = 'saved-wifi-item' + (n.in_use ? ' sw-active' : '');
           const lock = (n.security && n.security !== '' && n.security !== '--') ? '🔒' : '🔓';
-          const inUse = n.in_use ? '<span class="muted small"> · connected</span>' : '';
+          const btn = n.in_use
+            ? '<button type="button" class="btn btn-ok" disabled>Connected</button>'
+            : `<button type="button" class="btn" data-wifi-join="${escapeAttr(n.ssid)}" data-wifi-sec="${escapeAttr(n.security || '')}">Join</button>`;
           li.innerHTML = `
-            <span class="sw-ssid">${lock} ${escapeHtml(n.ssid)}${inUse}</span>
+            <span class="sw-ssid">${lock} ${escapeHtml(n.ssid)}</span>
             <span class="muted small">${n.signal || 0}%</span>
-            <button type="button" class="btn" data-wifi-join="${escapeAttr(n.ssid)}" data-wifi-sec="${escapeAttr(n.security || '')}">Join</button>`;
+            ${btn}`;
           scanList.appendChild(li);
         });
         if (scanStatus) scanStatus.textContent = `${nets.length} network${nets.length === 1 ? '' : 's'} found.`;
