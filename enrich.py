@@ -114,8 +114,8 @@ def _cache_store(record: dict, ttl_hours: int) -> None:
             record.get('airline'),
             record.get('aircraft_type'),
             record.get('source'),
-            _now().isoformat(timespec='seconds'),
-            expires.isoformat(timespec='seconds'),
+            _now().strftime('%Y-%m-%d %H:%M:%S'),
+            expires.strftime('%Y-%m-%d %H:%M:%S'),
         ),
     )
     conn.commit()
@@ -249,8 +249,8 @@ def test_aeroapi() -> dict:
 def test_opensky() -> dict:
     try:
         import requests
-        user = get_secret('opensky_user')
-        pw = get_secret('opensky_pass')
+        user = get_secret('opensky_username')
+        pw = get_secret('opensky_password')
         auth = (user, pw) if user and pw else None
         resp = requests.get(
             'https://opensky-network.org/api/states/all?lamin=44&lomin=-93&lamax=45&lomax=-92',

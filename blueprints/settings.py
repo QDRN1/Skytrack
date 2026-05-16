@@ -2453,12 +2453,8 @@ def _with_db(fn):
 def api_data_vacuum():
     def run(_db):
         conn = _db.get_conn()
-        try:
-            conn.execute('VACUUM')
-            conn.commit()
-        finally:
-            try: conn.close()
-            except Exception: pass
+        conn.execute('VACUUM')
+        conn.commit()
         logs_svc.log_portal('admin', 'db_vacuum', {})
         return _ok({'message': 'vacuum complete'})
     return _with_db(run)
@@ -2472,20 +2468,16 @@ def api_data_prune():
     def run(_db):
         conn = _db.get_conn()
         removed = 0
-        try:
-            for tbl, col in (('sightings','ts'), ('flight_events','ts'), ('enrichment_cache','updated_at')):
-                try:
-                    cur = conn.execute(
-                        f"DELETE FROM {tbl} WHERE {col} < datetime('now', ?)",
-                        (f'-{days} days',),
-                    )
-                    removed += cur.rowcount or 0
-                except Exception:
-                    pass
-            conn.commit()
-        finally:
-            try: conn.close()
-            except Exception: pass
+        for tbl, col in (('sightings','ts'), ('enrichments','fetched_at'), ('api_usage','ts'), ('auth_attempts','ts')):
+            try:
+                cur = conn.execute(
+                    f"DELETE FROM {tbl} WHERE {col} < datetime('now', ?)",
+                    (f'-{days} days',),
+                )
+                removed += cur.rowcount or 0
+            except Exception:
+                pass
+        conn.commit()
         logs_svc.log_portal('admin', 'db_prune', {'days': days, 'removed': removed})
         return _ok({'message': f'pruned {removed} rows older than {days}d', 'removed': removed})
     return _with_db(run)
@@ -2497,17 +2489,13 @@ def api_data_wipe():
     def run(_db):
         conn = _db.get_conn()
         wiped = []
-        try:
-            for tbl in ('sightings','flight_events','enrichment_cache','alerts_log'):
-                try:
-                    conn.execute(f'DELETE FROM {tbl}')
-                    wiped.append(tbl)
-                except Exception:
-                    pass
-            conn.commit()
-        finally:
-            try: conn.close()
-            except Exception: pass
+        for tbl in ('sightings', 'enrichments', 'api_usage', 'auth_attempts', 'aircraft_log'):
+            try:
+                conn.execute(f'DELETE FROM {tbl}')
+                wiped.append(tbl)
+            except Exception:
+                pass
+        conn.commit()
         logs_svc.log_portal('admin', 'db_wipe', {'tables': wiped})
         return _ok({'message': f'wiped {len(wiped)} tables', 'tables': wiped})
     return _with_db(run)

@@ -14,6 +14,13 @@
 
   const state = { range: '24h', map: null, markers: {}, trails: {}, trendChart: null };
 
+  function utcDate(s) {
+    if (!s) return null;
+    if (typeof s === 'number') return new Date(s * 1000);
+    if (typeof s === 'string' && !s.endsWith('Z') && !s.includes('+')) return new Date(s + 'Z');
+    return new Date(s);
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     bindFilter();
     bindSearch();
@@ -106,7 +113,7 @@
         <td>${escape(r.callsign || '—')}</td>
         <td>${r.altitude_ft || '—'}</td>
         <td>${r.speed_kts || '—'}</td>
-        <td>${r.last_seen ? new Date(r.last_seen).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'}</td>
+        <td>${r.last_seen ? utcDate(r.last_seen).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'}</td>
       </tr>
     `).join('');
   }
@@ -185,7 +192,7 @@
       if (w.provider === 'off') parts.push('disabled');
       if (w.last_update) {
         try {
-          parts.push('updated ' + new Date(w.last_update).toLocaleTimeString([],
+          parts.push('updated ' + utcDate(w.last_update).toLocaleTimeString([],
             { hour: 'numeric', minute: '2-digit', hour12: true }));
         } catch (_) { /* leave off */ }
       }

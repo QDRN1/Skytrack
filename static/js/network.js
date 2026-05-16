@@ -75,13 +75,13 @@
       const s = await window.api.get('/api/network/status');
       render('#hotspot-status', s.hotspot && [
         `SSID: <strong>${esc(s.hotspot.ssid)}</strong>`,
-        `Gateway: ${s.hotspot.gateway}`,
+        `Gateway: ${esc(s.hotspot.gateway || '')}`,
         `Active: ${s.hotspot.enabled ? 'yes' : 'no'}`,
         `Clients: ${s.hotspot.clients ? s.hotspot.clients.length : 0}`,
       ].join('<br>'));
-      render('#wifi-status', s.wifi && (s.wifi.connected ? `Connected to ${s.wifi.ssid} (${s.wifi.signal_pct}%)` : 'Not connected'));
+      render('#wifi-status', s.wifi && (s.wifi.connected ? `Connected to ${esc(s.wifi.ssid)} (${s.wifi.signal_pct}%)` : 'Not connected'));
       render('#cell-status', s.cellular && s.cellular.detected
-        ? `${s.cellular.carrier || 'unknown'} • ${s.cellular.access_tech || ''} • ${s.cellular.signal_pct || 0}% (${s.cellular.state})`
+        ? `${esc(s.cellular.carrier || 'unknown')} • ${esc(s.cellular.access_tech || '')} • ${s.cellular.signal_pct || 0}% (${esc(s.cellular.state || '')})`
         : 'No modem detected');
       render('#internet-status', s.internet ? '✓ Internet reachable' : '✗ No internet');
     } catch (e) { /* not authed */ }

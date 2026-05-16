@@ -940,7 +940,8 @@
   function fmtDateShort(iso) {
     if (!iso) return '—';
     try {
-      var d = new Date(iso);
+      var s = (typeof iso === 'string' && !iso.endsWith('Z') && !iso.includes('+')) ? iso + 'Z' : iso;
+      var d = new Date(s);
       return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }) +
              ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     } catch (_) { return iso.slice(0, 10); }
@@ -1292,9 +1293,10 @@
           if (updStatusText) updStatusText.textContent = r.message || 'Check failed.';
         } else {
           const statusEl = $('#upd-status-text');
-          const checkedTime = r.checked_at
-            ? new Date(r.checked_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-              ' ' + new Date(r.checked_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+          const _ca = r.checked_at && !r.checked_at.endsWith('Z') && !r.checked_at.includes('+') ? r.checked_at + 'Z' : r.checked_at;
+          const checkedTime = _ca
+            ? new Date(_ca).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+              ' ' + new Date(_ca).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
             : 'just now';
 
           if (r.behind === 0) {
