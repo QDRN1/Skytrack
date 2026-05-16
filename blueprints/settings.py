@@ -265,6 +265,10 @@ def api_location():
     if request.method == 'GET':
         with current_app.gps_state_lock:
             gps_snap = dict(current_app.gps_state)
+        src = (gps_snap.get('source') or '').lower()
+        gps_snap['hardware_available'] = src in (
+            'modemmanager', 'gpsd',
+        )
         return jsonify({
             'config': {k: cfg.get(k) for k in _LOCATION_KEYS},
             'gps': gps_snap,
@@ -299,7 +303,11 @@ def api_location():
 @settings_bp.route('/api/settings/location/geocode', methods=['POST'])
 @ADMIN
 def api_geocode():
-    """Geocode an address string to lat/lon using Nominatim (free, no key)."""
+    """Geocode an address string to lat/lon using Nominatim (free, no key).
+
+    Handles midwest rural fire-number addresses (W7048, N1234, etc.) by
+    trying multiple query strategies and falling back to city+state+zip.
+    """
     import re
     import urllib.request
     import urllib.parse
@@ -320,26 +328,53 @@ def api_geocode():
         with urllib.request.urlopen(req, timeout=10) as resp:
             return _json.loads(resp.read())
 
-    # Build a list of address variants to try.
-    # Wisconsin (and other midwest states) use rural fire number prefixes
-    # like W7048, N1234, S555 that Nominatim can't parse.
-    variants = [address]
-    fire_num_re = re.match(r'^[NSEWnsew]\d+\s+(.+)$', address)
-    if fire_num_re:
-        variants.append(fire_num_re.group(1))
+    def _try(*queries):
+        """Try a list of query param dicts, return first non-empty result."""
+        for q in queries:
+            try:
+                r = _query(q)
+                if r:
+                    return r
+            except Exception:
+                pass
+        return None
 
-    results = None
-    for variant in variants:
-        try:
-            results = _query({'q': variant})
-            if results:
-                break
-            results = _query({'street': variant})
-            if results:
-                break
-        except Exception as e:
-            if variant == variants[-1]:
-                return _err(f'Geocode failed: {e}')
+    # Normalize: collapse whitespace, strip commas for parsing.
+    norm = re.sub(r'\s+', ' ', address).strip()
+    clean = re.sub(r',', ' ', norm)
+    clean = re.sub(r'\s+', ' ', clean).strip()
+
+    # Strip midwest fire-number prefix (W7048, N1234, S555, E200).
+    stripped = re.sub(r'^[NSEWnsew]\d+\s+', '', clean)
+
+    # Try to parse a US zip code, state abbrev, and city from the tail.
+    zip_m = re.search(r'(\d{5})(?:\s*-\s*\d{4})?\s*$', clean)
+    zipcode = zip_m.group(1) if zip_m else ''
+    state_m = re.search(r'\b([A-Za-z]{2})\s+\d{5}', clean)
+    state = state_m.group(1).upper() if state_m else ''
+    city = ''
+    if state and zipcode:
+        # Everything between the street and state is the city.
+        before_state = clean[:state_m.start()].strip().rstrip(',').strip()
+        parts = re.split(r',\s*|\s{2,}', before_state)
+        city = parts[-1].strip() if parts else ''
+
+    results = (
+        # 1. Full address as-is
+        _try({'q': norm}) or
+        # 2. Full address as street param
+        _try({'street': norm}) or
+        # 3. Stripped (no fire number) as freeform
+        (stripped != clean and _try({'q': stripped})) or
+        # 4. Structured query: street + city + state + zip
+        (city and _try({'street': stripped.replace(city, '').strip().rstrip(',').strip(),
+                        'city': city, 'state': state, 'postalcode': zipcode})) or
+        # 5. Just city + state + zip
+        (city and _try({'city': city, 'state': state, 'postalcode': zipcode})) or
+        # 6. Just city + state
+        (city and state and _try({'city': city, 'state': state})) or
+        None
+    )
 
     if not results:
         return _err('No results found for that address')

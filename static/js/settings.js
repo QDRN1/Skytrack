@@ -1590,22 +1590,36 @@
       if (gs) gs.hidden = srcRadio.value === 'manual';
     }
 
-    // GPS status poll — red/amber/green states:
-    //   green = live fix (modemmanager, gpsd)
-    //   amber = static fallback (config, cached)
-    //   red   = no fix at all
     async function pollGps() {
       try {
         const d = await window.api.get('/api/settings/location');
         const g = d.gps || {};
+        const hasHw = !!g.hardware_available;
+        const gpsRadio = document.getElementById('loc-src-gps');
+        const gpsLabel = gpsRadio && gpsRadio.closest('label');
+
+        if (!hasHw && gpsRadio) {
+          gpsRadio.disabled = true;
+          if (gpsLabel) gpsLabel.style.opacity = '0.4';
+          if (gpsLabel) gpsLabel.title = 'No GPS hardware detected';
+          const manualRadio = document.getElementById('loc-src-manual');
+          if (manualRadio && !manualRadio.checked) {
+            manualRadio.checked = true;
+            manualRadio.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+
         const el = document.getElementById('loc-gps-state');
         if (el) {
           const state = g.state || 'no_fix';
           const src = (g.source || '').toLowerCase();
           el.classList.remove('gps-green', 'gps-amber', 'gps-red');
-          if (state === 'fix_acquired' && (src === 'modemmanager' || src === 'gpsd')) {
+          if (hasHw && state === 'fix_acquired') {
             el.textContent = 'Live Fix';
             el.classList.add('gps-green');
+          } else if (!hasHw) {
+            el.textContent = 'No GPS hardware';
+            el.classList.add('gps-red');
           } else if (state === 'static' || src === 'config' || src.includes('cached')) {
             el.textContent = 'Static (' + (g.source || 'config') + ')';
             el.classList.add('gps-amber');
@@ -1617,7 +1631,7 @@
           }
         }
         const srcEl = document.getElementById('loc-gps-source');
-        if (srcEl) srcEl.textContent = g.source || '—';
+        if (srcEl) srcEl.textContent = hasHw ? (g.source || '—') : 'none';
         const coords = document.getElementById('loc-gps-coords');
         if (coords && g.lat && g.lon) {
           coords.textContent = Number(g.lat).toFixed(5) + ', ' + Number(g.lon).toFixed(5);
