@@ -314,17 +314,18 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
         }
 
     # If NM already knows this SSID, reactivate the existing profile.
-    if not password:
-        saved = wifi_saved()
-        known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
-        if known:
-            r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
+    saved = wifi_saved()
+    known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
+    if known:
+        r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
+        if r['ok']:
             return {
-                'ok': r['ok'],
+                'ok': True,
                 'backend': 'nm',
                 'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
             }
 
+    # New network — create a fresh connection profile.
     args = ['nmcli', 'device', 'wifi', 'connect', ssid]
     if password:
         args += ['password', password]
