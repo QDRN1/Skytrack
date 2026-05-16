@@ -243,6 +243,18 @@ def api_general():
                 return _err('Unknown timezone. Use "auto" or an IANA name like America/Chicago.')
         updates['timezone'] = tz
 
+    for coord_key in ('latitude', 'longitude'):
+        if coord_key in updates:
+            try:
+                updates[coord_key] = float(updates[coord_key])
+            except (TypeError, ValueError):
+                return _err(f'{coord_key} must be a number')
+    if 'map_zoom' in updates:
+        try:
+            updates['map_zoom'] = int(updates['map_zoom'])
+        except (TypeError, ValueError):
+            return _err('map_zoom must be an integer')
+
     cfg.update(updates)
     _persist(updates)
     logs_svc.log_portal('admin', 'settings_general_update', updates)
@@ -412,11 +424,20 @@ def api_kiosk_cards():
     payload = request.get_json(silent=True) or {}
     updates = {}
     if 'cards' in payload:
-        updates['kiosk_cards'] = list(payload['cards'])
+        try:
+            updates['kiosk_cards'] = list(payload['cards'])
+        except (TypeError, ValueError):
+            return _err('cards must be a list')
     if 'interval' in payload:
-        updates['kiosk_carousel_interval'] = max(3, min(30, int(payload['interval'])))
+        try:
+            updates['kiosk_carousel_interval'] = max(3, min(30, int(payload['interval'])))
+        except (TypeError, ValueError):
+            return _err('interval must be a number')
     if 'map_interval' in payload:
-        updates['kiosk_map_interval'] = max(5, min(60, int(payload['map_interval'])))
+        try:
+            updates['kiosk_map_interval'] = max(5, min(60, int(payload['map_interval'])))
+        except (TypeError, ValueError):
+            return _err('map_interval must be a number')
     if 'show_map' in payload:
         updates['kiosk_show_map'] = bool(payload['show_map'])
     cfg.update(updates)
@@ -553,7 +574,7 @@ _VALID_TIME_SOURCES = {'ntp', 'cellular', 'gps'}
 def api_network():
     cfg = current_app.skytrack_config
     if request.method == 'GET':
-        rec = auth_lib.read_auth()
+        rec = auth_lib.read_auth() or {}
         live = network_svc.get_network_status(cfg) or {}
         # Surface the live APN value (read straight off the gsm connection)
         # so the input field in Settings → Network reflects whatever NM is
@@ -676,7 +697,7 @@ def api_hotspot_password():
     pw = auth_lib.set_hotspot_password(new_pw or None)
     apply_result = hotspot.rotate_hotspot_apply()
     logs_svc.log_network('hotspot_password_set',
-                         {'len': len(pw), 'apply_ok': apply_result.get('ok', False)})
+                         {'len': len(pw or ''), 'apply_ok': apply_result.get('ok', False)})
     if not apply_result.get('ok', False):
         return _ok({'password': pw, 'apply': apply_result,
                     'warning': 'password stored but hostapd re-apply failed'})
@@ -1593,6 +1614,10 @@ def api_backup_restore():
         ),
         'auth.json': cfg.get('auth_path', '/etc/skytrack/auth.json'),
     }
+    if cfg.get('db_path'):
+        restore_targets[os.path.basename(cfg['db_path'])] = cfg['db_path']
+    if cfg.get('device_id_path'):
+        restore_targets[os.path.basename(cfg['device_id_path'])] = cfg['device_id_path']
 
     restored = []
     try:
@@ -2408,7 +2433,7 @@ def api_install_status(job_id):
 @ADMIN
 def api_software_install():
     """Generic package install via the secure installer framework."""
-    package = (request.json or {}).get('package', '').strip()
+    package = (request.get_json(silent=True) or {}).get('package', '').strip()
     if not package:
         return _err('No package specified', 400)
     if package not in _INSTALL_WHITELIST:
@@ -2464,7 +2489,10 @@ def api_data_vacuum():
 @ADMIN
 def api_data_prune():
     cfg = current_app.skytrack_config
-    days = int(cfg.get('data_retention_days') or cfg.get('sightings_retention_days') or 30)
+    try:
+        days = int(cfg.get('data_retention_days') or cfg.get('sightings_retention_days') or 30)
+    except (TypeError, ValueError):
+        days = 30
     def run(_db):
         conn = _db.get_conn()
         removed = 0

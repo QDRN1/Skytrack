@@ -630,6 +630,7 @@
       const sec  = j.dataset.wifiSec || '';
       let password = null;
       if (sec && sec !== '' && sec !== '--') {
+        if (!window.uiModal) return;
         password = await window.uiModal.prompt(
           `Enter the password for ${ssid}.`, '', 'Join Wi-Fi'
         );
@@ -642,10 +643,10 @@
           refreshNetworkStatus();
           refreshSavedWifi();
         } else {
-          window.uiModal.alert(r.message || 'Connect failed.', 'Join Wi-Fi');
+          if (window.uiModal) window.uiModal.alert(r.message || 'Connect failed.', 'Join Wi-Fi');
         }
       } catch (err) {
-        window.uiModal.alert('Connect failed. Check the password and try again.', 'Join Wi-Fi');
+        if (window.uiModal) window.uiModal.alert('Connect failed. Check the password and try again.', 'Join Wi-Fi');
       }
     });
 
@@ -663,9 +664,10 @@
           } else {
             toast(r && r.message ? r.message : 'Connect failed — check signal/password', true);
           }
-          refreshNetworkStatus();
-          refreshSavedWifi();
-        } catch (_) { toast('Connect failed — network error', true); refreshSavedWifi(); }
+        } catch (_) { toast('Connect failed — network error', true); }
+        finally { c.disabled = false; c.textContent = 'Connect'; }
+        refreshNetworkStatus();
+        refreshSavedWifi();
         return;
       }
       const f = e.target.closest('[data-wifi-forget]');
@@ -898,7 +900,7 @@
       const te = $('#alog-earliest');
       if (ta) ta.textContent = fmtNumber(stats.total_aircraft || 0);
       if (ts) ts.textContent = fmtNumber(stats.total_sightings || 0);
-      if (te) te.textContent = stats.earliest ? new Date(stats.earliest).toLocaleDateString() : '—';
+      if (te) te.textContent = stats.earliest ? fmtDateShort(stats.earliest) : '—';
     } catch (_) {}
 
     try {
@@ -1239,7 +1241,7 @@
     if (!releases || !releases.length) { container.innerHTML = '<p class="muted">No history available.</p>'; return; }
     let html = '';
     releases.forEach(rel => {
-      const d = rel.date ? new Date(rel.date + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const d = rel.date ? new Date(rel.date + 'T00:00:00Z').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
       html += '<div class="release-history-entry">';
       html += '<div class="release-header">';
       html += '<span class="release-version">v' + escapeHtml(rel.version) + '</span>';
@@ -1272,7 +1274,7 @@
           renderReleaseNotes(r.current_release, $('#current-release-notes'));
           const dateEl = $('#current-release-date');
           if (dateEl && r.current_release.date) {
-            dateEl.textContent = new Date(r.current_release.date + 'T00:00:00').toLocaleDateString(
+            dateEl.textContent = new Date(r.current_release.date + 'T00:00:00Z').toLocaleDateString(
               undefined, { year: 'numeric', month: 'long', day: 'numeric' }
             );
           }
@@ -1422,15 +1424,27 @@
     power('btn-reboot',          '/api/settings/updates/reboot',          'Rebooting');
     power('btn-shutdown',        '/api/settings/updates/shutdown',        'Shutting down');
 
-    // Restart-app special handling: wait for healthz then reload
+    // Restart-app special handling: wait for healthz then reload.
+    // We override the power() handler so the reload only happens after confirmation + success.
     const restartBtn = $('#btn-restart-app');
     if (restartBtn) {
-      const origHandler = restartBtn.onclick;
-      restartBtn.addEventListener('click', () => {
-        setTimeout(async () => {
-          const up = await waitForHealthz(30, 1000);
-          if (up) location.reload();
-        }, 2000);
+      restartBtn.replaceWith(restartBtn.cloneNode(true));
+      const freshBtn = $('#btn-restart-app');
+      if (freshBtn) freshBtn.addEventListener('click', async () => {
+        const ok = await confirmModal(freshBtn.dataset.confirmTitle, freshBtn.dataset.confirmBody);
+        if (!ok) return;
+        freshBtn.disabled = true;
+        try {
+          await window.api.post('/api/settings/updates/restart-app');
+          toast('App restarting');
+          setTimeout(async () => {
+            const up = await waitForHealthz(30, 1000);
+            if (up) location.reload();
+          }, 2000);
+        } catch (e) {
+          toast('Restart failed', true);
+          freshBtn.disabled = false;
+        }
       });
     }
   }

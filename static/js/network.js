@@ -61,7 +61,14 @@
 
     const metered = document.getElementById('metered-toggle');
     if (metered) metered.addEventListener('change', async () => {
-      await window.api.post('/api/network/metered', { metered_connection: metered.checked });
+      metered.disabled = true;
+      try {
+        await window.api.post('/api/network/metered', { metered_connection: metered.checked });
+      } catch (e) {
+        metered.checked = !metered.checked;
+      } finally {
+        metered.disabled = false;
+      }
     });
   });
 

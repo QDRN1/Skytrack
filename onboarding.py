@@ -102,7 +102,7 @@ _TRANSITIONS = {
 
 # Required secret keys for `apis_configured` to be True. These mirror the
 # integrations the user wants the appliance to ship with.
-REQUIRED_API_SECRETS = ('aeroapi_key', 'weather_api_key')
+REQUIRED_API_SECRETS = ('aeroapi_key', 'openweather_api_key')
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +151,9 @@ def _recompute_completion(block: dict, config: Optional[dict], secrets: dict) ->
 
     adsb_ok = False
     if isinstance(config, dict):
-        host = (config.get('dump1090_host') or '').strip()
-        port = config.get('dump1090_port')
-        adsb_ok = bool(host) and bool(port)
+        path = (config.get('dump1090_json_path') or '').strip()
+        url = (config.get('dump1090_url') or '').strip()
+        adsb_ok = bool(path) or bool(url)
     block['adsb_configured'] = adsb_ok
 
     block['integrations_complete'] = bool(apis_ok and adsb_ok)

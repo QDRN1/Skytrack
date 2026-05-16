@@ -33,33 +33,43 @@
       if (out) out.textContent += `\n${new Date().toISOString()}  ${msg}`;
     };
 
-    bind('#btn-regen-device', async () => {
+    bind('#btn-regen-device', async function () {
+      var btn = document.querySelector('#btn-regen-device');
       try {
         if (!(await window.uiModal.confirm(
           'Anyone displaying the old ID on the radar page will need to re-pair. '
           + 'This action cannot be undone.',
           'Force-regenerate device ID?'
         ))) return;
+        if (btn) btn.disabled = true;
         const r = await window.api.post('/api/super/device/regenerate', { reason: 'super-console' });
         log(`device → ${r && r.device ? r.device.device_id : '?'}`);
       } catch (e) { log('error: ' + (e.message || e)); }
+      finally { if (btn) btn.disabled = false; }
     });
 
-    bind('#btn-prune', async () => {
+    bind('#btn-prune', async function () {
+      var btn = document.querySelector('#btn-prune');
       try {
+        if (btn) btn.disabled = true;
         await window.api.post('/api/super/db/prune');
         log('db prune complete');
       } catch (e) { log('error: ' + (e.message || e)); }
+      finally { if (btn) btn.disabled = false; }
     });
 
-    bind('#btn-vacuum', async () => {
+    bind('#btn-vacuum', async function () {
+      var btn = document.querySelector('#btn-vacuum');
       try {
+        if (btn) btn.disabled = true;
         await window.api.post('/api/super/db/vacuum');
         log('db vacuum complete');
       } catch (e) { log('error: ' + (e.message || e)); }
+      finally { if (btn) btn.disabled = false; }
     });
 
-    bind('#btn-factory-reset', async () => {
+    bind('#btn-factory-reset', async function () {
+      var btn = document.querySelector('#btn-factory-reset');
       try {
         if (!(await window.uiModal.confirm(
           'This wipes auth.json (admin PIN, hotspot password, API keys) and '
@@ -67,10 +77,12 @@
           + 'database is kept. This cannot be undone.',
           'Factory reset?'
         ))) return;
+        if (btn) btn.disabled = true;
         await window.api.post('/api/super/factory_reset');
         log('factory reset — redirecting to /setup');
         setTimeout(() => window.location.href = '/setup', 1500);
       } catch (e) { log('error: ' + (e.message || e)); }
+      finally { if (btn) btn.disabled = false; }
     });
 
     const credsForm = document.getElementById('form-super-creds');
@@ -123,12 +135,17 @@
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ command: cmd }),
           });
-          const data = await r.json();
-          if (data.output) shellAppend(data.output, '');
-          if (data.error) shellAppend(data.error + '\n', 'shell-cmd-error');
-          if (!data.output && !data.error) shellAppend('\n', '');
-          if (typeof data.returncode === 'number' && data.returncode !== 0) {
-            shellAppend('[exit ' + data.returncode + ']\n', 'shell-cmd-error');
+          if (!r.ok) {
+            shellAppend('HTTP ' + r.status + ' ' + r.statusText + '\n', 'shell-cmd-error');
+          } else {
+            var data;
+            try { data = await r.json(); } catch (_) { data = {}; }
+            if (data.output) shellAppend(data.output, '');
+            if (data.error) shellAppend(data.error + '\n', 'shell-cmd-error');
+            if (!data.output && !data.error) shellAppend('\n', '');
+            if (typeof data.returncode === 'number' && data.returncode !== 0) {
+              shellAppend('[exit ' + data.returncode + ']\n', 'shell-cmd-error');
+            }
           }
         } catch (err) {
           shellAppend('error: ' + (err.message || 'request failed') + '\n', 'shell-cmd-error');

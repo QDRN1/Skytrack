@@ -95,7 +95,7 @@
           <div class="readonly-row">
             <span class="ro-label">This month (actual)</span>
             <code class="ro-value">${{ '%.2f'|format(usage_aeroapi.cost_30d or 0) }}
-              <span class="muted small">({{ usage_aeroapi.calls_30d or 0 }} calls)</span>
+              <span class="muted small">({{ usage_aeroapi.month or 0 }} calls)</span>
             </code>
           </div>
           <div class="readonly-row">

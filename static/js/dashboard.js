@@ -84,15 +84,18 @@
   // -------- Renderers --------
 
   function renderCards(c) {
-    set('#card-now-value', c.now.count);
-    set('#card-today-value', c.today.count);
-    if (c.busiest.hour != null) {
-      var hr = Number(c.busiest.hour);
+    var now = c.now || {};
+    var today = c.today || {};
+    var busiest = c.busiest || {};
+    set('#card-now-value', now.count || 0);
+    set('#card-today-value', today.count || 0);
+    if (busiest.hour != null) {
+      var hr = Number(busiest.hour);
       var h12 = hr % 12 || 12;
       var ampm = hr < 12 ? 'AM' : 'PM';
-      set('#card-busy-value', c.busiest.count + ` @${h12}:00 ${ampm}`);
+      set('#card-busy-value', (busiest.count || 0) + ` @${h12}:00 ${ampm}`);
     } else {
-      set('#card-busy-value', c.busiest.count);
+      set('#card-busy-value', busiest.count || 0);
     }
     if (c.last) {
       set('#card-last-value', c.last.callsign || c.last.icao);

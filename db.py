@@ -207,15 +207,19 @@ def migrate():
         'INSERT OR IGNORE INTO schema_version (version) VALUES (?)',
         (SCHEMA_VERSION,),
     )
-    # Normalize ISO-8601 timestamps (T separator + +00:00 suffix) to SQLite
-    # native format so datetime('now', ...) comparisons work correctly.
-    for tbl, col in [('sightings', 'ts'), ('aircraft_log', 'first_seen'),
-                     ('aircraft_log', 'last_seen')]:
-        conn.execute(f"""
-            UPDATE {tbl}
-            SET {col} = REPLACE(REPLACE({col}, 'T', ' '), '+00:00', '')
-            WHERE {col} LIKE '%T%' OR {col} LIKE '%+00:00'
-        """)
+    # Normalize ISO-8601 timestamps — one-time fix, guarded by a marker row.
+    marker = conn.execute(
+        "SELECT 1 FROM schema_version WHERE version = -1"
+    ).fetchone()
+    if not marker:
+        for tbl, col in [('sightings', 'ts'), ('aircraft_log', 'first_seen'),
+                         ('aircraft_log', 'last_seen')]:
+            conn.execute(f"""
+                UPDATE {tbl}
+                SET {col} = REPLACE(REPLACE({col}, 'T', ' '), '+00:00', '')
+                WHERE {col} LIKE '%T%' OR {col} LIKE '%+00:00'
+            """)
+        conn.execute('INSERT OR IGNORE INTO schema_version (version) VALUES (-1)')
     conn.commit()
     logger.info('Schema migrated to version %d at %s', SCHEMA_VERSION, _db_path())
 

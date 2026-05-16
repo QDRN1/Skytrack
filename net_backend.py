@@ -192,7 +192,7 @@ def active_uplink() -> Dict:
         )
         if r['ok']:
             for line in r['stdout'].splitlines():
-                parts = line.split(':')
+                parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', line)]
                 if len(parts) >= 4 and parts[1] == iface:
                     out['nm_connection'] = parts[0]
                     break
@@ -317,16 +317,19 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
     saved = wifi_saved()
     known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
     if known:
-        r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
+        r = _run(['nmcli', 'connection', 'up', '--', ssid], timeout=45)
         if r['ok']:
             return {
                 'ok': True,
                 'backend': 'nm',
                 'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
             }
+        # Profile activation failed — delete the stale profile to avoid
+        # duplicates when we create a fresh one below.
+        _run(['nmcli', 'connection', 'delete', '--', ssid], timeout=10)
 
     # New network — create a fresh connection profile.
-    args = ['nmcli', 'device', 'wifi', 'connect', ssid]
+    args = ['nmcli', 'device', 'wifi', 'connect', '--', ssid]
     if password:
         args += ['password', password]
     r = _run(args, timeout=45)
@@ -343,7 +346,7 @@ def wifi_forget(ssid: str) -> Dict:
         return {'ok': False, 'backend': detect_backend(), 'message': 'ssid required'}
     if detect_backend() != 'nm':
         return {'ok': False, 'backend': 'direct', 'message': 'NetworkManager required'}
-    r = _run(['nmcli', 'connection', 'delete', ssid], timeout=10)
+    r = _run(['nmcli', 'connection', 'delete', '--', ssid], timeout=10)
     return {
         'ok': r['ok'],
         'backend': 'nm',
@@ -357,13 +360,13 @@ def wifi_status() -> Dict:
 
     if info['backend'] == 'nm':
         r = _run(
-            ['nmcli', '-t', '-f', 'ACTIVE,SSID,SIGNAL', 'device', 'wifi', 'list'],
+            ['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL', 'device', 'wifi', 'list'],
             timeout=5,
         )
         if r['ok']:
             for raw in r['stdout'].splitlines():
                 parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
-                if len(parts) >= 3 and parts[0] == 'yes':
+                if len(parts) >= 3 and parts[0].strip() == '*':
                     info['connected'] = True
                     info['ssid'] = parts[1]
                     try:
@@ -441,13 +444,15 @@ def cellular_status() -> Dict:
                     info['detected'] = True
                     info['interface'] = iface
                     info['state'] = 'up' if 'state UP' in line else 'down'
-                    return info
+                    break
+            if info['detected']:
+                break
 
     info['apn'], info['apn_source'] = _read_apn_nm()
     return info
 
 
-def _read_apn_nm() -> (str, str):
+def _read_apn_nm() -> tuple:
     """Read the APN currently configured on the primary gsm connection."""
     if detect_backend() != 'nm':
         return '', ''
@@ -665,7 +670,7 @@ def set_radio(domain: str, enabled: bool) -> dict:
     has its own dedicated hardware.
     """
     if detect_backend() != 'nm':
-        return {'ok': False, 'error': 'NetworkManager not available'}
+        return {'ok': False, 'state': 'unknown', 'error': 'NetworkManager not available'}
 
     if domain == 'wifi':
         return _toggle_wifi_client(enabled)

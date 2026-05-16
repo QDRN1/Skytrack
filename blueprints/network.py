@@ -104,7 +104,8 @@ def api_state():
     if auth_lib.current_role() in (auth_lib.ROLE_ADMIN, auth_lib.ROLE_SUPER):
         try:
             rec = auth_lib.read_auth() or {}
-            state['hotspot']['password'] = rec.get('hotspot_password') or ''
+            if state.get('hotspot') and isinstance(state['hotspot'], dict):
+                state['hotspot']['password'] = rec.get('hotspot_password') or ''
         except Exception:
             pass
 
@@ -122,7 +123,7 @@ def api_state():
 @network_bp.route('/api/network/hotspot/credentials')
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_hotspot_credentials():
-    rec = auth_lib.read_auth()
+    rec = auth_lib.read_auth() or {}
     cfg = current_app.skytrack_config
     return jsonify({
         'ssid': cfg.get('hotspot_ssid', 'SkyTrack-Portal'),
@@ -214,20 +215,20 @@ def api_hotspot_health():
     cfg = current_app.skytrack_config
     h = hotspot.hotspot_health(cfg)
     resp = jsonify({
-        'usable':              h['usable'],
-        'hostapd_active':      h['hostapd_active'],
-        'dnsmasq_active':      h['dnsmasq_active'],
-        'has_gateway_ip':      h['has_gateway_ip'],
-        'ap_mode':             h['ap_mode'],
-        'link_ok':             h['link_ok'],
-        'rfkill_available':    h['rfkill_available'],
-        'rfkill_soft_blocked': h['rfkill_soft_blocked'],
-        'rfkill_hard_blocked': h['rfkill_hard_blocked'],
-        'stations':            h['stations'],
-        'leases':              h['leases'],
-        'ssid':                h['ssid'],
-        'gateway':             h['gateway'],
-        'degraded_reasons':    h['degraded_reasons'],
+        'usable':              h.get('usable', False),
+        'hostapd_active':      h.get('hostapd_active', False),
+        'dnsmasq_active':      h.get('dnsmasq_active', False),
+        'has_gateway_ip':      h.get('has_gateway_ip', False),
+        'ap_mode':             h.get('ap_mode', False),
+        'link_ok':             h.get('link_ok', False),
+        'rfkill_available':    h.get('rfkill_available', False),
+        'rfkill_soft_blocked': h.get('rfkill_soft_blocked', False),
+        'rfkill_hard_blocked': h.get('rfkill_hard_blocked', False),
+        'stations':            h.get('stations', 0),
+        'leases':              h.get('leases', 0),
+        'ssid':                h.get('ssid', ''),
+        'gateway':             h.get('gateway', ''),
+        'degraded_reasons':    h.get('degraded_reasons', []),
     })
     resp.headers['Cache-Control'] = 'no-store'
     return resp

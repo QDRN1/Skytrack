@@ -135,7 +135,7 @@ def api_aircraft_positions(icao):
 @dashboard_bp.route('/api/dashboard/aircraft-log/reset', methods=['POST'])
 @auth_lib.login_required(auth_lib.ROLE_ADMIN)
 def api_aircraft_log_reset():
-    icao = (request.json or {}).get('icao')
+    icao = (request.get_json(silent=True) or {}).get('icao')
     dashboard_svc.reset_aircraft_log(icao=icao)
     return jsonify({'ok': True})
 
@@ -148,7 +148,7 @@ def api_weather():
 @dashboard_bp.route('/api/dashboard/sensor')
 def api_sensor():
     reading = current_app.sensor_svc.read()
-    eval_result = current_app.buzzer.evaluate(reading)
+    eval_result = current_app.buzzer.evaluate(reading) if reading else None
     return jsonify({'reading': reading, 'buzzer': eval_result})
 
 
@@ -190,4 +190,4 @@ def api_enrich(icao):
     record = enrich.enrich_flight(icao, callsign, current_app.skytrack_config)
     if not record:
         return jsonify({'ok': False, 'cached': False, 'enriched': None}), 200
-    return jsonify({'ok': True, 'enriched': record})
+    return jsonify({'ok': True, 'cached': bool(record.get('source')), 'enriched': record})

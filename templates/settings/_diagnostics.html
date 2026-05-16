@@ -157,12 +157,12 @@
   const status = document.getElementById('onboarding-reset-status');
   if (!btn) return;
   btn.addEventListener('click', async () => {
-    const ok = window.confirm(
-      'Reset device to setup mode?\n\n' +
+    const ok = await (window.uiModal || window).confirm(
       'This will remove the admin PIN and all setup progress. ' +
       'The device will return to the welcome screen and you will ' +
       'need to set a new PIN. Flight tracking data and system ' +
-      'services are not affected.'
+      'services are not affected.',
+      'Reset device to setup mode?'
     );
     if (!ok) return;
     btn.disabled = true;

@@ -23,6 +23,7 @@ Endpoints
 """
 
 import logging
+import threading
 import time
 
 from flask import (Blueprint, current_app, jsonify, redirect, render_template,
@@ -124,21 +125,23 @@ _setup_lock = {
     'first_seen_at': 0,
     'timeout_seconds': 600,
 }
+_setup_lock_mutex = threading.Lock()
 
 
 def _setup_locked_to_other(ip: str) -> bool:
     now = int(time.time())
-    locked_ip = _setup_lock['first_client_ip']
-    locked_at = _setup_lock['first_seen_at']
-    if locked_ip and (now - locked_at) > _setup_lock['timeout_seconds']:
-        _setup_lock['first_client_ip'] = None
-        _setup_lock['first_seen_at'] = 0
-        return False
-    if locked_ip is None:
-        _setup_lock['first_client_ip'] = ip
-        _setup_lock['first_seen_at'] = now
-        return False
-    return locked_ip != ip
+    with _setup_lock_mutex:
+        locked_ip = _setup_lock['first_client_ip']
+        locked_at = _setup_lock['first_seen_at']
+        if locked_ip and (now - locked_at) > _setup_lock['timeout_seconds']:
+            _setup_lock['first_client_ip'] = None
+            _setup_lock['first_seen_at'] = 0
+            return False
+        if locked_ip is None:
+            _setup_lock['first_client_ip'] = ip
+            _setup_lock['first_seen_at'] = now
+            return False
+        return locked_ip != ip
 
 
 @auth_bp.route('/setup')

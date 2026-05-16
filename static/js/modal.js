@@ -26,6 +26,7 @@
 (function () {
   const NS = 'ui-modal';
   let root = null;
+  let _queue = Promise.resolve();
 
   function mount() {
     if (root) return root;
@@ -119,15 +120,21 @@
     });
   }
 
+  function queued(opts) {
+    var p = _queue.then(function () { return show(opts); });
+    _queue = p.catch(function () {});
+    return p;
+  }
+
   const api = {
     alert(body, title) {
-      return show({ kind: 'alert', title: title || 'Notice', body: body || '' });
+      return queued({ kind: 'alert', title: title || 'Notice', body: body || '' });
     },
     confirm(body, title) {
-      return show({ kind: 'confirm', title: title || 'Are you sure?', body: body || '' });
+      return queued({ kind: 'confirm', title: title || 'Are you sure?', body: body || '' });
     },
     prompt(body, defaultValue, title) {
-      return show({ kind: 'prompt', title: title || 'Input needed',
+      return queued({ kind: 'prompt', title: title || 'Input needed',
                     body: body || '', defaultValue: defaultValue || '' });
     },
     toast(msg, kind) {
