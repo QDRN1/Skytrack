@@ -324,9 +324,9 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
                 'backend': 'nm',
                 'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
             }
-        # Profile activation failed — delete the stale profile to avoid
-        # duplicates when we create a fresh one below.
-        _run(['nmcli', 'connection', 'delete', ssid], timeout=10)
+        # Profile exists but activation failed — fall through to recreate.
+        # Do NOT delete the profile here: if this is the active WiFi
+        # connection, deleting it would permanently disconnect the Pi.
 
     # New network — create the connection profile explicitly so that
     # key-mgmt is always set.  `nmcli device wifi connect` omits

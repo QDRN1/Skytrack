@@ -200,21 +200,24 @@ def search(query: str, range_key: str = '24h', limit: int = 50):
     conn = get_conn()
     rows = conn.execute(
         f"""
-        SELECT s.icao, s.callsign, s.altitude_ft, s.speed_kts, s.lat, s.lon,
-               s.origin, s.destination, s.ts AS last_seen
-        FROM sightings s
-        INNER JOIN (
-            SELECT icao, MAX(ts) AS max_ts
-            FROM sightings
-            WHERE ts > datetime('now', '-{seconds} seconds')
-              AND (
-                    lower(icao) LIKE ?
-                 OR lower(IFNULL(callsign, '')) LIKE ?
-                 OR lower(IFNULL(origin, '')) LIKE ?
-                 OR lower(IFNULL(destination, '')) LIKE ?
-              )
-            GROUP BY icao
-        ) latest ON s.icao = latest.icao AND s.ts = latest.max_ts
+        SELECT icao,
+               MAX(callsign) AS callsign,
+               MAX(altitude_ft) AS altitude_ft,
+               MAX(speed_kts) AS speed_kts,
+               MAX(lat) AS lat,
+               MAX(lon) AS lon,
+               MAX(origin) AS origin,
+               MAX(destination) AS destination,
+               MAX(ts) AS last_seen
+        FROM sightings
+        WHERE ts > datetime('now', '-{seconds} seconds')
+          AND (
+                lower(icao) LIKE ?
+             OR lower(IFNULL(callsign, '')) LIKE ?
+             OR lower(IFNULL(origin, '')) LIKE ?
+             OR lower(IFNULL(destination, '')) LIKE ?
+          )
+        GROUP BY icao
         ORDER BY last_seen DESC
         LIMIT ?
         """,
@@ -299,23 +302,19 @@ def aircraft_now_positions():
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT s.icao,
-               s.callsign,
-               s.altitude_ft,
-               s.speed_kts,
-               s.track,
-               s.lat,
-               s.lon,
-               s.ts AS last_seen
-        FROM sightings s
-        INNER JOIN (
-            SELECT icao, MAX(ts) AS max_ts
-            FROM sightings
-            WHERE ts > datetime('now', '-5 minutes')
-              AND lat IS NOT NULL AND lon IS NOT NULL
-            GROUP BY icao
-        ) latest ON s.icao = latest.icao AND s.ts = latest.max_ts
-        ORDER BY s.ts DESC
+        SELECT icao,
+               callsign,
+               altitude_ft,
+               speed_kts,
+               track,
+               lat,
+               lon,
+               MAX(ts) AS last_seen
+        FROM sightings
+        WHERE ts > datetime('now', '-5 minutes')
+          AND lat IS NOT NULL AND lon IS NOT NULL
+        GROUP BY icao
+        ORDER BY last_seen DESC
         """
     ).fetchall()
     return [dict(r) for r in rows]
