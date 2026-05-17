@@ -102,7 +102,10 @@ check_net() {
 }
 
 if check_net; then
-  [ -f "$CONN_STAMP" ] && rm -f "$CONN_STAMP" && log "connectivity restored"
+  if [ -f "$CONN_STAMP" ]; then
+    rm -f "$CONN_STAMP"
+    log "connectivity restored"
+  fi
 else
   log "connectivity check failed"
   if [ ! -f "$CONN_STAMP" ]; then
@@ -120,3 +123,5 @@ else
     fi
   fi
 fi
+
+exit 0
