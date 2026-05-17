@@ -1,0 +1,11 @@
+[Unit]
+Description=SkyTrack — app liveness watchdog timer (every 2 min)
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=skytrack-app-watchdog.service
+
+[Install]
+WantedBy=timers.target

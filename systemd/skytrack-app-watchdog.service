@@ -1,0 +1,10 @@
+[Unit]
+Description=SkyTrack — app liveness watchdog (restarts hung app)
+After=skytrack-app.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/skytrack/scripts/app_watchdog.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-app-watchdog

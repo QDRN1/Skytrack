@@ -439,7 +439,9 @@ if [[ "$DEV_INSTALL" != true ]]; then
               skytrack-hotspot.service skytrack-hotspot-watchdog.service \
               skytrack-hotspot-watchdog.timer \
               skytrack-connectivity-watchdog.service \
-              skytrack-connectivity-watchdog.timer; do
+              skytrack-connectivity-watchdog.timer \
+              skytrack-app-watchdog.service \
+              skytrack-app-watchdog.timer; do
     if [[ -f "$REPO_DIR/systemd/$unit" ]]; then
       cp "$REPO_DIR/systemd/$unit" "/etc/systemd/system/$unit"
       info "installed $unit"
@@ -454,6 +456,7 @@ if [[ "$DEV_INSTALL" != true ]]; then
     systemctl enable skytrack-hotspot.service skytrack-hotspot-watchdog.timer >> "$LOG_FILE" 2>&1 || true
   fi
   systemctl enable skytrack-connectivity-watchdog.timer >> "$LOG_FILE" 2>&1 || true
+  systemctl enable skytrack-app-watchdog.timer >> "$LOG_FILE" 2>&1 || true
 
   # Polkit rule — lets the unprivileged skytrack service user bounce its
   # own systemd units (Restart buttons in Settings, OTA self-restart,
