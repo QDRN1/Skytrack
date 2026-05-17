@@ -1,0 +1,11 @@
+[Unit]
+Description=SkyTrack — connectivity watchdog timer (every 5 min)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=skytrack-connectivity-watchdog.service
+
+[Install]
+WantedBy=timers.target

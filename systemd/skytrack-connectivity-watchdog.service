@@ -1,0 +1,10 @@
+[Unit]
+Description=SkyTrack — connectivity watchdog (reboots after prolonged outage)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/skytrack/scripts/connectivity_watchdog.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-conn-watchdog
