@@ -313,25 +313,22 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
             'message': 'NetworkManager required for wifi join',
         }
 
-    # If NM already knows this SSID, reactivate the existing profile.
+    # If NM already knows this SSID, try activating the saved profile.
     saved = wifi_saved()
     known = [n for n in (saved.get('networks') or []) if n.get('ssid') == ssid]
     if known:
+        if password:
+            _run(['nmcli', 'connection', 'modify', ssid,
+                  'wifi-sec.key-mgmt', 'wpa-psk',
+                  'wifi-sec.psk', password], timeout=10)
         r = _run(['nmcli', 'connection', 'up', ssid], timeout=45)
-        if r['ok']:
-            return {
-                'ok': True,
-                'backend': 'nm',
-                'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
-            }
-        # Profile exists but activation failed — fall through to recreate.
-        # Do NOT delete the profile here: if this is the active WiFi
-        # connection, deleting it would permanently disconnect the Pi.
+        return {
+            'ok': r['ok'],
+            'backend': 'nm',
+            'message': (r['stdout'] or r['stderr'] or ('connected to ' + ssid)),
+        }
 
-    # New network — create the connection profile explicitly so that
-    # key-mgmt is always set.  `nmcli device wifi connect` omits
-    # 802-11-wireless-security.key-mgmt on some NM builds, which
-    # causes "property is missing" errors on WPA networks.
+    # New network — create the connection profile with explicit key-mgmt.
     if password:
         r = _run([
             'nmcli', 'connection', 'add',
@@ -355,8 +352,7 @@ def wifi_connect(ssid: str, password: Optional[str] = None) -> Dict:
         }
 
     # Open network (no password)
-    args = ['nmcli', 'device', 'wifi', 'connect', ssid]
-    r = _run(args, timeout=45)
+    r = _run(['nmcli', 'device', 'wifi', 'connect', ssid], timeout=45)
     return {
         'ok': r['ok'],
         'backend': 'nm',

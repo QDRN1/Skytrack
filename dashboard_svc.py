@@ -200,15 +200,8 @@ def search(query: str, range_key: str = '24h', limit: int = 50):
     conn = get_conn()
     rows = conn.execute(
         f"""
-        SELECT icao,
-               MAX(callsign) AS callsign,
-               MAX(altitude_ft) AS altitude_ft,
-               MAX(speed_kts) AS speed_kts,
-               MAX(lat) AS lat,
-               MAX(lon) AS lon,
-               MAX(origin) AS origin,
-               MAX(destination) AS destination,
-               MAX(ts) AS last_seen
+        SELECT icao, callsign, altitude_ft, speed_kts, lat, lon,
+               origin, destination, MAX(ts) AS last_seen
         FROM sightings
         WHERE ts > datetime('now', '-{seconds} seconds')
           AND (
