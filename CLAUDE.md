@@ -78,32 +78,24 @@ Rules:
 - Each phase delivers: summary, files changed, full updated files,
   deployment block, validation block, expected results.
 
-## Health watchdog — unified replacement, currently buggy
+## Health watchdog — unified, shipped 2026-05-17
 
 `scripts/health_watchdog.sh` is the unified watchdog that supersedes
 the per-concern scripts. It checks Flask app health, Cloudflare tunnel
-reachability, and internet connectivity in one pass and is meant to
-be triggered every 2 minutes by `skytrack-health-watchdog.timer`.
+reachability, and internet connectivity in one pass and is triggered
+every 2 minutes by `skytrack-health-watchdog.timer`.
 
-**Known bugs (captured 2026-05-17):**
-
-1. The script exits 1 on the **healthy** path. Final block uses
-   `[ -f "$CONN_STAMP" ] && rm -f … && log …` — when `$CONN_STAMP`
-   doesn't exist (the happy case), the `&&` chain returns 1, and
-   because it's the last command in the script, the whole script
-   inherits exit 1. Fix: convert the line to `if … then … fi` and
-   add a trailing `exit 0`.
-2. The companion `skytrack-health-watchdog.timer` exists in
-   `/opt/skytrack/systemd/` but has not been installed to
-   `/etc/systemd/system/` on the deployed Pi, so the watchdog never
-   auto-runs. Install + `systemctl enable --now` the timer (not the
-   service — the service is `static`/no `[Install]` by design).
+The service is `Type=oneshot` / `static` (no `[Install]`) — only the
+timer gets enabled. On the deployed Pi: `/etc/systemd/system/` holds
+both the `.service` and the `.timer`, the timer is enabled, and the
+unified watchdog is healthy (commit `b40401b`).
 
 The per-concern watchdog scripts and unit files (`app_watchdog.sh`,
 `connectivity_watchdog.sh`, and their `.service`+`.timer` pairs) are
-deprecated by `health_watchdog.sh` but still in the repo. Decide
-whether to remove them once the unified watchdog is shipped on all
-deployed devices.
+deprecated by `health_watchdog.sh` but still in the repo. Open
+question: delete them now or leave them in case a future install
+wants a more granular check pattern. Default: delete on the next
+cleanup pass since the deployed device is on the unified watchdog.
 
 ## Operational backlog (captured 2026-05-17)
 
@@ -122,8 +114,7 @@ phased rewrite above or delete it.
   entry that uses `cloudflared access ssh --hostname …` as
   `ProxyCommand`. Goal: copy-paste-friendly remote shell from
   Windows without the Super Admin web UI.
-- **Finish health watchdog**: ship the script fix + install the
-  `.timer` (see "Health watchdog" section above).
+- ~~Finish health watchdog~~ — shipped 2026-05-17 (commit `b40401b`).
 
 ### Small patches (each is roughly one file)
 
