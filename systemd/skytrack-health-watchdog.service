@@ -1,0 +1,10 @@
+[Unit]
+Description=SkyTrack — unified health watchdog (app + tunnel + connectivity)
+After=skytrack-app.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/skytrack/scripts/health_watchdog.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skytrack-health-watchdog
