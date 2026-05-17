@@ -468,6 +468,15 @@ def _start_background_services(app: Flask) -> None:
             except Exception as e:
                 logger.warning('auto backup loop error: %s', e)
 
+    pref = cfg.get('preferred_uplink') or 'auto'
+    if pref != 'auto':
+        try:
+            from net_backend import apply_preferred_uplink
+            apply_preferred_uplink(pref)
+            logger.info('Applied preferred uplink: %s', pref)
+        except Exception as e:
+            logger.warning('Failed to apply preferred uplink: %s', e)
+
     workers = [
         ('skytrack-sensor', _sensor_loop),
         ('skytrack-cellular', _cellular_loop),

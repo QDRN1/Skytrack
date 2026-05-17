@@ -565,8 +565,10 @@ def api_access_session():
 _NETWORK_KEYS = (
     'cellular_enabled', 'cellular_apn', 'wifi_client_enabled',
     'hotspot_auto_start', 'time_sync_source', 'metered_connection',
+    'preferred_uplink',
 )
 _VALID_TIME_SOURCES = {'ntp', 'cellular', 'gps'}
+_VALID_UPLINKS = {'auto', 'cellular', 'wifi'}
 
 
 @settings_bp.route('/api/settings/network', methods=['GET', 'POST'])
@@ -600,6 +602,8 @@ def api_network():
     updates = _take(payload, _NETWORK_KEYS)
     if 'time_sync_source' in updates and updates['time_sync_source'] not in _VALID_TIME_SOURCES:
         return _err('time_sync_source must be ntp/cellular/gps')
+    if 'preferred_uplink' in updates and updates['preferred_uplink'] not in _VALID_UPLINKS:
+        return _err('preferred_uplink must be auto/cellular/wifi')
     for k in ('cellular_enabled', 'wifi_client_enabled', 'hotspot_auto_start',
               'metered_connection'):
         if k in updates:
@@ -643,6 +647,16 @@ def api_network():
         network_svc.set_cellular_radio(bool(updates['cellular_enabled']))
         logs_svc.log_network('cellular_radio_toggle', {
             'enabled': bool(updates['cellular_enabled']),
+        })
+    uplink_changed = (
+        'preferred_uplink' in updates
+        and updates['preferred_uplink'] != (cfg.get('preferred_uplink') or 'auto')
+    )
+    if uplink_changed:
+        from net_backend import apply_preferred_uplink
+        apply_preferred_uplink(updates['preferred_uplink'])
+        logs_svc.log_network('preferred_uplink_set', {
+            'preferred': updates['preferred_uplink'],
         })
     logs_svc.log_portal('admin', 'settings_network_update', updates)
     return _ok({

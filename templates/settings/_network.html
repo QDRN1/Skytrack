@@ -98,6 +98,17 @@
       </div>
 
       <div class="field">
+        <label>Preferred uplink</label>
+        <div class="segmented" role="radiogroup" aria-label="Preferred uplink">
+          {% for v, lbl in [('auto','Auto'),('cellular','Cellular'),('wifi','Wi-Fi')] %}
+          <label class="seg"><input type="radio" name="preferred_uplink" value="{{ v }}"
+                 {% if (config.preferred_uplink or 'auto') == v %}checked{% endif %}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+        <p class="muted small">Which connection carries traffic when both are available. <em>Cellular</em> is more stable for remote devices.</p>
+      </div>
+
+      <div class="field">
         <label>Clock synchronization source</label>
         <div class="segmented" role="radiogroup" aria-label="Clock sync source">
           {% for v, lbl in [('ntp','Internet (NTP)'),('cellular','Cellular'),('gps','GPS')] %}

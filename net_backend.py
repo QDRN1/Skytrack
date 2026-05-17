@@ -698,6 +698,57 @@ def set_radio(domain: str, enabled: bool) -> dict:
     return {'ok': r['ok'], 'state': state, 'error': r.get('stderr', '')}
 
 
+def apply_preferred_uplink(pref: str) -> Dict:
+    """Set NM route metrics so the preferred interface wins the default route.
+
+    pref = 'cellular' → cellular metric 50, wifi metric 700
+    pref = 'wifi'     → wifi metric 100, cellular metric 700
+    pref = 'auto'     → reset both to NM defaults (remove overrides)
+    """
+    if detect_backend() != 'nm':
+        return {'ok': False, 'error': 'NetworkManager not available'}
+
+    wifi_conns = []
+    gsm_conns = []
+    r = _run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'], timeout=5)
+    if r['ok']:
+        for raw in r['stdout'].splitlines():
+            parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
+            if len(parts) < 2:
+                continue
+            name, ctype = parts[0], parts[1]
+            if ctype in ('802-11-wireless', 'wifi'):
+                if 'SkyTrack' not in name and 'hotspot' not in name.lower():
+                    wifi_conns.append(name)
+            elif ctype == 'gsm':
+                gsm_conns.append(name)
+
+    results = []
+    if pref == 'cellular':
+        for c in gsm_conns:
+            results.append(_run(['nmcli', 'connection', 'modify', c,
+                                 'ipv4.route-metric', '50'], timeout=10))
+        for c in wifi_conns:
+            results.append(_run(['nmcli', 'connection', 'modify', c,
+                                 'ipv4.route-metric', '700'], timeout=10))
+    elif pref == 'wifi':
+        for c in wifi_conns:
+            results.append(_run(['nmcli', 'connection', 'modify', c,
+                                 'ipv4.route-metric', '100'], timeout=10))
+        for c in gsm_conns:
+            results.append(_run(['nmcli', 'connection', 'modify', c,
+                                 'ipv4.route-metric', '700'], timeout=10))
+    else:
+        for c in wifi_conns + gsm_conns:
+            results.append(_run(['nmcli', 'connection', 'modify', c,
+                                 'ipv4.route-metric', ''], timeout=10))
+
+    ok = all(r['ok'] for r in results) if results else True
+    logger.info('apply_preferred_uplink(%s): wifi=%s gsm=%s ok=%s',
+                pref, wifi_conns, gsm_conns, ok)
+    return {'ok': ok, 'preferred': pref, 'wifi': wifi_conns, 'gsm': gsm_conns}
+
+
 def _toggle_wifi_client(enabled: bool) -> dict:
     """Enable or disable WiFi client connections without touching the radio.
 

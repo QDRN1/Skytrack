@@ -100,6 +100,7 @@ DEFAULT_CONFIG = {
     'cellular_apn': 'nrbroadband',
     'wifi_client_enabled': True,
     'time_sync_source': 'ntp',      # ntp | cellular | gps
+    'preferred_uplink': 'auto',     # auto | cellular | wifi
 
     # --- Integrations (keys live in auth.json) --------------------------
     'aeroapi_enabled': False,
