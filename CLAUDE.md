@@ -77,3 +77,126 @@ Rules:
 - Do not advance to phase N+1 until phase N is validated on the Pi.
 - Each phase delivers: summary, files changed, full updated files,
   deployment block, validation block, expected results.
+
+## Health watchdog — unified replacement, currently buggy
+
+`scripts/health_watchdog.sh` is the unified watchdog that supersedes
+the per-concern scripts. It checks Flask app health, Cloudflare tunnel
+reachability, and internet connectivity in one pass and is meant to
+be triggered every 2 minutes by `skytrack-health-watchdog.timer`.
+
+**Known bugs (captured 2026-05-17):**
+
+1. The script exits 1 on the **healthy** path. Final block uses
+   `[ -f "$CONN_STAMP" ] && rm -f … && log …` — when `$CONN_STAMP`
+   doesn't exist (the happy case), the `&&` chain returns 1, and
+   because it's the last command in the script, the whole script
+   inherits exit 1. Fix: convert the line to `if … then … fi` and
+   add a trailing `exit 0`.
+2. The companion `skytrack-health-watchdog.timer` exists in
+   `/opt/skytrack/systemd/` but has not been installed to
+   `/etc/systemd/system/` on the deployed Pi, so the watchdog never
+   auto-runs. Install + `systemctl enable --now` the timer (not the
+   service — the service is `static`/no `[Install]` by design).
+
+The per-concern watchdog scripts and unit files (`app_watchdog.sh`,
+`connectivity_watchdog.sh`, and their `.service`+`.timer` pairs) are
+deprecated by `health_watchdog.sh` but still in the repo. Decide
+whether to remove them once the unified watchdog is shipped on all
+deployed devices.
+
+## Operational backlog (captured 2026-05-17)
+
+Items below were captured after a prior planning session crashed
+with an API 400 error and could not be recovered. Keep this list
+in sync with active work — when an item ships, move it under the
+phased rewrite above or delete it.
+
+### Urgent — device in production at a remote site
+
+- **SSH via PowerShell over Cloudflare Tunnel.** Add an
+  `ssh.<host>.qdrn.io` ingress to `/etc/cloudflared/config.yml`
+  on the Pi (the unified watchdog already greps the non-ssh
+  hostname out of this file — design must keep that grep working),
+  ensure `sshd` is up, and document the PowerShell `~/.ssh/config`
+  entry that uses `cloudflared access ssh --hostname …` as
+  `ProxyCommand`. Goal: copy-paste-friendly remote shell from
+  Windows without the Super Admin web UI.
+- **Finish health watchdog**: ship the script fix + install the
+  `.timer` (see "Health watchdog" section above).
+
+### Small patches (each is roughly one file)
+
+- Split uptime in System Health: Pi uptime (kernel boot) **and**
+  app uptime (`skytrack-app.service` started). Currently shown as
+  one number.
+- Watchdog trigger counter: log every watchdog action (app restart,
+  `cloudflared` restart, reboot) to `/var/lib/skytrack/watchdog.log`
+  with timestamp + reason, and surface a count + last-trigger time
+  in System Health.
+- Move noisy logs from the user dashboard view into the Super Admin
+  panel. User view should be high-signal only.
+- Location wording: rename "Override with manual address" → "Manual
+  Address." When a GPS fix is active, warn before letting the user
+  save a manual address that would clobber the GPS reading.
+- FlightRadar24: install the FR24 feeder client by default in
+  `install.sh`; setup wizard collects the sharing key only. Removes
+  the need to use Super Admin to install it post-hoc.
+
+### UX cleanups (medium)
+
+- Super Admin shell: needs to be mobile-friendly. Per-line copy
+  buttons, no horizontal scroll, larger tap targets, monospace.
+  Currently painful to copy/paste from a phone.
+- Onboarding/setup wording pass — clarify ambiguous terms.
+
+### Architectural — design before code
+
+- **Variant model** (counter device, stoplight device, future SKUs):
+  single codebase, per-device feature flags in `skytrack.env` or a
+  `device_profile` field. Counter variant is imminent (friend's
+  install). Decide flag schema before adding the first variant
+  feature so we don't accumulate ad-hoc conditionals.
+- **Swappable hardware abstraction**: a `hardware.yml` (or similar)
+  config that maps logical roles (display, fan, speaker, sensor) to
+  drivers/commands, so swapping a part is a config edit, not a code
+  change. Critical for keeping updates safe across SKUs and stock
+  substitutions.
+- **Fleet monitoring behind an "ops" gate**: each Pi pushes a
+  heartbeat + health summary to a central endpoint. Need to choose
+  Cloudflare Worker + D1 vs. a small VPS + Postgres. Auth via a
+  per-device key. Page is ops-only, never user-visible.
+- **PWA vs native mobile app**: recommend PWAifying the existing
+  web UI first ("Add to Home Screen" covers most native-feeling
+  needs, including hotspot setup). Native only if OS-level Wi-Fi
+  APIs become necessary.
+
+### Investigations — need data from deployed Pi
+
+- Wi-Fi + cellular instability at the remote install. Once
+  SSH-via-CF is up, pull `journalctl -u NetworkManager`,
+  `journalctl -u ModemManager`, signal/RSSI trends, and
+  `/var/log/syslog` and diagnose.
+
+### Installer plan from prior session (paste, 2026-05-17)
+
+The prior session also produced a detailed installer-rewrite plan
+(Plymouth + xinit kiosk lockdown, port canonicalization to 8080,
+safe-mode escape hatch via `/boot/firmware/skytrack-safe-mode`,
+`skytrack-display.service` rewrite, `scripts/configure_appliance.sh`,
+branded offline splash, `.venv` rename, etc.). The user pasted the
+full plan into chat after recovery. **That plan is the spec for
+finishing phase 1 hardening and parts of phases 4–5.** If you need
+the full text, ask the user to re-paste; do not invent details.
+
+Key callouts from that plan that contradict or override defaults
+elsewhere in the repo:
+
+- Canonical app port is **8080** everywhere (`config.py` default
+  is to be changed from 80 → 8080; env override still supported
+  but no longer load-bearing).
+- Virtualenv path is `.venv` (not `venv`). Service ExecStarts
+  must point at `.venv/bin/...`.
+- SSH is **left untouched** by the installer.
+- No Wayland, no display manager, no rollback path (recovery =
+  reflash).
