@@ -384,13 +384,13 @@ def wifi_status() -> Dict:
 
     if info['backend'] == 'nm':
         r = _run(
-            ['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL', 'device', 'wifi', 'list'],
+            ['nmcli', '-t', '-f', 'ACTIVE,SSID,SIGNAL', 'device', 'wifi', 'list'],
             timeout=5,
         )
         if r['ok']:
             for raw in r['stdout'].splitlines():
                 parts = [p.replace('\\:', ':') for p in re.split(r'(?<!\\):', raw)]
-                if len(parts) >= 3 and parts[0].strip() == '*':
+                if len(parts) >= 3 and parts[0] == 'yes':
                     info['connected'] = True
                     info['ssid'] = parts[1]
                     try:
@@ -468,9 +468,7 @@ def cellular_status() -> Dict:
                     info['detected'] = True
                     info['interface'] = iface
                     info['state'] = 'up' if 'state UP' in line else 'down'
-                    break
-            if info['detected']:
-                break
+                    return info
 
     info['apn'], info['apn_source'] = _read_apn_nm()
     return info

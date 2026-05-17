@@ -69,8 +69,8 @@
   const SETUP_VIDEO_HOLD_MS = 6000;
   const BOOT_VIDEO_FAIL_MS  = 3000;
   const BOOT_VIDEO_HARD_MS  = 12000;
-  const HEALTH_POLL_MS      = 5000;
-  const HEALTH_FALLBACK_MS  = 30000;
+  const HEALTH_POLL_MS      = 10000;
+  const HEALTH_FALLBACK_MS  = 90000;
   // Hotspot truth probe — poll faster than onboarding so the card
   // feels alive while the operator waits for a phone to join.
   const HOTSPOT_POLL_MS     = 3000;
