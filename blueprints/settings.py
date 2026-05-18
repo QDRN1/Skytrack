@@ -2828,6 +2828,33 @@ def api_diag_system():
     except Exception:
         pass
 
+    # Watchdog activity — count of triggers + last-trigger summary.
+    # Reads /var/lib/skytrack/watchdog.log (pipe-separated lines:
+    # ISO8601|action|reason). Missing file = watchdog has never had
+    # to act = healthy. Returns zero in that case.
+    out['watchdog'] = {'count': 0, 'last': None, 'counts_by_action': {}}
+    try:
+        with open('/var/lib/skytrack/watchdog.log') as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        out['watchdog']['count'] = len(lines)
+        for ln in lines:
+            parts = ln.split('|', 2)
+            if len(parts) == 3:
+                action = parts[1]
+                out['watchdog']['counts_by_action'][action] = (
+                    out['watchdog']['counts_by_action'].get(action, 0) + 1
+                )
+        if lines:
+            parts = lines[-1].split('|', 2)
+            if len(parts) == 3:
+                out['watchdog']['last'] = {
+                    'ts': parts[0], 'action': parts[1], 'reason': parts[2],
+                }
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
     return jsonify(out)
 
 

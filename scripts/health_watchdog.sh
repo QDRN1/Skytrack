@@ -14,17 +14,34 @@
 #   3. Internet connectivity (TCP to 1.1.1.1 or 8.8.8.8)
 #      → 30 minutes continuous failure → reboot the Pi
 #
-# All state is in /tmp so a reboot clears everything.
+# All transient state (failure counters) lives in /tmp so a reboot
+# clears it. The persistent action log lives at
+# /var/lib/skytrack/watchdog.log — one pipe-separated line per real
+# action (app restart, cloudflared restart, reboot) so the UI can
+# show "how often has the watchdog stepped in?" without grepping
+# the journal.
 
 set -euo pipefail
 
 STAMP_DIR="/tmp/skytrack-watchdog"
 mkdir -p "$STAMP_DIR"
 
+WATCHDOG_LOG="/var/lib/skytrack/watchdog.log"
+
 MAX_FAILURES=3
 REBOOT_AFTER_SEC=1800
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
+
+# Persistent action log. Format: ISO8601-timestamp|action|reason
+trigger_log() {
+  local action="$1"
+  local reason="$2"
+  mkdir -p "$(dirname "$WATCHDOG_LOG")" 2>/dev/null || true
+  printf '%s|%s|%s\n' "$(date -Iseconds)" "$action" "$reason" \
+    >> "$WATCHDOG_LOG" 2>/dev/null || true
+  log "TRIGGER: $action — $reason"
+}
 
 # ---------------------------------------------------------------
 # Check 1: Flask app
@@ -44,6 +61,7 @@ else
     log "restarting skytrack-app.service"
     rm -f "$APP_STAMP"
     systemctl restart skytrack-app.service
+    trigger_log "app_restart" "healthz failed $MAX_FAILURES times"
   fi
 fi
 
@@ -73,6 +91,7 @@ if systemctl is-active --quiet cloudflared 2>/dev/null; then
           log "app works locally but tunnel is stuck — restarting cloudflared"
           rm -f "$CF_TUNNEL_STAMP"
           systemctl restart cloudflared
+          trigger_log "cloudflared_restart" "tunnel unreachable via $CF_HOST"
         fi
       fi
     fi
@@ -87,6 +106,7 @@ else
     log "restarting cloudflared"
     rm -f "$CF_STAMP"
     systemctl restart cloudflared
+    trigger_log "cloudflared_restart" "cloudflared not active"
   fi
 fi
 
@@ -117,6 +137,8 @@ else
     if [ "$ELAPSED" -ge "$REBOOT_AFTER_SEC" ]; then
       log "offline ${ELAPSED}s — rebooting"
       rm -f "$CONN_STAMP"
+      trigger_log "reboot" "offline ${ELAPSED}s"
+      sync  # flush log to disk before reboot
       /sbin/reboot
     else
       log "offline ${ELAPSED}s — reboot in ~$(( (REBOOT_AFTER_SEC - ELAPSED) / 60 ))m"

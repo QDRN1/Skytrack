@@ -80,6 +80,20 @@
     return `${m}m`;
   }
 
+  function humanAgo(iso) {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (diffSec < 60)    return `${diffSec}s ago`;
+    const m = Math.floor(diffSec / 60);
+    if (m < 60)          return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24)          return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  }
+
   // ------------------------------------------------------------------
   // Section navigation
   // ------------------------------------------------------------------
@@ -1465,6 +1479,13 @@
       set('diag-temp',   r.cpu_temp_c != null ? r.cpu_temp_c.toFixed(1) + '°C' : '—', '');
       set('diag-pi-uptime',  fmtUptime(r.uptime));
       set('diag-app-uptime', fmtUptime(r.app_uptime));
+      const wd = r.watchdog || { count: 0, last: null };
+      const wdSub = wd.count === 0
+        ? 'no triggers'
+        : (wd.last
+            ? `${humanAgo(wd.last.ts) || 'recently'}: ${String(wd.last.action).replace(/_/g, ' ')}`
+            : 'last unknown');
+      set('diag-watchdog', String(wd.count), wdSub);
       const hn = $('#diag-hostname'); if (hn) hn.textContent = r.hostname || '—';
       const kn = $('#diag-kernel');   if (kn) kn.textContent = r.kernel || '—';
     } catch (_) {}
