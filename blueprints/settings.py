@@ -957,6 +957,15 @@ def api_test_opensky():
     return jsonify(enrich.test_opensky())
 
 
+@settings_bp.route('/api/settings/integrations/opensky/disconnect', methods=['POST'])
+@ADMIN
+def api_opensky_disconnect():
+    auth_lib.set_secret('opensky_username', '')
+    auth_lib.set_secret('opensky_password', '')
+    logs_svc.log_portal('admin', 'opensky_disconnect', {})
+    return jsonify({'ok': True})
+
+
 @settings_bp.route('/api/settings/integrations/test/weather', methods=['POST'])
 @ADMIN
 def api_test_weather():

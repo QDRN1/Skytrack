@@ -140,6 +140,19 @@
           </label>
         </div>
 
+        {% if config.opensky_username and secrets_set.opensky_password %}
+        <div class="field" id="opensky-account">
+          <label>OpenSky account</label>
+          <div class="account-row">
+            <code class="account-name">{{ config.opensky_username }}</code>
+            <span class="muted small" id="opensky-test-status">&nbsp;</span>
+          </div>
+          <div class="action-row">
+            <button type="button" class="btn" id="btn-opensky-test">Test connection</button>
+            <button type="button" class="btn" id="btn-opensky-disconnect">Sign out</button>
+          </div>
+        </div>
+        {% else %}
         <div class="field">
           <label for="i-os-user">OpenSky username <span class="muted small">optional</span></label>
           <input id="i-os-user" name="opensky_username" type="text" autocomplete="off"
@@ -147,12 +160,11 @@
         </div>
 
         <div class="field">
-          <label for="i-os-pw">OpenSky password <span class="muted small">optional</span>
-            {% if secrets_set.opensky_password %}<span class="muted small">(stored)</span>{% endif %}
-          </label>
+          <label for="i-os-pw">OpenSky password <span class="muted small">optional</span></label>
           <input id="i-os-pw" name="opensky_password" type="password" autocomplete="off"
-                 placeholder="{% if secrets_set.opensky_password %}••• leave blank to keep •••{% else %}optional{% endif %}">
+                 placeholder="optional">
         </div>
+        {% endif %}
       </div>
 
       <hr class="card-sep">

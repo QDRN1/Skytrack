@@ -853,6 +853,44 @@
     } catch (_) {}
   }
 
+  function bindIntegrationsExtras() {
+    const statusEl = $('#opensky-test-status');
+    const testBtn = $('#btn-opensky-test');
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        if (statusEl) { statusEl.textContent = 'Testing…'; statusEl.style.color = ''; }
+        testBtn.disabled = true;
+        try {
+          const r = await window.api.post('/api/settings/integrations/test/opensky', {});
+          if (statusEl) {
+            const ok = !!(r && r.ok);
+            statusEl.textContent = (ok ? '✓ ' : '✗ ') + ((r && r.message) || (ok ? 'OK' : 'Failed'));
+            statusEl.style.color = ok ? 'var(--ok, #4ade80)' : 'var(--err, #f87171)';
+          }
+        } catch (_) {
+          if (statusEl) { statusEl.textContent = '✗ network error'; statusEl.style.color = 'var(--err, #f87171)'; }
+        } finally {
+          testBtn.disabled = false;
+        }
+      });
+    }
+    const disconnectBtn = $('#btn-opensky-disconnect');
+    if (disconnectBtn) {
+      disconnectBtn.addEventListener('click', async () => {
+        const ok = await confirmModal('Sign out of OpenSky?',
+          'Clears your saved OpenSky username and password. Lookups will fall back to anonymous (lower rate limit).');
+        if (!ok) return;
+        try {
+          await window.api.post('/api/settings/integrations/opensky/disconnect', {});
+          toast('Signed out');
+          location.reload();
+        } catch (_) {
+          toast('Sign out failed', true);
+        }
+      });
+    }
+  }
+
   function bindDataExtras() {
     const wireAction = (id, url, defaultTitle, defaultBody, success) => {
       const btn = $('#' + id);
@@ -1867,6 +1905,7 @@
     bindConfirmModal();
     bindNetworkExtras();
     bindFeederExtras();
+    bindIntegrationsExtras();
     bindDataExtras();
     bindAlertExtras();
     bindUpdateExtras();
