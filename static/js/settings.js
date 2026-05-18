@@ -854,41 +854,121 @@
   }
 
   function bindIntegrationsExtras() {
-    const statusEl = $('#opensky-test-status');
-    const testBtn = $('#btn-opensky-test');
-    if (testBtn) {
-      testBtn.addEventListener('click', async () => {
-        if (statusEl) { statusEl.textContent = 'Testing…'; statusEl.style.color = ''; }
-        testBtn.disabled = true;
-        try {
-          const r = await window.api.post('/api/settings/integrations/test/opensky', {});
-          if (statusEl) {
-            const ok = !!(r && r.ok);
-            statusEl.textContent = (ok ? '✓ ' : '✗ ') + ((r && r.message) || (ok ? 'OK' : 'Failed'));
-            statusEl.style.color = ok ? 'var(--ok, #4ade80)' : 'var(--err, #f87171)';
-          }
-        } catch (_) {
-          if (statusEl) { statusEl.textContent = '✗ network error'; statusEl.style.color = 'var(--err, #f87171)'; }
-        } finally {
-          testBtn.disabled = false;
-        }
-      });
+    const widget = $('#opensky-credentials');
+    if (!widget) return;
+
+    function renderSignedIn(username, statusText, ok) {
+      const status = statusText ? `<span class="muted small" id="opensky-test-status" style="color: ${ok ? 'var(--ok, #4ade80)' : 'var(--err, #f87171)'}">${escapeHtml(statusText)}</span>`
+                                : `<span class="muted small" id="opensky-test-status">&nbsp;</span>`;
+      widget.innerHTML = `
+        <div class="account-row" data-opensky-state="signed-in">
+          <label class="ro-label">OpenSky account</label>
+          <code class="account-name">${escapeHtml(username)}</code>
+          ${status}
+        </div>
+        <div class="action-row">
+          <button type="button" class="btn" id="btn-opensky-test">Test connection</button>
+          <button type="button" class="btn" id="btn-opensky-disconnect">Sign out</button>
+        </div>
+      `;
+      bindHandlers();
     }
-    const disconnectBtn = $('#btn-opensky-disconnect');
-    if (disconnectBtn) {
-      disconnectBtn.addEventListener('click', async () => {
-        const ok = await confirmModal('Sign out of OpenSky?',
-          'Clears your saved OpenSky username and password. Lookups will fall back to anonymous (lower rate limit).');
-        if (!ok) return;
-        try {
-          await window.api.post('/api/settings/integrations/opensky/disconnect', {});
-          toast('Signed out');
-          location.reload();
-        } catch (_) {
-          toast('Sign out failed', true);
-        }
-      });
+
+    function renderSignedOut(prefillUser, errorText) {
+      const status = errorText ? `<span class="muted small" id="opensky-save-status" style="color: var(--err, #f87171)">${escapeHtml(errorText)}</span>`
+                               : `<span class="muted small" id="opensky-save-status">&nbsp;</span>`;
+      widget.innerHTML = `
+        <div data-opensky-state="signed-out">
+          <label for="i-os-user">OpenSky username</label>
+          <input id="i-os-user" type="text" autocomplete="off"
+                 value="${escapeHtml(prefillUser || '')}"
+                 placeholder="your opensky-network.org username">
+          <label for="i-os-pw" style="margin-top: 10px; display: block;">OpenSky password</label>
+          <input id="i-os-pw" type="password" autocomplete="off"
+                 placeholder="your opensky-network.org password">
+          <div class="action-row" style="margin-top: 12px;">
+            <button type="button" class="btn btn-primary" id="btn-opensky-save">Save &amp; sign in</button>
+            ${status}
+          </div>
+          <p class="muted small" style="margin-top: 8px;">
+            Optional. Signing in to your free
+            <code>opensky-network.org</code> account raises the lookup rate
+            limit. Without sign-in, OpenSky still works anonymously at a
+            lower limit.
+          </p>
+        </div>
+      `;
+      bindHandlers();
     }
+
+    async function onSave() {
+      const userEl = $('#i-os-user');
+      const pwEl   = $('#i-os-pw');
+      const stEl   = $('#opensky-save-status');
+      const btn    = $('#btn-opensky-save');
+      const username = (userEl && userEl.value || '').trim();
+      const password = (pwEl && pwEl.value) || '';
+      if (!username || !password) {
+        if (stEl) { stEl.textContent = 'Both username and password are required.'; stEl.style.color = 'var(--err, #f87171)'; }
+        return;
+      }
+      if (stEl) { stEl.textContent = 'Saving…'; stEl.style.color = ''; }
+      if (btn) btn.disabled = true;
+      try {
+        await window.api.post('/api/settings/integrations', {
+          secrets: { opensky_username: username, opensky_password: password },
+        });
+        if (stEl) stEl.textContent = 'Testing connection…';
+        const test = await window.api.post('/api/settings/integrations/test/opensky', {});
+        const ok = !!(test && test.ok);
+        const msg = (test && test.message) || (ok ? 'OpenSky reachable' : 'Test failed');
+        renderSignedIn(username, (ok ? '✓ ' : '✗ ') + msg, ok);
+        toast(ok ? 'Signed in to OpenSky' : 'Saved, but test failed', !ok);
+      } catch (e) {
+        if (stEl) { stEl.textContent = '✗ Save failed: ' + (e.message || 'network error'); stEl.style.color = 'var(--err, #f87171)'; }
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function onTest() {
+      const stEl = $('#opensky-test-status');
+      const btn  = $('#btn-opensky-test');
+      if (stEl) { stEl.textContent = 'Testing…'; stEl.style.color = ''; }
+      if (btn) btn.disabled = true;
+      try {
+        const r = await window.api.post('/api/settings/integrations/test/opensky', {});
+        const ok = !!(r && r.ok);
+        if (stEl) {
+          stEl.textContent = (ok ? '✓ ' : '✗ ') + ((r && r.message) || (ok ? 'OK' : 'Failed'));
+          stEl.style.color = ok ? 'var(--ok, #4ade80)' : 'var(--err, #f87171)';
+        }
+      } catch (_) {
+        if (stEl) { stEl.textContent = '✗ network error'; stEl.style.color = 'var(--err, #f87171)'; }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function onDisconnect() {
+      const ok = await confirmModal('Sign out of OpenSky?',
+        'Clears your saved OpenSky username and password. Lookups will fall back to anonymous (lower rate limit).');
+      if (!ok) return;
+      try {
+        await window.api.post('/api/settings/integrations/opensky/disconnect', {});
+        toast('Signed out');
+        renderSignedOut('', '');
+      } catch (_) {
+        toast('Sign out failed', true);
+      }
+    }
+
+    function bindHandlers() {
+      const saveBtn       = $('#btn-opensky-save');       if (saveBtn)       saveBtn.addEventListener('click', onSave);
+      const testBtn       = $('#btn-opensky-test');       if (testBtn)       testBtn.addEventListener('click', onTest);
+      const disconnectBtn = $('#btn-opensky-disconnect'); if (disconnectBtn) disconnectBtn.addEventListener('click', onDisconnect);
+    }
+
+    bindHandlers();
   }
 
   function bindDataExtras() {

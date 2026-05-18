@@ -140,10 +140,13 @@
           </label>
         </div>
 
-        {% if config.opensky_username and secrets_set.opensky_password %}
-        <div class="field" id="opensky-account">
-          <label>OpenSky account</label>
-          <div class="account-row">
+        {# OpenSky credentials are managed by this dedicated widget, NOT
+           the main Integrations Save button below. The inputs have no
+           name= attribute so they're omitted from buildPayload(). #}
+        <div class="field" id="opensky-credentials">
+          {% if config.opensky_username and secrets_set.opensky_password %}
+          <div class="account-row" data-opensky-state="signed-in">
+            <label class="ro-label">OpenSky account</label>
             <code class="account-name">{{ config.opensky_username }}</code>
             <span class="muted small" id="opensky-test-status">&nbsp;</span>
           </div>
@@ -151,20 +154,29 @@
             <button type="button" class="btn" id="btn-opensky-test">Test connection</button>
             <button type="button" class="btn" id="btn-opensky-disconnect">Sign out</button>
           </div>
-        </div>
-        {% else %}
-        <div class="field">
-          <label for="i-os-user">OpenSky username <span class="muted small">optional</span></label>
-          <input id="i-os-user" name="opensky_username" type="text" autocomplete="off"
-                 value="{{ config.opensky_username or '' }}">
-        </div>
+          {% else %}
+          <div data-opensky-state="signed-out">
+            <label for="i-os-user">OpenSky username</label>
+            <input id="i-os-user" type="text" autocomplete="off"
+                   placeholder="your opensky-network.org username">
 
-        <div class="field">
-          <label for="i-os-pw">OpenSky password <span class="muted small">optional</span></label>
-          <input id="i-os-pw" name="opensky_password" type="password" autocomplete="off"
-                 placeholder="optional">
+            <label for="i-os-pw" style="margin-top: 10px; display: block;">OpenSky password</label>
+            <input id="i-os-pw" type="password" autocomplete="off"
+                   placeholder="your opensky-network.org password">
+
+            <div class="action-row" style="margin-top: 12px;">
+              <button type="button" class="btn btn-primary" id="btn-opensky-save">Save &amp; sign in</button>
+              <span class="muted small" id="opensky-save-status">&nbsp;</span>
+            </div>
+            <p class="muted small" style="margin-top: 8px;">
+              Optional. Signing in to your free
+              <code>opensky-network.org</code> account raises the lookup rate
+              limit. Without sign-in, OpenSky still works anonymously at a
+              lower limit.
+            </p>
+          </div>
+          {% endif %}
         </div>
-        {% endif %}
       </div>
 
       <hr class="card-sep">
