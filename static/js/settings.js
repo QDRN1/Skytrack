@@ -1463,7 +1463,8 @@
       set('diag-cpu',    r.cpu_load != null ? r.cpu_load.toFixed(2) : '—', `${r.cpu_count || ''} cores`);
       set('diag-mem',    r.mem_used_pct != null ? r.mem_used_pct + '%' : '—', `${fmtBytes(r.mem_used)} / ${fmtBytes(r.mem_total)}`);
       set('diag-temp',   r.cpu_temp_c != null ? r.cpu_temp_c.toFixed(1) + '°C' : '—', '');
-      set('diag-uptime', fmtUptime(r.uptime), '');
+      set('diag-pi-uptime',  fmtUptime(r.uptime));
+      set('diag-app-uptime', fmtUptime(r.app_uptime));
       const hn = $('#diag-hostname'); if (hn) hn.textContent = r.hostname || '—';
       const kn = $('#diag-kernel');   if (kn) kn.textContent = r.kernel || '—';
     } catch (_) {}

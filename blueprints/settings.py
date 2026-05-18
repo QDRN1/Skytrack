@@ -2804,12 +2804,29 @@ def api_diag_system():
         except Exception:
             pass
 
-    # Uptime
+    # Uptime — kernel boot (Pi uptime)
     try:
         with open('/proc/uptime') as f:
             out['uptime'] = float(f.read().split()[0])
     except Exception:
         out['uptime'] = None
+
+    # App uptime — seconds since skytrack-app.service was last started.
+    # Subtract the unit's monotonic start time (usec since boot) from the
+    # current monotonic uptime to get app uptime in seconds. Independent
+    # of wall-clock changes.
+    out['app_uptime'] = None
+    try:
+        r = subprocess.run(
+            ['systemctl', 'show', 'skytrack-app.service',
+             '--property=ActiveEnterTimestampMonotonic', '--value'],
+            capture_output=True, text=True, timeout=3,
+        )
+        start_usec = int((r.stdout or '0').strip() or 0)
+        if start_usec > 0 and out['uptime'] is not None:
+            out['app_uptime'] = max(0.0, out['uptime'] - start_usec / 1_000_000)
+    except Exception:
+        pass
 
     return jsonify(out)
 
