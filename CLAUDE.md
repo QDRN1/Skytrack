@@ -106,21 +106,25 @@ phased rewrite above or delete it.
 
 ### Urgent — device in production at a remote site
 
-- **SSH via PowerShell over Cloudflare Tunnel.** Add an
-  `ssh.<host>.qdrn.io` ingress to `/etc/cloudflared/config.yml`
-  on the Pi (the unified watchdog already greps the non-ssh
-  hostname out of this file — design must keep that grep working),
-  ensure `sshd` is up, and document the PowerShell `~/.ssh/config`
-  entry that uses `cloudflared access ssh --hostname …` as
-  `ProxyCommand`. Goal: copy-paste-friendly remote shell from
-  Windows without the Super Admin web UI.
+- ~~SSH via PowerShell over Cloudflare Tunnel~~ — shipped 2026-05-17.
+  Pi-side `cloudflared` ingress was already in place
+  (`ssh-skytrack-baycity.qdrn.io` → `ssh://localhost:22`); the DNS
+  CNAME and the operator's public key in `/home/skytrack/.ssh/
+  authorized_keys` were the missing pieces. Operator workstation
+  uses `~/.ssh/config` host `skytrack-baycity` with
+  `ProxyCommand cloudflared.exe access ssh --hostname %h`. Auth
+  model is **tunnel-only + SSH key**; no Cloudflare Access policy.
+  Known caveats: the deploy-cycle key passphrase is non-empty
+  (typo from initial setup) so it prompts; password auth is still
+  enabled on the Pi as a fallback. Both are deferred cleanups.
 - ~~Finish health watchdog~~ — shipped 2026-05-17 (commit `b40401b`).
 
 ### Small patches (each is roughly one file)
 
-- Split uptime in System Health: Pi uptime (kernel boot) **and**
-  app uptime (`skytrack-app.service` started). Currently shown as
-  one number.
+- ~~Split uptime in System Health~~ — shipped 2026-05-18
+  (commit `28a4c77`). Backend adds `app_uptime` from
+  `systemctl show … ActiveEnterTimestampMonotonic`; UI renders
+  two tiles ("Pi uptime" / "App uptime").
 - Watchdog trigger counter: log every watchdog action (app restart,
   `cloudflared` restart, reboot) to `/var/lib/skytrack/watchdog.log`
   with timestamp + reason, and surface a count + last-trigger time
@@ -136,9 +140,14 @@ phased rewrite above or delete it.
 
 ### UX cleanups (medium)
 
-- Super Admin shell: needs to be mobile-friendly. Per-line copy
-  buttons, no horizontal scroll, larger tap targets, monospace.
-  Currently painful to copy/paste from a phone.
+- Super Admin shell needs work on two fronts:
+  1. **Mobile copy/paste ergonomics** — per-line copy buttons,
+     no horizontal scroll, larger tap targets, monospace.
+  2. **HTTP request timeout** — long-running commands (anything
+     with `sleep` or a slow `systemctl restart`) 408 before they
+     finish. Either stream output (chunked / WebSocket) or extend
+     the request budget. Encountered when restarting cloudflared
+     2026-05-17.
 - Onboarding/setup wording pass — clarify ambiguous terms.
 
 ### Architectural — design before code
