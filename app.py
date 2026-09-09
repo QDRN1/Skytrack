@@ -512,6 +512,7 @@ def _register_blueprints(app: Flask) -> None:
     from blueprints.onboarding import onboarding_bp
     from blueprints.super import super_bp
     from blueprints.api import api_bp
+    from blueprints.cards import cards_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -521,6 +522,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(onboarding_bp)
     app.register_blueprint(super_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(cards_bp)
 
 
 def _register_template_globals(app: Flask) -> None:
